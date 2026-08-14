@@ -128,6 +128,33 @@ claude plugin update harness-core@dev-harness
 #    → 「Restart to apply changes.」と出るので /exit して再起動
 ```
 
+### ⚠️ 更新はスコープごとに必要（実測・2026-08-14）
+
+`claude plugin update` は**既定で `user` スコープしか更新しない**。
+同じプラグインが `project` スコープにも登録されている場合、**そちらは古い版のまま残る**。
+
+```bash
+claude plugin update harness-core@dev-harness                  # user スコープのみ
+claude plugin update harness-core@dev-harness --scope project  # ← プロジェクト側にも当てる
+```
+
+プロジェクトを開いた状態でセッションを起動すると、`enabledPlugins` によって
+**project スコープの登録が自動で作られる**。つまり利用側は
+**ほぼ必ず user と project の両方に登録を持つ**ことになる。
+
+更新後は必ず確認する:
+
+```bash
+node -e "const d=require(require('os').homedir()+'/.claude/plugins/installed_plugins.json');
+for(const [k,v] of Object.entries(d.plugins)){console.log(k);
+v.forEach(e=>console.log('  ',e.scope,e.version,e.projectPath||''))}"
+```
+
+> **Windows の注意**: ドライブレターの大小（`D:` / `d:`）で **project スコープが別登録として重複する**。
+> 重複したまま片方だけ更新すると、**セッションがどちらに解決するかで読み込まれる版が変わる**。
+> 重複を見つけたら `installed_plugins.json` から片方を削除する（削除しても
+> 次回セッション起動時に現行版で作り直される）。
+
 > **`--strict` を付けると warning もエラー扱い**になる。push 前のチェックに向く。
 
 ## 2. やってはいけないこと
