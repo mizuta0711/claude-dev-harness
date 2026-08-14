@@ -400,11 +400,24 @@ async function main() {
 次の手順:
 
   1. cd ${opts.dest}
-  2. claude                       # Claude Code を起動する
-  3. プラグインの信頼を求められたら承認する
-     （.claude/settings.json の extraKnownMarketplaces / enabledPlugins により
-       harness-core と ${templateJson.plugin || "環境プラグイン"} が自動で導入される）
-  4. 起動時に environment: ${opts.env} が表示されれば読み込み成功
+  2. プラグインを導入する（★必須。この手順を飛ばすとスキルも hooks も動かない）
+
+       claude plugin install harness-core@dev-harness
+       claude plugin install ${templateJson.plugin || "harness-<env>@dev-harness"}
+
+     marketplace の登録は .claude/settings.json の extraKnownMarketplaces が
+     初回起動で自動で行うため 'claude plugin marketplace add' は不要。
+     ただし初回起動ではプラグインが導入されず、スキルも hooks も使えない
+     （実測・2026-08-14）。上記の install を先に済ませるのが確実。
+
+  3. claude                       # Claude Code を起動する
+  4. 導入できたかを確認する
+       /plugin  … harness-core と ${templateJson.plugin || "環境プラグイン"} が enabled になっている
+       /        … スキル一覧に harness-core:new-feature が出る
+
+     ※ SessionStart フックの '[harness] environment: ${opts.env}' は
+        additionalContext として Claude に渡されるもので、画面には表示されない。
+        表示の有無で判断しないこと。
   5. /harness-core:new-feature <機能名>   # 規模判定から開発を始める
 
   CLAUDE.md の <!-- TODO --> 箇所も忘れずに記入してください。${

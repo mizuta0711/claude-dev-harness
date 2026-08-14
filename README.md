@@ -53,12 +53,16 @@ claude-dev-harness/
 │   └── wpf/
 ├── tools/create-project.mjs           # base + env を合成してプロジェクトを生成する
 └── docs/                              # ハーネス自体の仕様・運用文書
+    ├── plugin-development.md          # プラグインの修正・反映手順（開発しながら直したいとき）
+    ├── harness-config-contract.md     # harness.config.json の設定契約
+    └── permissions-baseline.md        # permissions の設計と実測記録
 ```
 
 ### 環境プラグイン
 
 `harness-core` と**併用**する。テンプレートが生成する `.claude/settings.json` が
-該当プラグインを `enabledPlugins` に入れるため、通常は意識せず有効になる。
+該当プラグインを `enabledPlugins` に入れるが、**導入は `claude plugin install` で別途行う**
+（[プロジェクトからの利用](#プロジェクトからの利用marketplace-経由)を参照）。
 
 | プラグイン | スキル | エージェント | フック |
 |-----------|--------|-------------|--------|
@@ -129,6 +133,34 @@ core の hooks / skills は**すべてこのファイルを読んで動く**。�
 
 （この設定は `create-project.mjs` が生成時に書き込むため、通常は手で書く必要はない。）
 
+### ⚠️ 初回起動ではプラグインが導入されない — CLI 導入を推奨
+
+実測（2026-08-14・C1 の初回適用）で判明した挙動:
+
+| 設定 | 実際の効果 |
+|------|-----------|
+| `extraKnownMarketplaces` | ✅ **初回起動で** marketplace の登録とクローンを自動で行う。`claude plugin marketplace add` は不要 |
+| `enabledPlugins` | ⚠️ **初回起動ではプラグインが導入されなかった**。2回目以降の起動で project スコープの導入が自動記録された |
+
+初回起動の時点ではスキルも hooks も使えない状態になる。確実に1回で済ませるため、
+プロジェクトを開いたら**最初に一度だけ**次を実行する:
+
+```bash
+claude plugin install harness-core@dev-harness
+claude plugin install harness-<env>@dev-harness    # nextjs / unity / wpf
+```
+
+導入できたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧に `harness-core:new-feature`）**
+で確認する。
+
+> **未確定**: 2回目以降の自動導入が「marketplace のクローン完了後なら自動で入る」ためなのか、
+> 「CLI で user スコープに導入済みだったものを project スコープへ登録しただけ」なのかは切り分けできていない
+> （検証時に CLI 導入を挟んでしまったため）。**CLI 導入を明示する運用ならどちらでも確実に動く**ため、
+> 上の手順を正とする。
+
+> SessionStart フックが出す `[harness] environment: <env>` は `additionalContext` として
+> Claude に渡されるもので、**画面には表示されない**。表示の有無で導入の成否を判断しないこと。
+
 スキルは `/harness-core:<name>` の形式で呼び出す（プラグインのスキルは名前空間が付くため、
 Claude Code の組み込みスキルと同名でも衝突しない）。
 
@@ -150,7 +182,7 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 
 | 改善の種類 | 入れる場所 | プロジェクトへの届き方 |
 |-----------|-----------|---------------------|
-| スキル・エージェント・フック | `plugins/harness-*/` | **marketplace 経由で自動更新** |
+| スキル・エージェント・フック | `plugins/harness-*/` | marketplace 経由。**版を上げて push → 利用側で `plugin update` → 再起動** |
 | CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` / docs 骨格 | `templates/` | `/harness-core:harness-update` で追従 |
 | ハーネス自体の仕様・設計記録 | `docs/` | （参照用） |
 
@@ -162,10 +194,18 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 
 ### 手順
 
-1. 改善に気づいたら、まずこのリポジトリで直す
-2. 影響範囲に応じてバージョンを上げる（semver）。`CHANGELOG.md` に記録する
-3. プラグインの変更は push した時点で各プロジェクトへ届く
-4. テンプレート層の変更は、各プロジェクトで `/harness-core:harness-update` を実行して取り込む
+1. 改善に気づいたら、**その場では直さずメモに残して開発を続ける**（区切りでまとめて対応する）
+2. 区切りでこのリポジトリを直す。手元での試し方は
+   **[docs/plugin-development.md](docs/plugin-development.md)** に手順がある
+3. 影響範囲に応じてバージョンを上げる（semver）。`CHANGELOG.md` に記録する
+4. push する
+5. 各プロジェクトで `claude plugin marketplace update dev-harness` →
+   `claude plugin update harness-<name>@dev-harness` → **再起動**して取り込む
+6. テンプレート層の変更は、各プロジェクトで `/harness-core:harness-update` を実行して取り込む
+
+> ⚠️ **バージョンを上げないと届かない。** `claude plugin update` は版番号の変化で更新を判断するため、
+> 中身だけ変えて push しても利用側は `already at the latest version` となり**何も起きない**（実測）。
+> 「push したのに直らない」の原因はほぼこれ。
 
 プロジェクト固有の事情でどうしてもローカル改変が必要な場合は、そのまま残してよい。
 `harness-update` の3点比較が**「プロジェクト固有の改変」として保持**する（無断で上書きしない）。

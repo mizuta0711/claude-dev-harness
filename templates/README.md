@@ -18,6 +18,18 @@ templates/
 node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
 ```
 
+> **生成後にプラグインの導入が要る。**
+> テンプレートが書き込む `.claude/settings.json` の `extraKnownMarketplaces` は
+> marketplace の登録・クローンを初回起動で自動で行うが、
+> **初回起動ではプラグインが導入されない**（実測・2026-08-14）。生成先で一度だけ実行する:
+>
+> ```bash
+> claude plugin install harness-core@dev-harness
+> claude plugin install harness-<env>@dev-harness
+> ```
+>
+> 導入できたかは起動時の `[harness] environment: <env>` の表示で判別する。
+
 ## 合成のルール
 
 | 対象 | 合成方法 |

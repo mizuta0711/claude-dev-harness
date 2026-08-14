@@ -10,10 +10,20 @@
 claude
 ```
 
-`.claude/settings.json` の `extraKnownMarketplaces` / `enabledPlugins` により
-`harness-core` と `harness-unity` が自動で導入される。初回はプラグインの信頼を求められるので承認する。
+`.claude/settings.json` の `extraKnownMarketplaces` により marketplace は初回起動で自動登録されるが、
+**初回起動ではプラグインが導入されない**（実測・2026-08-14）。
+プロジェクトで一度だけ次を実行する:
 
-起動時に `harness-core` の SessionStart フックが `environment: unity` を表示すれば読み込み成功。
+```bash
+claude plugin install harness-core@dev-harness
+claude plugin install harness-unity@dev-harness
+```
+
+読み込めたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧に `harness-core:new-feature`）**
+で確認する。
+
+> SessionStart フックが出す `[harness] environment: unity` は `additionalContext` として
+> Claude に渡されるもので、**画面には表示されない**。表示の有無で判断しないこと。
 
 ## Step 2: Unity MCP のセットアップ
 

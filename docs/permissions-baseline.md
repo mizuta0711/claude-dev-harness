@@ -23,10 +23,12 @@
   "permissions": {
     "deny": [
       // 秘密情報の読み取り（R5: 列挙ではなくワイルドカードで変種を漏らさない）
+      //   `Edit(path)` はファイル編集ツール全般（Write / NotebookEdit 等）を覆う。
+      //   `Write(path)` はファイル権限チェックの対象外で、書いても効かないうえ
+      //   起動時に警告が出る（C1 の初回起動で実際に出た。§5-6 参照）
       "Read(./.env*)",
       "Read(./secrets/**)",
       "Edit(./.env*)",
-      "Write(./.env*)",
 
       // Read deny が波及しない経路を塞ぐ（R3）
       //   公式に波及が明記されているのは cat / head / tail / sed。
@@ -125,3 +127,22 @@ Phase 2 T0 で実施。検証方法は scratchpad に使い捨てプロジェク
   スクリプト経由の間接実行までは塞げない。**deny は事故防止であって攻撃対策ではない**
 - `PowerShell(Remove-Item*-Recurse*)` は `ri -r`（別名+短縮フラグ）を塞がない。
   同様に列挙で塞ぐこともできるが、別名の網羅は現実的でないため未対応とする
+
+### 5-6. `Write(path)` は deny に書いても効かない（C1 の初回起動で発覚・2026-08-14）
+
+生成直後の `bookmark-app` で `claude` を起動したところ、初回に次の警告が出た:
+
+```
+Permission deny rule (.claude\settings.json): Write(./.env*) is not matched by file permission checks
+— only Edit(path) rules are. Use Edit(./.env*) instead (Edit rules cover all file-editing tools).
+```
+
+**ファイルパス指定の権限チェックは `Edit(path)` だけが対象**で、`Edit` ルールが Write を含む
+編集系ツール全般を覆う。`Write(path)` は照合されないため、書いても保護にならない。
+
+幸い `Edit(./.env*)` が既にあったため**保護に穴は無かった**が、
+`Write(./.env*)` は無効なうえ毎回警告を出すため削除した（§2 に反映済み）。
+
+> **これは実プロジェクトに適用して初めて出た指摘**である。テンプレートの静的レビューでは
+> 「Edit と Write の両方を塞いでいる」と読めてしまい、誤りに見えなかった。
+> C1（ドッグフーディング）を先に通すべきという判断の正しさを示す最初の実例。

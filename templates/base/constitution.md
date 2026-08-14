@@ -81,7 +81,14 @@ hooks / skills は **fail-open** で実装する。
 このプロジェクトへ直接パッチを当てるのではなく **claude-dev-harness へコミットして配信**する。
 
 - プロジェクト側の場当たり修正は、他プロジェクトへ伝播せず差分の温床になる
-- 追従は `/harness-core:harness-update` で行う
+- **気づいた時点では直さない。** メモに1行残して開発を続け、区切りでまとめて対応する
+  （開発の流れを止めない。まとめて見た方が根本的な直し方を選べる）
+- **プラグイン**（skills / agents / hooks）の修正・反映手順:
+  [docs/plugin-development.md](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/plugin-development.md)
+  - 反映のトリガーは**版番号の変化**。中身だけ変えても利用側には届かない
+  - 手元で試すだけなら `claude plugin uninstall` → `install` → 再起動
+- **テンプレート層**（CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` / docs 骨格）の
+  追従は `/harness-core:harness-update` で行う
 
 ## 9. このプロジェクト固有の原則
 

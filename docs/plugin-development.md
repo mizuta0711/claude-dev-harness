@@ -1,0 +1,193 @@
+# プラグインの開発・修正手順
+
+**プロジェクトの開発中にハーネス（プラグイン）を直したくなったとき**の手順。
+`constitution.md`「改善はコアへ還元する」を実行するための具体的なやり方をここに置く。
+
+| 項目 | 内容 |
+|------|------|
+| 作成日 | 2026-08-14 |
+| 検証 | Claude Code v2.1.232 / Windows。**すべて実測**（推測を含まない） |
+| 経緯 | C1（初回ドッグフーディング）中に「開発しながらプラグインを直したい」という要求が出たが、手順がどこにも無かった |
+
+## 0. まず理解しておくこと
+
+プラグインは**リポジトリからキャッシュへコピーされて動く**。編集してもそのままでは反映されない。
+
+```
+D:\Develop\ClaudeCode\claude-dev-harness\plugins\harness-core\   ← ソース（編集する場所）
+        ↓ claude plugin install がコピーする
+~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/        ← 実際に読まれる場所
+```
+
+| 事実 | 実測結果 |
+|------|---------|
+| marketplace のソースがローカルパスの場合 | `known_marketplaces.json` の `installLocation` は**そのディレクトリ自身**を指す（コピーしない） |
+| プラグインの `install` | **キャッシュへコピーされる**（ローカルパス marketplace でも同じ） |
+| ソースを編集しただけ | キャッシュには**反映されない** |
+| `claude plugin update`（版番号そのまま） | `already at the latest version` と表示され**何もしない** |
+| `claude plugin update`（版番号を上げた） | 新バージョンとしてキャッシュへコピーされる。`Restart to apply changes.` と表示される |
+| `uninstall` → `install`（版番号そのまま） | **キャッシュが作り直され反映される** |
+
+> **要点**: 反映のトリガーは**版番号の変化**。同じ版のまま中身だけ変えても更新されない。
+> だから開発中は「版を上げる」か「入れ直す」かの二択になる。
+
+## 1. どの方法を使うか
+
+| 状況 | 方法 |
+|------|------|
+| 実プロジェクトで使いながら小さく直す（**通常はこれ**） | [方法A: 直して入れ直す](#方法a-直して入れ直す) |
+| スキル文言の調整など、何度も試して詰めたい | [方法B: ローカル marketplace で回す](#方法b-ローカル-marketplace-で回す) |
+| 直したものを他プロジェクト・他人にも配る | [方法C: 版を上げて push する](#方法c-版を上げて-push-する)（最終的には必ずこれを通す） |
+
+## 方法A: 直して入れ直す
+
+**最も手数が少ない。** リリースせずに手元だけ反映したいときはこれ。
+
+```bash
+# 1. ソースを直す（例）
+#    D:\Develop\ClaudeCode\claude-dev-harness\plugins\harness-core\skills\done\SKILL.md
+
+# 2. マニフェストの妥当性を確認する（任意だが推奨。install 前に壊れを検出できる）
+claude plugin validate D:/Develop/ClaudeCode/claude-dev-harness
+
+# 3. 入れ直す（版番号は据え置きでよい）
+claude plugin uninstall harness-core@dev-harness
+claude plugin install   harness-core@dev-harness
+
+# 4. Claude Code を再起動する（/exit して開き直す）
+```
+
+> ⚠️ **この時点ではまだ GitHub 上のソースを見にいく。** 手元のリポジトリの編集を反映したい場合は、
+> 先に push するか、方法B のローカル marketplace を使うこと。
+
+## 方法B: ローカル marketplace で回す
+
+**手元のリポジトリを直接ソースにする。** push せずに編集 → 反映を繰り返せる。
+
+ただし marketplace 名が `dev-harness` で衝突するため、**マニフェストの `name` を変えた複製**を使うか、
+本番の `dev-harness` を一時的に外す必要がある。スキルの名前空間（`harness-core:`）も衝突するため、
+**同時に両方を有効にしない**こと。
+
+```bash
+# 1. 本番の marketplace を一時的に外す
+claude plugin uninstall harness-core@dev-harness
+claude plugin uninstall harness-nextjs@dev-harness
+claude plugin marketplace remove dev-harness
+
+# 2. 手元のリポジトリを marketplace として登録する
+claude plugin marketplace add D:/Develop/ClaudeCode/claude-dev-harness
+claude plugin install harness-core@dev-harness
+claude plugin install harness-nextjs@dev-harness
+
+# 3. 以降、編集するたびに
+claude plugin uninstall harness-core@dev-harness
+claude plugin install   harness-core@dev-harness
+#    → /exit して再起動
+```
+
+作業が終わったら**必ず本番（GitHub）へ戻す**:
+
+```bash
+claude plugin uninstall harness-core@dev-harness
+claude plugin uninstall harness-nextjs@dev-harness
+claude plugin marketplace remove dev-harness
+claude plugin marketplace add mizuta0711/claude-dev-harness
+claude plugin install harness-core@dev-harness
+claude plugin install harness-nextjs@dev-harness
+```
+
+`claude plugin marketplace list` で `Source:` が GitHub に戻っていることを確認する。
+
+## 方法C: 版を上げて push する
+
+**他プロジェクトへ配る正規手順。** 手元で方法A・B で固めたあと、最後に必ずこれを通す。
+
+```bash
+# 1. 版番号を2箇所とも上げる（両方必要。片方だけだと不整合になる）
+#    plugins/<plugin>/.claude-plugin/plugin.json  の "version"
+#    .claude-plugin/marketplace.json の plugins[].version
+```
+
+| 変更内容 | 上げ方 |
+|---------|--------|
+| スキルの手順追加・新スキル・新フック | minor（`0.2.0` → `0.3.0`） |
+| 文言修正・誤記修正・バグ修正 | patch（`0.2.0` → `0.2.1`） |
+| 設定契約（`harness.config.json` の `schemaVersion`）を変える | major |
+
+```bash
+# 2. CHANGELOG.md に追記する（このリポジトリの運用。省略しない）
+
+# 3. 検証してからコミット・push
+claude plugin validate D:/Develop/ClaudeCode/claude-dev-harness --strict
+git commit -- <path...>
+git push origin master
+
+# 4. 利用側で取り込む
+claude plugin marketplace update dev-harness
+claude plugin update harness-core@dev-harness
+#    → 「Restart to apply changes.」と出るので /exit して再起動
+```
+
+> **`--strict` を付けると warning もエラー扱い**になる。push 前のチェックに向く。
+
+## 2. やってはいけないこと
+
+- **キャッシュを直接編集しない**（`~/.claude/plugins/cache/...`）。
+  次の `update` / 入れ直しで**黙って消える**。試すだけでも癖にしないこと
+- **版番号を上げずに push しない**。利用側の `plugin update` が
+  `already at the latest version` と言って**何も起きない**（実測）。
+  「push したのに直らない」の原因はほぼこれ
+- **`plugin.json` と `marketplace.json` の版番号を片方だけ上げない**。
+  `claude plugin tag` が両者の一致を検証する設計になっており、不整合は事故のもと
+
+## 3. プロジェクト側での確認
+
+プラグインを入れ直したら、**必ず Claude Code を再起動する**（`/exit` → `claude`）。
+セッション中には反映されない。
+
+反映されたかの確認:
+
+| 見るもの | 何が分かる |
+|---------|-----------|
+| `/plugin` | enabled かどうかと**バージョン** |
+| `/` | スキル一覧に出るか（スキルを増やした場合） |
+| `claude plugin details harness-core` | 構成要素の一覧と想定トークン量 |
+
+> SessionStart フックが出す `[harness] environment: <env>` は `additionalContext` として
+> Claude に渡されるもので**画面には表示されない**。表示の有無で判断しないこと。
+
+## 4. 還元のワークフロー（推奨）
+
+プロジェクト開発中に「ハーネスのここが悪い」と気づいたときの流れ。
+
+```
+1. その場では直さない。プロジェクトの docs/ハーネス所見メモ.md 等に1行書いて先に進む
+     ← 開発の流れを止めない。細かい改善で毎回プラグイン往復すると本業が進まない
+
+2. 区切り（機能が一周した / フェーズ完了）でまとめて対応する
+     - 溜まった所見を読み返し、本当に直すものを選ぶ
+     - claude-dev-harness で方法A または B で直して試す
+
+3. 方法C で版を上げて push する
+
+4. 他プロジェクトは各自のタイミングで marketplace update → plugin update
+```
+
+**まとめて直す方が質が上がる。** 1件ずつ直すと「その場しのぎの分岐」が増えやすいが、
+複数件を並べて見ると共通の原因が見えて、より根本的な直し方が選べる。
+
+## 5. テンプレート層（プラグインではない部分）の修正
+
+`CLAUDE.md` / `constitution.md` / `.claude/rules/` / `harness.config.json` / `docs/` 骨格は
+**プラグインではなくテンプレート層**であり、上記の手順では配布されない。
+
+- ハーネス側の修正: `templates/` を直して push する
+- 既存プロジェクトへの反映: `/harness-core:harness-update` を使う（3点比較で差分を分類する）
+
+どちらの層の話かを最初に見分けること。`plugins/` 配下ならプラグイン、`templates/` 配下ならテンプレート層。
+
+## 改訂履歴
+
+| 版 | 日付 | 内容 |
+|----|------|------|
+| 1.0 | 2026-08-14 | 初版。C1 中に手順が無いことが判明したため作成。挙動はすべて実測で確認 |

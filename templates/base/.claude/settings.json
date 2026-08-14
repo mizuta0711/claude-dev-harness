@@ -24,7 +24,6 @@
       "Read(./.env*)",
       "Read(./secrets/**)",
       "Edit(./.env*)",
-      "Write(./.env*)",
       "Bash(grep * .env*)",
       "Bash(rg * .env*)",
       "PowerShell(Select-String*.env*)",
