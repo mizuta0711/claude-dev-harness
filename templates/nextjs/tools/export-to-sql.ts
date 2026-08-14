@@ -15,7 +15,7 @@
 // tools/backup/dump_YYYYMMDD.zip   - 日付付きバックアップ
 // tools/backup/dump_YYYYMMDD_2.zip - 同日2回目以降
 import { PrismaClient } from "@prisma/client";
-import { writeFileSync, existsSync, mkdirSync } from "fs";
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
@@ -121,6 +121,83 @@ function getUniqueBackupPath(basePath: string): string {
 }
 
 // ========================================
+// provider の検証
+// ========================================
+
+/** このスクリプトが生成できる SQL 方言 */
+const SUPPORTED_PROVIDER = "postgresql";
+
+/**
+ * `prisma/schema.prisma` の datasource provider を読む。
+ *
+ * 読めない場合は null を返す（判定不能）。schema の位置が標準でないプロジェクトもあるため、
+ * 「読めない ＝ 非対応」とは扱わない。
+ */
+function readDatasourceProvider(): string | null {
+  try {
+    const src = readFileSync("prisma/schema.prisma", "utf-8");
+    // datasource ブロック内の provider だけを見る（generator の provider と紛れないようにする）
+    const block = src.match(/datasource\s+\w+\s*\{([\s\S]*?)\}/);
+    if (!block) return null;
+    const m = block[1].match(/provider\s*=\s*"([^"]+)"/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 非対応の provider なら**明示的に失敗させる**。
+ *
+ * このスクリプトが出力するのは PostgreSQL 方言に固定された SQL である
+ * （`TRUNCATE ... CASCADE` / `public."X"` / `ARRAY[...]::text[]`）。
+ * SQLite や MySQL のプロジェクトでそのまま動かすと、Prisma 経由の読み出しは成功するため
+ * **「バックアップ成功」と報告されながら復元できないダンプができる**。
+ * 壊れたバックアップを信じて破壊的操作へ進む方が、バックアップが無いより危険なので、
+ * ここで止める（C1 の還元 #8）。
+ */
+function assertSupportedProvider(): void {
+  const provider = readDatasourceProvider();
+
+  if (provider === null) {
+    console.warn(
+      "Warning: prisma/schema.prisma の datasource provider を判定できませんでした。"
+    );
+    console.warn(
+      `  出力される SQL は ${SUPPORTED_PROVIDER} 方言です。復元先が一致するか自分で確認してください。`
+    );
+    return;
+  }
+
+  if (provider !== SUPPORTED_PROVIDER) {
+    console.error(
+      `Error: このバックアップツールは ${SUPPORTED_PROVIDER} 専用ですが、` +
+        `datasource provider は "${provider}" です。`
+    );
+    console.error(
+      "  出力される SQL は TRUNCATE ... CASCADE / public.\"X\" / ARRAY[...]::text[] を含み、" +
+        `"${provider}" では復元できません。`
+    );
+    console.error(
+      "  そのまま実行すると『バックアップ成功』と報告されながら復元不能なダンプができるため、中断します。"
+    );
+    console.error("");
+    console.error("  対処のいずれかを選んでください:");
+    console.error(
+      `    1. このスクリプトを "${provider}" の方言に合わせて書き換える（推奨。書き換えたら SUPPORTED_PROVIDER も更新する）`
+    );
+    console.error(
+      `    2. "${provider}" 向けの標準的なバックアップ手段に差し替える` +
+        "（SQLite ならファイルのコピーで足りる）"
+    );
+    console.error(
+      "    3. バックアップ不要と判断できる場合は、ユーザー自身が migrate を実行する"
+    );
+    process.exit(1);
+  }
+}
+
+// ========================================
 // エクスポート処理
 // ========================================
 
@@ -212,6 +289,8 @@ async function main() {
     );
     process.exit(1);
   }
+
+  assertSupportedProvider();
 
   console.log("Starting database export...\n");
   ensureBackupDirectory();

@@ -22,13 +22,32 @@
 {
   "permissions": {
     "deny": [
-      // 秘密情報の読み取り（R5: 列挙ではなくワイルドカードで変種を漏らさない）
+      // 秘密情報の読み書き
       //   `Edit(path)` はファイル編集ツール全般（Write / NotebookEdit 等）を覆う。
       //   `Write(path)` はファイル権限チェックの対象外で、書いても効かないうえ
       //   起動時に警告が出る（C1 の初回起動で実際に出た。§5-6 参照）
-      "Read(./.env*)",
+      //
+      //   ⚠️ ここだけ R5（ワイルドカード優先）の**例外**として列挙している。
+      //   `.env*` だと `.env.example` まで塞いでしまい、`.gitignore` の `!.env.example`
+      //   （＝コミット対象）と矛盾する。deny はツール層で「今回だけ許可」ができないため、
+      //   シェル経由の迂回を誘発する（§5-7）。実際に秘密を持つファイルだけを列挙する
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.development)",
+      "Read(./.env.development.local)",
+      "Read(./.env.production)",
+      "Read(./.env.production.local)",
+      "Read(./.env.test)",
+      "Read(./.env.test.local)",
       "Read(./secrets/**)",
-      "Edit(./.env*)",
+      "Edit(./.env)",
+      "Edit(./.env.local)",
+      "Edit(./.env.development)",
+      "Edit(./.env.development.local)",
+      "Edit(./.env.production)",
+      "Edit(./.env.production.local)",
+      "Edit(./.env.test)",
+      "Edit(./.env.test.local)",
 
       // Read deny が波及しない経路を塞ぐ（R3）
       //   公式に波及が明記されているのは cat / head / tail / sed。
@@ -146,3 +165,28 @@ Permission deny rule (.claude\settings.json): Write(./.env*) is not matched by f
 > **これは実プロジェクトに適用して初めて出た指摘**である。テンプレートの静的レビューでは
 > 「Edit と Write の両方を塞いでいる」と読めてしまい、誤りに見えなかった。
 > C1（ドッグフーディング）を先に通すべきという判断の正しさを示す最初の実例。
+
+### 5-7. `.env*` の deny が `.env.example` を巻き込んでいた（C1 1周目で発覚・2026-08-14）
+
+`Read(./.env*)` / `Edit(./.env*)` は **`.env.example` にも一致する**。
+しかし `.gitignore` は `!.env.example` で明示的にコミット対象にしており、**矛盾していた**。
+
+実害:
+
+- **AI が `.env.example` を読めない** — どの環境変数が必要かをテンプレートから知る手段が塞がれる
+- **AI が `.env.example` を作れない・更新できない** — 環境変数を増やしたときに雛形が腐る
+- deny はツール層で「今回だけ許可」ができないため、**シェル経由の迂回**（`cat` 等）が発生した。
+  迂回が常態化すると deny 自体が形骸化する
+
+**対応**: `.env*` のワイルドカードをやめ、**実際に秘密を持つファイルだけを列挙**した（§2）。
+`.env.example` / `.env.sample` は対象外になる。
+
+> **R5（列挙ではなくワイルドカード）に対する意図的な例外**である。
+> R5 の狙いは「変種の取りこぼしを防ぐ」ことだが、ここでは逆に
+> **取りこぼしてはいけないものと、塞いではいけないものが同じ接頭辞を共有している**。
+> 両立できないため、塞ぐ対象を明示する側を選んだ。
+
+**残余リスク**: `.env.staging` のような**列挙外の命名**は deny をすり抜ける。
+プロジェクトで独自の環境名を使う場合は `.claude/settings.json` に追加すること。
+なお `Bash(grep * .env*)` 等のシェル迂回対策は**ワイルドカードのまま残している**
+（`.env.example` を grep できない不便より、秘密の漏れを塞ぐ方を優先した）。

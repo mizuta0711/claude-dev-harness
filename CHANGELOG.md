@@ -3,6 +3,50 @@
 このリポジトリの変更履歴。バージョンは各プラグインの semver を指す。
 経緯・設計判断の詳細は ProjectTemplete リポジトリの `docs/` と `docs/reviews/` にある。
 
+## [Unreleased] — D1（C1 還元・優先度 A：初回体験を壊す欠陥）
+
+C1（`bookmark-app` での初回ドッグフーディング）1周目で見つかった、
+**新規プロジェクトの初回体験を壊す4件**を修正した。
+記録: ProjectTemplete `docs/12_C1実施記録と還元トリアージ.md`
+
+### harness-nextjs 0.1.1
+
+#### Fixed
+- **`pre-migrate-backup` が初回 migrate を必ずブロックする問題を修正**（#10）。
+  新規プロジェクトでは `ORDERED_TABLES` が当然まだ空なので、
+  「バックアップ対象が未設定」として毎回止まっていた。
+  `prisma/migrations/` に適用済みマイグレーションが1件も無い場合は
+  **保護すべきスキーマもデータも存在しない**ため、警告付きでスキップするようにした。
+  migrations が1件でもあれば従来どおりブロックする。
+  constitution §7 の fail-open 原則（失うものが無い場面で止めない）に沿わせた修正
+
+### テンプレート層（版番号なし）
+
+#### Fixed
+- **`tools/export-to-sql.ts` が非対応 provider で「壊れたバックアップを成功と報告」する問題を修正**（#8）。
+  出力 SQL は PostgreSQL 方言に固定（`TRUNCATE ... CASCADE` / `public."X"` / `ARRAY[...]::text[]`）だが、
+  読み出しは Prisma 経由で provider 非依存のため、SQLite プロジェクトでも**成功してしまっていた**。
+  `prisma/schema.prisma` の datasource provider を見て、`postgresql` 以外なら
+  **明示的に失敗させる**（対処の選択肢を提示する）。provider を判定できない場合は警告のみで続行する。
+  > バックアップが無いことより、**壊れたバックアップを信じて破壊的操作に進む方が危険**なため、
+  > 素通しではなく停止を選んだ
+- **deny の `.env*` が `.env.example` を巻き込んでいた問題を修正**（#9）。
+  `.gitignore` の `!.env.example`（コミット対象）と矛盾しており、
+  AI が雛形を読むことも更新することもできなかった。deny はツール層で「今回だけ許可」ができないため
+  シェル経由の迂回を誘発する。**実際に秘密を持つファイルだけを列挙**する形へ変更した
+  （`docs/permissions-baseline.md` §5-7 に経緯と残余リスクを記録。R5 に対する意図的な例外）
+- **新規プロジェクトの `npm run lint` が初回から失敗する問題に対応**（#11）。
+  - `tools/scripts/generate-table-docs.ts` の `prefer-const` 違反と未使用変数2件を修正
+  - `.claude/statusline.js` は Node 直実行の CommonJS で `require()` が避けられないため、
+    `CLAUDE.section.md`（nextjs）に **`eslint.config.mjs` の `globalIgnores` へ `.claude/**` を追加する**
+    手順を明記した。除外しないとアプリのコードが0行の時点で build-check が赤くなる
+
+#### Fixed（`claude plugin validate --strict` が検出）
+- `marketplace.json` の `harness-unity` エントリが `0.1.0` のままで、
+  `plugin.json`（`0.2.0`）と**不一致だった**。B1 の版上げで片側を忘れていた。
+  install 時は plugin.json が優先されるため実害は出ていなかったが、
+  `plugin-development.md` が「両方上げること」と定めている以上の不整合なので修正した
+
 ## [Unreleased] — B1（`unity-verify` の Play モード手順の確定）
 
 ### harness-unity 0.2.0

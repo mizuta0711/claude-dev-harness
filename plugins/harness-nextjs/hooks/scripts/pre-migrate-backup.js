@@ -112,11 +112,48 @@ function backupTargetsConfigured(root) {
   return { ok: true };
 }
 
+/**
+ * 「まだ一度も migrate していない」状態かを判定する。
+ *
+ * `prisma/migrations/` に適用済みマイグレーションが1つも無いなら、
+ * **保護すべきスキーマもデータもまだ存在しない**。
+ * この状態でバックアップを要求すると、新規プロジェクトの初回 migrate が
+ * 必ずブロックされる（`ORDERED_TABLES` は当然まだ空なので）。
+ *
+ * constitution §7 の fail-open 原則どおり、**失うものが無い場面では素通しする**。
+ * 逆に migrations が1つでもあれば、テーブルが存在しうるので従来どおり止める。
+ *
+ * C1 の還元 #10。
+ */
+function isFirstMigration(root) {
+  const dir = path.join(root, "prisma", "migrations");
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // migrations ディレクトリ自体が無い ＝ 一度も migrate していない
+    return true;
+  }
+  // Prisma は各マイグレーションをディレクトリとして作る（migration_lock.toml はファイル）
+  return !entries.some((e) => e.isDirectory());
+}
+
 if (!runsPrismaMigrate(command)) {
   process.exit(0);
 }
 
 const root = lib.projectDir();
+
+if (isFirstMigration(root)) {
+  lib.emit({
+    systemMessage:
+      "初回マイグレーションのため DB バックアップをスキップしました" +
+      "（prisma/migrations/ に適用済みマイグレーションが無く、保護すべき既存データが存在しないため）。\n" +
+      `2回目以降は ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP が必要になります。` +
+      "スキーマが固まった時点で記入してください（.claude/rules/prisma.md の「3点同期」）。",
+  });
+  process.exit(0);
+}
 
 const configured = backupTargetsConfigured(root);
 if (!configured.ok) {

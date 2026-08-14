@@ -30,6 +30,22 @@ src/
 | 型チェック | `npx tsc --noEmit`（コミット前ゲート） |
 | lint | `npm run lint` |
 
+> **プロジェクト初期化時に `.claude/**` を lint 対象から外すこと。**
+> ハーネスが同梱する `.claude/statusline.js` は Node で直接実行される CommonJS であり、
+> `require()` が `@typescript-eslint/no-require-imports` に引っかかる。
+> 除外しないと**アプリのコードが 0 行の時点で `npm run lint` が失敗し、
+> `/harness-core:build-check` が初回から赤くなる**。
+>
+> `eslint.config.mjs` の `globalIgnores` に追加する:
+>
+> ```js
+> globalIgnores([
+>   ".next/**", "out/**", "build/**", "next-env.d.ts",
+>   // ハーネスが提供する設定・スクリプト群。アプリのソースではない
+>   ".claude/**",
+> ]),
+> ```
+
 ### アーキテクチャ規約
 
 - **直接 DB 操作禁止** — API Route は必ず Service 層を経由する

@@ -1,7 +1,9 @@
 {
   "name": "dev-harness",
   "description": "言語・フレームワークに依存しない Claude Code 開発ハーネス。設計→実装→レビュー→設計書同期のフローを規模判定つきで提供する",
-  "owner": { "name": "mizuta0711" },
+  "owner": {
+    "name": "mizuta0711"
+  },
   "plugins": [
     {
       "name": "harness-core",
@@ -12,13 +14,13 @@
     {
       "name": "harness-nextjs",
       "source": "./plugins/harness-nextjs",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Next.js 環境向けの拡張。ブラウザテスト（Playwright MCP）・企画レビュー・編集後 lint・migrate 前バックアップ。harness-core と併用する"
     },
     {
       "name": "harness-unity",
       "source": "./plugins/harness-unity",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Unity 環境向けの拡張。Unity MCP による動作確認・ゲームデザインレビュー・コミット前 C# 静的検査。harness-core と併用する"
     },
     {

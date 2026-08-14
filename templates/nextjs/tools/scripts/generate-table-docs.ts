@@ -158,7 +158,7 @@ function parseField(line: string, enumNames: Set<string>, docComment?: string | 
 
   const isArray = rawType.endsWith("[]");
   const isNullable = rawType.endsWith("?") && !isArray;
-  let baseType = rawType.replace("[]", "").replace("?", "");
+  const baseType = rawType.replace("[]", "").replace("?", "");
 
   const isId = attrsStr.includes("@id");
   const isUnique = attrsStr.includes("@unique");
@@ -390,8 +390,7 @@ function isNavigationField(field: FieldDef, enumNames: Set<string>): boolean {
  * （外部キーは @relation を持つナビゲーションフィールドから fields: [...] を読んで解決する）
  */
 function getForeignKeys(
-  model: ModelDef,
-  enumNames: Set<string>
+  model: ModelDef
 ): Array<{ fields: string[]; references: string[]; targetType: string; onDelete: string | null }> {
   const result: Array<{ fields: string[]; references: string[]; targetType: string; onDelete: string | null }> = [];
   for (const field of model.fields) {
@@ -429,7 +428,6 @@ function generateMarkdown(
   today: string
 ): string {
   const enumNames = new Set(enums.map((e) => e.name));
-  const modelNames = new Set(models.map((m) => m.name));
 
   const lines: string[] = [];
 
@@ -510,7 +508,7 @@ function generateMarkdown(
     }
 
     // 外部キー（@relation の fields[] から導出）
-    const fks = getForeignKeys(model, enumNames);
+    const fks = getForeignKeys(model);
     if (fks.length > 0) {
       lines.push("**外部キー:**");
       for (const fk of fks) {
