@@ -15,7 +15,7 @@
 // tools/backup/dump_YYYYMMDD.zip   - 日付付きバックアップ
 // tools/backup/dump_YYYYMMDD_2.zip - 同日2回目以降
 import { PrismaClient } from "@prisma/client";
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
+import { writeFileSync, readFileSync, copyFileSync, existsSync, mkdirSync } from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
@@ -156,9 +156,7 @@ function readDatasourceProvider(): string | null {
  * 壊れたバックアップを信じて破壊的操作へ進む方が、バックアップが無いより危険なので、
  * ここで止める（C1 の還元 #8）。
  */
-function assertSupportedProvider(): void {
-  const provider = readDatasourceProvider();
-
+function assertSupportedProvider(provider: string | null): void {
   if (provider === null) {
     console.warn(
       "Warning: prisma/schema.prisma の datasource provider を判定できませんでした。"
@@ -195,6 +193,103 @@ function assertSupportedProvider(): void {
     );
     process.exit(1);
   }
+}
+
+// ========================================
+// SQLite のバックアップ（ファイルコピー）
+// ========================================
+
+/**
+ * `DATABASE_URL` を解決する。
+ *
+ * `tsx` は `.env` を自動で読まないため、環境変数に無ければファイルから拾う。
+ * Prisma は `prisma/.env` → `.env` の順に読むので、それに合わせる。
+ */
+function resolveDatabaseUrl(): string | null {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+
+  for (const envFile of ["prisma/.env", ".env"]) {
+    try {
+      const line = readFileSync(envFile, "utf-8")
+        .split(/\r?\n/)
+        .find((l) => /^\s*DATABASE_URL\s*=/.test(l));
+      if (!line) continue;
+      const raw = line.replace(/^\s*DATABASE_URL\s*=\s*/, "").trim();
+      return raw.replace(/^["']|["']$/g, "");
+    } catch {
+      /* 次の候補へ */
+    }
+  }
+  return null;
+}
+
+/**
+ * SQLite の DB ファイルをコピーしてバックアップする。
+ *
+ * `file:./dev.db` のような相対パスは **schema.prisma からの相対**として解決される
+ * （Prisma の仕様）。WAL モードでは `-wal` / `-shm` にも未反映の内容が残りうるため、
+ * 存在すれば一緒にコピーする。
+ *
+ * **場所を特定できない場合は成功扱いにしない。** バックアップが取れていないのに
+ * 「成功」と報告すると、それを信じて破壊的操作へ進んでしまう（C1 の還元 #8 と同じ理由）。
+ */
+function backupSqliteFile(): void {
+  const url = resolveDatabaseUrl();
+  if (!url) {
+    console.error("Error: DATABASE_URL を解決できませんでした。");
+    console.error(
+      "  環境変数・prisma/.env・.env のいずれにも DATABASE_URL がありません。"
+    );
+    process.exit(1);
+  }
+
+  if (!url.startsWith("file:")) {
+    console.error(
+      `Error: provider は sqlite ですが DATABASE_URL が file: で始まりません（${url}）。`
+    );
+    console.error("  バックアップ対象のファイルを特定できないため中断します。");
+    process.exit(1);
+  }
+
+  // file:./dev.db → prisma/ からの相対
+  const rel = url.slice("file:".length);
+  const dbPath = path.resolve("prisma", rel);
+
+  if (!existsSync(dbPath)) {
+    console.error(`Error: DB ファイルが見つかりません: ${dbPath}`);
+    console.error(
+      "  まだ作成されていない場合、初回マイグレーションであればバックアップは不要です" +
+        "（pre-migrate-backup フックは初回を自動でスキップします）。"
+    );
+    process.exit(1);
+  }
+
+  ensureBackupDirectory();
+
+  // コロンを含まない形にする（Windows のファイル名に使えないため）
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const base = path.basename(dbPath);
+  const dest = path.join("tools/backup", `${base}.${stamp}.bak`);
+
+  copyFileSync(dbPath, dest);
+  const copied = [dest];
+
+  // WAL モードの付随ファイル（存在する場合のみ）
+  for (const suffix of ["-wal", "-shm"]) {
+    const side = dbPath + suffix;
+    if (existsSync(side)) {
+      const sideDest = dest + suffix;
+      copyFileSync(side, sideDest);
+      copied.push(sideDest);
+    }
+  }
+
+  console.log("SQLite backup completed (file copy).");
+  console.log(`  Source: ${dbPath}`);
+  for (const f of copied) console.log(`  -> ${f}`);
+  console.log("");
+  console.log("  復元するには、コピーしたファイルを元の場所へ戻してください");
+  console.log("  （-wal / -shm も同時にコピーした場合は必ずまとめて戻すこと）。");
 }
 
 // ========================================
@@ -280,6 +375,17 @@ async function createZipBackup(sqlFilePath: string): Promise<void> {
 // ========================================
 
 async function main() {
+  const provider = readDatasourceProvider();
+
+  // SQLite は DB がファイルそのものなので、コピーが最も確実なバックアップになる。
+  // SQL ダンプ（PostgreSQL 方言）は生成しない
+  if (provider === "sqlite") {
+    backupSqliteFile();
+    return;
+  }
+
+  assertSupportedProvider(provider);
+
   if (ORDERED_TABLES.length === 0) {
     console.error(
       "Error: ORDERED_TABLES is empty. Configure your tables first."
@@ -289,8 +395,6 @@ async function main() {
     );
     process.exit(1);
   }
-
-  assertSupportedProvider();
 
   console.log("Starting database export...\n");
   ensureBackupDirectory();
