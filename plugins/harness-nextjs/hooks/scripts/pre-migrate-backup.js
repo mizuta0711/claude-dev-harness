@@ -132,16 +132,28 @@ if (!configured.ok) {
   process.exit(0);
 }
 
+// stdio は必ず pipe にする。hook の stdout に子プロセスの出力が混ざると、
+// Claude Code が JSON をパースできず continue:false が無効化される
+// （公式仕様: stdout は JSON オブジェクトのみでなければならない）。
 try {
   execSync(`npx tsx ${EXPORT_TOOL}`, {
     cwd: root,
-    stdio: "inherit",
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
     timeout: 30000,
   });
   lib.emit({ systemMessage: "DB backup completed before migrate." });
 } catch (e) {
+  const excerpt = ((e.stdout || "") + "\n" + (e.stderr || ""))
+    .split("\n")
+    .filter((l) => l.trim())
+    .slice(0, 10)
+    .join("\n");
   lib.emit({
     continue: false,
-    stopReason: "DB backup failed. Fix before running migrate: " + e.message,
+    stopReason:
+      "DB backup failed. Fix before running migrate: " +
+      e.message +
+      (excerpt ? "\n" + excerpt : ""),
   });
 }

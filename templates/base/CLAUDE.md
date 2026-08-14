@@ -76,12 +76,14 @@
 ### `docs/features/` のライフサイクル
 
 ```
-/harness-core:new-feature で作成 → docs/features/pending/ で実装
-  → 全タスク完了 → /harness-core:complete-feature → docs/features/completed/ へ移動
+/harness-core:new-feature で docs/features/ 直下に作成 → 直下に置いたまま実装
+  → 全タスク完了 → /harness-core:complete-feature
+  → 🟢完了 は completed/ へ、⏸️一部保留 は pending/ へ移動
 ```
 
+- **作業中の設計書は `docs/features/` 直下に置く**（`pending/` は一部保留の置き場。作業場所ではない）
 - 命名: `yyyymmdd_機能名.md`
-- タスクステータス: 🔵未着手 / 🟡実装中 / ✅完了 / ⏸️保留（理由必須） / ❌却下（理由必須）
+- タスクステータス: 🔵未実施 / 🟡実装中 / ✅完了 / ⏸️保留（理由必須） / ❌却下（理由必須）
 - 設計書には末尾に改訂履歴テーブルを設け、コミット列に短縮ハッシュ（7文字）を記入する
 - `/harness-core:update-docs` 実行時は台帳（`harness.config.json` の `designDocs.ledger`）にも追記する
 

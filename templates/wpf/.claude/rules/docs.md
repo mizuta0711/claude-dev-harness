@@ -20,7 +20,7 @@ paths:
 ## 機能設計書の運用ルール
 
 - 新規機能開発時は `/harness-core:new-feature` で作成する（スキル同梱のテンプレートが使われる）
-- 命名: `docs/features/pending/yyyymmdd_機能名.md`
-- タスクステータス: 🔵未着手 / 🟡実装中 / ✅完了 / ⏸️保留（理由必須） / ❌却下（理由必須）
+- 命名: `docs/features/yyyymmdd_機能名.md`（**作業中は `docs/features/` 直下**。`pending/` は一部保留の置き場）
+- タスクステータス: 🔵未実施 / 🟡実装中 / ✅完了 / ⏸️保留（理由必須） / ❌却下（理由必須）
 - 全タスク完了時はメタ情報のステータスを 🟢完了 に更新し、
   `/harness-core:complete-feature` で `docs/features/completed/` へ移動する

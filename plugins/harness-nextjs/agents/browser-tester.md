@@ -45,7 +45,7 @@ Agent(subagent_type: "browser-tester", model: "sonnet", prompt:
   "スポットテスト。対象: /example。
    変更内容: 一覧画面のフィルタ機能を追加した。
    確認観点: フィルタ切替時の表示・ページネーション維持。
-   評価計画: docs/features/pending/20260418_feature.md の「動作確認計画」に従う。
+   評価計画: docs/features/20260418_feature.md の「動作確認計画」に従う。
    チェックリスト: {browser-test スキルの checklist.md の絶対パス}。
    エビデンス保存先: tests/browser-evidence/20260418_143000_example-filter/")
 ```
