@@ -57,8 +57,8 @@ claude-dev-harness/
 ├── plugins/
 │   ├── harness-core/                  # 共通コア（全環境で同一）
 │   │   ├── .claude-plugin/plugin.json
-│   │   ├── skills/                    # 10スキル（下表）
-│   │   ├── agents/                    # coding-specialist / code-reviewer / documentation-manager
+│   │   ├── skills/                    # 11スキル（下表）
+│   │   ├── agents/                    # coding-specialist / code-reviewer / documentation-manager / japanese-proofreader
 │   │   └── hooks/
 │   │       ├── hooks.json
 │   │       └── scripts/               # 全 Node.js・config 駆動
@@ -112,6 +112,7 @@ claude-dev-harness/
 | `pre-push-check` | push 前の台帳同期チェック |
 | `done` | 完了報告 |
 | `harness-update` | テンプレート層の追従（3点比較で差分を分類し、承認したものだけ適用） |
+| `proofread-ja` | 日本語校正（AI が書いた文章の品質ゲート）。`japanese-proofreader` へ委譲する |
 
 ### フック
 

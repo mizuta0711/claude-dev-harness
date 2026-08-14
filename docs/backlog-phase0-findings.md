@@ -47,12 +47,12 @@
 
 | # | 候補 | 判断 |
 |---|------|------|
-| A | 日本語校正（`japanese-proofreader` + `proofread-ja`） | **採用（保留中・次ラウンド）** |
+| A | 日本語校正（`japanese-proofreader` + `proofread-ja`） | **採用（実施済み・harness-core 0.4.0）** |
 | B | `docs/handoff/` の追加 | **採用（実施済み）** |
 | C | `docs/features/rejected/` の追加 | **不採用** |
 | D | リリースノートの書き方の規律 | **不採用** |
 
-### A — 採用。ただし縮小して入れる（未着手）
+### A — 採用。縮小して実装した（✅ harness-core 0.4.0）
 
 harness の成果物（`docs/features/` の設計書・`docs/reviews/` の記録・CLAUDE.md）は
 **ほぼ全量が AI の書いた日本語**で、しかも長期間残る。環境非依存の共通課題であり core の責務に合う。
@@ -68,7 +68,15 @@ harness の成果物（`docs/features/` の設計書・`docs/reviews/` の記録
    **空の器は埋められない**
 3. プロジェクト固有の用語統一は `.claude/rules/` へ寄せる
 
-着手は 13（ドキュメント整備）が一区切りついてから。C1 の還元 #22〜#26 とまとめて1ラウンドにする。
+**実装結果（2026-08-15・harness-core 0.4.0）**: 判断3点はすべてそのとおりに実装した。
+
+- `agents/japanese-proofreader.md` — **`model` の項目を持たない**。「上位モデルを推奨」は `description` に書き、
+  指定はプロジェクトの裁量とした。7分類のパターン表は core に持たせ、CommSim 固有の例は
+  一般的な言い回しへ置き換えた（本リポジトリは public のため）
+- `skills/proofread-ja/SKILL.md` — 対象の決定 → 委譲 → **メインでの差分レビュー（必須）** → コミット。
+  **`CHANGELOG.md` と改訂履歴を対象外**にした（過去の記録は書き換えない）
+- 新しく見つかったパターンは、プロジェクト固有なら `.claude/rules/`、
+  環境非依存ならハーネスへ還元、と行き先を明記した
 
 ### C — 不採用（理由）
 
