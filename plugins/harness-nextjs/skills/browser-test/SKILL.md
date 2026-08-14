@@ -2,7 +2,7 @@
 name: browser-test
 description: ブラウザテストを実施する。実装完了後にUI変更の動作確認・UX評価を行う。対象画面を引数で指定する（省略時は直近の変更から自動判定）。
 argument-hint: "[対象画面のURL（例: /example）または 'full' でフルテスト]"
-allowed-tools: "Bash(git diff:*), Bash(mkdir:*), Glob, Read"
+allowed-tools: "Bash(git diff:*), Bash(mkdir:*), Glob, Read, Write"
 ---
 
 # ブラウザテスト実施

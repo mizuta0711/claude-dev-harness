@@ -1,7 +1,7 @@
 ---
 name: sync-check
 description: 設計書と実装の網羅的な突き合わせチェック。フェーズ完了時や push 前に実行し、変更駆動では検出できない乖離を発見する。
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # 設計書 ↔ 実装 網羅的同期チェック（config 駆動）

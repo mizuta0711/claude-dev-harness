@@ -3,7 +3,7 @@ name: complete-feature
 description: "機能設計書の完了処理。受け入れ基準と全タスクの完了を確認し、設計書の整合性チェックの後 completed/ へ移動する。"
 argument-hint: "[設計書ファイル名（省略時は一覧から選択）]"
 disable-model-invocation: true
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Edit, Bash(mv:*)"
 ---
 
 # 機能設計書の完了処理

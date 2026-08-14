@@ -2,7 +2,7 @@
 name: design-review
 description: 設計書のレビューを実施する。モード引数で Stage 1（機能・画面設計）と Stage 2（技術設計）を切り替える。要求→設計→タスクの反映漏れも検査する。
 argument-hint: "[feature | tech | (省略=全体モード)]"
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # 設計レビュー

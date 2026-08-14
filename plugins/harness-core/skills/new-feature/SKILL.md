@@ -2,7 +2,7 @@
 name: new-feature
 description: 新しい機能・改修・バグ修正の設計書をテンプレートから作成する。規模判定（S/M/L）と曖昧さの解消まで行う。機能名を引数で指定する。
 argument-hint: "[機能名 or 修正内容]"
-allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read"
+allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # 新規設計書の作成

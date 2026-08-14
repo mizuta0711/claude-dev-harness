@@ -2,7 +2,7 @@
 name: code-review
 description: 実装コードのレビューを実施する。設計書との突き合わせ、エラーハンドリング、セキュリティを確認し、指摘があれば修正まで行う。
 argument-hint: "[対象ファイルまたはディレクトリ（省略時は直近の変更）]"
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # コードレビュー＋指摘対応
