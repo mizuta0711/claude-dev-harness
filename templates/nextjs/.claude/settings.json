@@ -1,5 +1,7 @@
 {
-  "enabledMcpjsonServers": ["playwright"],
+  "enabledMcpjsonServers": [
+    "playwright"
+  ],
   "enabledPlugins": {
     "harness-nextjs@dev-harness": true
   },
@@ -18,9 +20,6 @@
     "ask": [
       "Bash(*prisma migrate*)",
       "Bash(*prisma db push*)"
-    ],
-    "deny": [
-      "Bash(*prisma migrate reset*)"
     ]
   }
 }

@@ -190,3 +190,27 @@ Permission deny rule (.claude\settings.json): Write(./.env*) is not matched by f
 プロジェクトで独自の環境名を使う場合は `.claude/settings.json` に追加すること。
 なお `Bash(grep * .env*)` 等のシェル迂回対策は**ワイルドカードのまま残している**
 （`.env.example` を grep できない不便より、秘密の漏れを塞ぐ方を優先した）。
+
+### 5-8. `prisma migrate reset` の deny がフックより手前で効いていた（C1 2周目で発覚・2026-08-15）
+
+`templates/nextjs/.claude/settings.json` は `Bash(*prisma migrate reset*)` を **deny** していた。
+一方でハーネスは `pre-migrate-backup` フックを持ち、migrate の前に必ずバックアップを取る設計である。
+
+**deny はフックより手前で効くため、フックが仕事をする機会が無かった。**
+C1 2周目で `migrate reset` が拒否されたとき、`.bak` は1つも増えなかった（実測）。
+
+さらに3つの問題があった:
+
+1. **ハーネス自身の手順と衝突していた。** 設計書の前提条件が `npx prisma migrate reset` を
+   指示しているのに、同じハーネスの権限ベースラインがそれを禁じていた
+2. **deny は「今回だけ許可」ができない**ため、`rm` で DB を消して `migrate deploy` で
+   作り直すという**迂回案**が実際に提示された（#9 と同じ構図）
+3. **ワイルドカードが脆い。** `*prisma migrate reset*` はコミットメッセージ本文に
+   その文字列が含まれるだけでマッチする。**`pre-migrate-backup.js` は同じ理由でこの方式をやめた**のに、
+   権限側には残っていた
+
+**対応**: `deny` から外した。既存の `ask("Bash(*prisma migrate*)")` が reset も覆うため、
+**ユーザーの明示的な承認 + フックによるバックアップ**という二段の安全が正しく働く。
+
+> deny のままだと安全になるどころか、**迂回か手動実行を強いて安全網を外す方向**に働いていた。
+> §5-6 / §5-7 と同じく「安全側に倒したつもりが安全性を損なう」型の不具合である。
