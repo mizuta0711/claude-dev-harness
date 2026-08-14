@@ -24,9 +24,12 @@ node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
 > **初回起動ではプラグインが導入されない**（実測・2026-08-14）。生成先で一度だけ実行する:
 >
 > ```bash
-> claude plugin install harness-core@dev-harness
-> claude plugin install harness-<env>@dev-harness
+> claude plugin install harness-core@dev-harness  --scope project
+> claude plugin install harness-<env>@dev-harness --scope project
 > ```
+>
+> **`--scope project` を省略しない。** 既定の `user` に入れると、`enabledPlugins` が作る
+> `project` 側の登録と二重になり、更新のたびに両方へ当てることになる。
 >
 > 導入できたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧）** で確認する。
 > SessionStart フックの `[harness] environment: <env>` は `additionalContext` のため

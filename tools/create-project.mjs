@@ -402,13 +402,17 @@ async function main() {
   1. cd ${opts.dest}
   2. プラグインを導入する（★必須。この手順を飛ばすとスキルも hooks も動かない）
 
-       claude plugin install harness-core@dev-harness
-       claude plugin install ${templateJson.plugin || "harness-<env>@dev-harness"}
+       claude plugin install harness-core@dev-harness --scope project
+       claude plugin install ${templateJson.plugin || "harness-<env>@dev-harness"} --scope project
 
      marketplace の登録は .claude/settings.json の extraKnownMarketplaces が
      初回起動で自動で行うため 'claude plugin marketplace add' は不要。
      ただし初回起動ではプラグインが導入されず、スキルも hooks も使えない
      （実測・2026-08-14）。上記の install を先に済ませるのが確実。
+
+     --scope project を省略しないこと。既定は user スコープだが、project 側の登録は
+     enabledPlugins によってどのみち自動生成されるため、省略すると両方に登録が残り、
+     更新のたびに両方へ当てる必要が出る（実測・2026-08-15）。
 
   3. claude                       # Claude Code を起動する
   4. 導入できたかを確認する

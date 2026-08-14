@@ -1,11 +1,12 @@
 // npx tsx tools/export-to-sql.ts
-// データベースエクスポートツール (v1.0.0)
+// データベースエクスポートツール (v1.1.0)
 //
 // 機能:
 // - 全テーブルの TRUNCATE + INSERT 文を生成
 // - 外部キー制約を考慮した順序でエクスポート
 // - text[] 配列、JSON、日付、boolean に対応
 // - zip 圧縮バックアップ（同日複数回対応）
+// - 古い世代の自動削除（BACKUP_GENERATIONS 世代を残す）
 //
 // 使用方法:
 // npx tsx tools/export-to-sql.ts
@@ -14,8 +15,18 @@
 // tools/dump.sql                    - PostgreSQL 用 SQL ファイル
 // tools/backup/dump_YYYYMMDD.zip   - 日付付きバックアップ
 // tools/backup/dump_YYYYMMDD_2.zip - 同日2回目以降
+// tools/backup/<db>.<timestamp>.bak - SQLite のファイルコピー
 import { PrismaClient } from "@prisma/client";
-import { writeFileSync, readFileSync, copyFileSync, existsSync, mkdirSync } from "fs";
+import {
+  writeFileSync,
+  readFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
@@ -100,10 +111,82 @@ function getDateString(): string {
 }
 
 function ensureBackupDirectory(): void {
-  const backupDir = "tools/backup";
-  if (!existsSync(backupDir)) {
-    mkdirSync(backupDir, { recursive: true });
-    console.log("Created backup directory: tools/backup");
+  if (!existsSync(BACKUP_DIR)) {
+    mkdirSync(BACKUP_DIR, { recursive: true });
+    console.log(`Created backup directory: ${BACKUP_DIR}`);
+  }
+}
+
+/**
+ * 残すバックアップの世代数。
+ *
+ * migrate のたびにバックアップが1世代増えるため、上限が無いと**無制限に溜まる**
+ * （SQLite の実測で 1 世代あたり 52KB。C1 3周目の還元 #24）。
+ * バックアップは `.gitignore` 済みで git が刈ってくれないため、ここで面倒を見る。
+ *
+ * 直近 N 世代あれば「直前の migrate に戻す」という本来の用途は満たせる。
+ * 長期保存が要るデータは、そもそもこの仕組みではなく正式なバックアップ運用に載せること。
+ */
+const BACKUP_GENERATIONS = 10;
+
+const BACKUP_DIR = "tools/backup";
+
+/**
+ * バックアップの古い世代を削除し、新しい方から `BACKUP_GENERATIONS` 個だけ残す。
+ *
+ * @param match      対象ファイルかを判定する述語（ファイル名で判定する）
+ * @param siblingsOf 1世代に付随するファイルを返す（SQLite の `-wal` / `-shm`）。
+ *                   **世代の判定には数えず、本体と一緒に消す**
+ *
+ * 失敗しても**バックアップ自体は成功として扱う**（掃除ができないことは、
+ * バックアップが取れていないことより軽い）。constitution §7 の fail-open と同じ考え方。
+ */
+function pruneOldBackups(
+  match: (name: string) => boolean,
+  siblingsOf: (fullPath: string) => string[] = () => []
+): void {
+  if (BACKUP_GENERATIONS <= 0) return; // 0 以下なら掃除しない（無効化用）
+
+  let entries: { path: string; mtime: number; name: string }[];
+  try {
+    entries = readdirSync(BACKUP_DIR)
+      .filter(match)
+      .map((name) => {
+        const full = path.join(BACKUP_DIR, name);
+        return { path: full, name, mtime: statSync(full).mtimeMs };
+      });
+  } catch (error) {
+    console.warn("  Could not scan backup directory for old generations:", error);
+    return;
+  }
+
+  if (entries.length <= BACKUP_GENERATIONS) return;
+
+  // 新しい順に並べる。mtime が同一なら名前（タイムスタンプを含む）で決める
+  entries.sort((a, b) => b.mtime - a.mtime || b.name.localeCompare(a.name));
+
+  const obsolete = entries.slice(BACKUP_GENERATIONS);
+  const removed: string[] = [];
+
+  for (const entry of obsolete) {
+    for (const target of [entry.path, ...siblingsOf(entry.path)]) {
+      try {
+        if (existsSync(target)) {
+          unlinkSync(target);
+          removed.push(target);
+        }
+      } catch (error) {
+        console.warn(`  Could not remove old backup ${target}:`, error);
+      }
+    }
+  }
+
+  if (removed.length > 0) {
+    // 何が消えたかは必ず出す。黙って消すと「あるはずのバックアップが無い」の原因になる
+    console.log(
+      `  Pruned ${obsolete.length} old backup generation(s), keeping the newest ${BACKUP_GENERATIONS}:`
+    );
+    for (const f of removed) console.log(`    removed: ${f}`);
   }
 }
 
@@ -269,7 +352,7 @@ function backupSqliteFile(): void {
   // コロンを含まない形にする（Windows のファイル名に使えないため）
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const base = path.basename(dbPath);
-  const dest = path.join("tools/backup", `${base}.${stamp}.bak`);
+  const dest = path.join(BACKUP_DIR, `${base}.${stamp}.bak`);
 
   copyFileSync(dbPath, dest);
   const copied = [dest];
@@ -287,6 +370,14 @@ function backupSqliteFile(): void {
   console.log("SQLite backup completed (file copy).");
   console.log(`  Source: ${dbPath}`);
   for (const f of copied) console.log(`  -> ${f}`);
+
+  // 世代上限（#24）。`-wal` / `-shm` は本体の付随物なので、
+  // 世代としては数えず本体と一緒に消す
+  pruneOldBackups(
+    (name) => name.startsWith(`${base}.`) && name.endsWith(".bak"),
+    (full) => [`${full}-wal`, `${full}-shm`]
+  );
+
   console.log("");
   console.log("  復元するには、コピーしたファイルを元の場所へ戻してください");
   console.log("  （-wal / -shm も同時にコピーした場合は必ずまとめて戻すこと）。");
@@ -351,7 +442,7 @@ async function exportTable(
 
 async function createZipBackup(sqlFilePath: string): Promise<void> {
   const dateStr = getDateString();
-  const basePath = path.join("tools", "backup", `dump_${dateStr}.zip`);
+  const basePath = path.join(BACKUP_DIR, `dump_${dateStr}.zip`);
   const backupPath = getUniqueBackupPath(basePath);
 
   try {
@@ -365,6 +456,9 @@ async function createZipBackup(sqlFilePath: string): Promise<void> {
     if (backupPath !== basePath) {
       console.log(`  Note: Multiple backups today (avoiding overwrite)`);
     }
+
+    // 世代上限（#24）。SQLite のファイルコピーと同じ理由で、こちらも溜まり続ける
+    pruneOldBackups((name) => /^dump_\d{8}(?:_\d+)?\.zip$/.test(name));
   } catch (error) {
     console.warn("  Could not create zip backup:", error);
   }

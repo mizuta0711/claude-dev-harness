@@ -51,11 +51,14 @@ D:\Develop\ClaudeCode\claude-dev-harness\plugins\harness-core\   ← ソース�
 claude plugin validate D:/Develop/ClaudeCode/claude-dev-harness
 
 # 3. 入れ直す（版番号は据え置きでよい）
-claude plugin uninstall harness-core@dev-harness
-claude plugin install   harness-core@dev-harness
+claude plugin uninstall harness-core@dev-harness --scope project
+claude plugin install   harness-core@dev-harness --scope project
 
 # 4. Claude Code を再起動する（/exit して開き直す）
 ```
+
+> **`--scope project` を付ける理由**は [スコープは `project` だけにする](#-スコープは-project-だけにする実測2026-08-15)。
+> 付け忘れると `user` 側だけが入れ替わり、セッションが読むのは古い方のまま、という食い違いが起きる。
 
 > ⚠️ **この時点ではまだ GitHub 上のソースを見にいく。** 手元のリポジトリの編集を反映したい場合は、
 > 先に push するか、方法B のローカル marketplace を使うこと。
@@ -70,30 +73,30 @@ claude plugin install   harness-core@dev-harness
 
 ```bash
 # 1. 本番の marketplace を一時的に外す
-claude plugin uninstall harness-core@dev-harness
-claude plugin uninstall harness-nextjs@dev-harness
+claude plugin uninstall harness-core@dev-harness   --scope project
+claude plugin uninstall harness-nextjs@dev-harness --scope project
 claude plugin marketplace remove dev-harness
 
 # 2. 手元のリポジトリを marketplace として登録する
 claude plugin marketplace add D:/Develop/ClaudeCode/claude-dev-harness
-claude plugin install harness-core@dev-harness
-claude plugin install harness-nextjs@dev-harness
+claude plugin install harness-core@dev-harness   --scope project
+claude plugin install harness-nextjs@dev-harness --scope project
 
 # 3. 以降、編集するたびに
-claude plugin uninstall harness-core@dev-harness
-claude plugin install   harness-core@dev-harness
+claude plugin uninstall harness-core@dev-harness --scope project
+claude plugin install   harness-core@dev-harness --scope project
 #    → /exit して再起動
 ```
 
 作業が終わったら**必ず本番（GitHub）へ戻す**:
 
 ```bash
-claude plugin uninstall harness-core@dev-harness
-claude plugin uninstall harness-nextjs@dev-harness
+claude plugin uninstall harness-core@dev-harness   --scope project
+claude plugin uninstall harness-nextjs@dev-harness --scope project
 claude plugin marketplace remove dev-harness
 claude plugin marketplace add mizuta0711/claude-dev-harness
-claude plugin install harness-core@dev-harness
-claude plugin install harness-nextjs@dev-harness
+claude plugin install harness-core@dev-harness   --scope project
+claude plugin install harness-nextjs@dev-harness --scope project
 ```
 
 `claude plugin marketplace list` で `Source:` が GitHub に戻っていることを確認する。
@@ -124,25 +127,46 @@ git push origin master
 
 # 4. 利用側で取り込む
 claude plugin marketplace update dev-harness
-claude plugin update harness-core@dev-harness
+claude plugin update harness-core@dev-harness --scope project
 #    → 「Restart to apply changes.」と出るので /exit して再起動
 ```
 
-### ⚠️ 更新はスコープごとに必要（実測・2026-08-14）
+### ⚠️ スコープは `project` だけにする（実測・2026-08-15）
 
-`claude plugin update` は**既定で `user` スコープしか更新しない**。
-同じプラグインが `project` スコープにも登録されている場合、**そちらは古い版のまま残る**。
+**`claude plugin update` は既定で `user` スコープしか更新しない。**
+同じプラグインが `project` スコープにも登録されていると、**そちらは古い版のまま残る**。
+そして利用側は放っておくと**ほぼ必ず両方の登録を持つ**ため、更新のたびに
+「プラグイン数 × スコープ数」を当てて回ることになる。**実際に3回連続で取り残しが発生した。**
+
+| 構成 | 可否 |
+|------|------|
+| **`project` のみ** | ✅ **これにする。** `user` を uninstall すればよい |
+| `user` のみ | ❌ 不可。`enabledPlugins` が `project` 側を作り直す |
+| 両方（既定のまま） | 更新コストが2倍。取り残しが起きる |
+
+`project` 側は `.claude/settings.json` の `enabledPlugins` によって
+**セッション起動時に自動生成される**ため、消しても復活する。消せるのは `user` 側だけである。
+
+> **`user` スコープの利点（全プロジェクト共通で1回入れれば済む）は、そもそも効いていない。**
+> `enabledPlugins` があっても初回起動では導入されず、結局プロジェクトごとに
+> `claude plugin install` が要る（A1 の実測）。消して困る場面は考えにくい。
+
+#### 既に `user` に入っている場合の移行（一度だけ）
 
 ```bash
-claude plugin update harness-core@dev-harness                  # user スコープのみ
-claude plugin update harness-core@dev-harness --scope project  # ← プロジェクト側にも当てる
+claude plugin uninstall harness-core@dev-harness  --scope user
+claude plugin uninstall harness-nextjs@dev-harness --scope user   # 入れた環境プラグインも
+#    → /exit して再起動（project 側の登録は enabledPlugins が作り直す）
 ```
 
-プロジェクトを開いた状態でセッションを起動すると、`enabledPlugins` によって
-**project スコープの登録が自動で作られる**。つまり利用側は
-**ほぼ必ず user と project の両方に登録を持つ**ことになる。
+#### 以降の導入・更新
 
-更新後は必ず確認する:
+```bash
+claude plugin install harness-core@dev-harness --scope project
+claude plugin update  harness-core@dev-harness --scope project
+```
+
+更新後は必ず確認する。**`user` の行が残っていたら移行できていない:**
 
 ```bash
 node -e "const d=require(require('os').homedir()+'/.claude/plugins/installed_plugins.json');
@@ -157,10 +181,13 @@ v.forEach(e=>console.log('  ',e.scope,e.version,e.projectPath||''))}"
 > Git Bash（`/d/Develop/...`）からは `d:\...`、VS Code の統合ターミナル等からは `D:\...` になる。
 > **同じプロジェクトを別の場所から起動していると重複が生まれる。**
 >
-> - **予防**: `claude` の起動元をプロジェクトごとに一つに揃える
+> - **予防**: `claude` の起動元をプロジェクトごとに一つに揃える（**これが根本対策**）
 > - **復旧**: `installed_plugins.json` から古い方を削除する。
 >   削除しても次回セッション起動時に現行版で作り直されるため、消して問題ない
-> - **確認は毎回の更新後に行う**（下のワンライナー）。版が揃っていれば重複していても実害は無い
+> - **確認は毎回の更新後に行う**（上のワンライナー）。版が揃っていれば重複していても実害は無い
+>
+> **これは `project` スコープ側の問題なので、`user` を消しても解消しない。**
+> むしろ `project` だけにすると相対的に目立つようになる。
 
 > **`--strict` を付けると warning もエラー扱い**になる。push 前のチェックに向く。
 
@@ -173,6 +200,9 @@ v.forEach(e=>console.log('  ',e.scope,e.version,e.projectPath||''))}"
   「push したのに直らない」の原因はほぼこれ
 - **`plugin.json` と `marketplace.json` の版番号を片方だけ上げない**。
   `claude plugin tag` が両者の一致を検証する設計になっており、不整合は事故のもと
+- **`--scope` を省略しない**。既定は `user` なので、`project` に登録があると
+  **更新したつもりで古い版が読まれ続ける**。「更新したのに直らない」の2大原因のうちの1つ
+  （もう1つは版番号の据え置き）
 
 ## 3. プロジェクト側での確認
 
@@ -225,3 +255,4 @@ v.forEach(e=>console.log('  ',e.scope,e.version,e.projectPath||''))}"
 | 版 | 日付 | 内容 |
 |----|------|------|
 | 1.0 | 2026-08-14 | 初版。C1 中に手順が無いことが判明したため作成。挙動はすべて実測で確認 |
+| 1.1 | 2026-08-15 | **スコープ運用を「`project` のみ」へ変更**（還元 #25）。「プラグイン数 × スコープ数」で当てて回る運用をやめ、`user` を捨てる。全手順の例に `--scope project` を明示し、既に `user` に入れている場合の移行手順を追加 |

@@ -21,8 +21,8 @@ nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレー�
 ```bash
 node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
 cd ../MyProject
-claude plugin install harness-core@dev-harness          # ★必須
-claude plugin install harness-<env>@dev-harness         # ★必須
+claude plugin install harness-core@dev-harness  --scope project   # ★必須
+claude plugin install harness-<env>@dev-harness --scope project   # ★必須
 ```
 
 プレースホルダ（プロジェクト名など）は対話で尋ねられる（`--set KEY=VALUE` でも指定可）。
@@ -30,6 +30,10 @@ claude plugin install harness-<env>@dev-harness         # ★必須
 
 > ⚠️ **`claude plugin install` を飛ばすとスキルも hooks も動かない。**
 > `.claude/settings.json` の `enabledPlugins` は初回起動でプラグインを導入しない（実測）。
+>
+> ⚠️ **`--scope project` も省略しない。** 既定は `user` だが、`project` 側の登録は
+> `enabledPlugins` がどのみち自動生成するため、省略すると二重登録になり
+> **更新のたびに両方へ当てる**ことになる（実測）。
 
 **手順の詳細・環境ごとの追加セットアップ・よくある失敗は
 [docs/guide/セットアップガイド.md](docs/guide/セットアップガイド.md) を参照。**
@@ -198,7 +202,7 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 3. 影響範囲に応じてバージョンを上げる（semver）。`CHANGELOG.md` に記録する
 4. push する
 5. 各プロジェクトで `claude plugin marketplace update dev-harness` →
-   `claude plugin update harness-<name>@dev-harness` → **再起動**して取り込む
+   `claude plugin update harness-<name>@dev-harness --scope project` → **再起動**して取り込む
 6. テンプレート層の変更は、各プロジェクトで `/harness-core:harness-update` を実行して取り込む
 
 > ⚠️ **バージョンを上げないと届かない。** `claude plugin update` は版番号の変化で更新を判断するため、
@@ -210,9 +214,14 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 
 ## 開発ルール
 
+**このリポジトリを直すときの規律は [CLAUDE.md](CLAUDE.md) に集約している。** ここには複製しない。
+
+要点だけ挙げると:
+
 - 改善は**必ずこのリポジトリへ**入れる（各プロジェクトへ直接入れない）
-- 全ファイル UTF-8（BOM 無し）・改行 LF（`.gitattributes` で固定）。
-  **例外: `.ps1` は UTF-8 BOM 付き**（Windows PowerShell 5.1 が BOM 無し UTF-8 を
-  CP932 と誤読して日本語が化けるため）
+- **コミットはパス指定**（`git commit -- <path...>`）。複数セッションが同時に触るため、
+  `git add -A` は他セッションの作業を巻き込む
+- プラグインを触ったら `plugin.json` と `marketplace.json` の**版番号を両方上げる**。
+  push 前に `claude plugin validate . --strict`
 - バージョンは semver。`0.1.0` から
 - **`templates/` に業務固有名・実プロジェクト由来の固有値を入れない**（本リポジトリは public）

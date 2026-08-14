@@ -87,6 +87,8 @@ hooks / skills は **fail-open** で実装する。
   [docs/plugin-development.md](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/plugin-development.md)
   - 反映のトリガーは**版番号の変化**。中身だけ変えても利用側には届かない
   - 手元で試すだけなら `claude plugin uninstall` → `install` → 再起動
+  - プラグインの導入・更新・削除は**すべて `--scope project` を付ける**。
+    既定の `user` に入れると二重登録になり、更新のたびに両方へ当てることになる
 - **テンプレート層**（CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` / docs 骨格）の
   追従は `/harness-core:harness-update` で行う
 
