@@ -30,21 +30,32 @@ src/
 | 型チェック | `npx tsc --noEmit`（コミット前ゲート） |
 | lint | `npm run lint` |
 
-> **プロジェクト初期化時に `.claude/**` を lint 対象から外すこと。**
-> ハーネスが同梱する `.claude/statusline.js` は Node で直接実行される CommonJS であり、
-> `require()` が `@typescript-eslint/no-require-imports` に引っかかる。
-> 除外しないと**アプリのコードが 0 行の時点で `npm run lint` が失敗し、
-> `/harness-core:build-check` が初回から赤くなる**。
->
-> `eslint.config.mjs` の `globalIgnores` に追加する:
->
-> ```js
-> globalIgnores([
->   ".next/**", "out/**", "build/**", "next-env.d.ts",
->   // ハーネスが提供する設定・スクリプト群。アプリのソースではない
->   ".claude/**",
-> ]),
-> ```
+### プロジェクトの初期化（`create-next-app`）
+
+**ハーネス適用済みのリポジトリは既に非空**である。`create-next-app` をそのまま実行すると
+必ず詰まるか、既存ファイルを壊す。初回のみ以下に従うこと。
+
+| 落とし穴 | 対処 |
+|---------|------|
+| **非空ディレクトリで失敗する** | 一時ディレクトリに生成してから中身を移す。`--yes` で対話を飛ばす |
+| **生成物の `CLAUDE.md` / `AGENTS.md` を取り込むと、ハーネスの `CLAUDE.md` を上書きして壊す** | 移す前に**必ず除外する**。ハーネスの `CLAUDE.md` / `constitution.md` / `.claude/` / `docs/` / `tools/` が正 |
+| **`.gitignore` が上書きされる** | ハーネス側の `.gitignore` とマージする（`!.env.example` の行を失わないこと） |
+| **`npm run lint` が初回から失敗する** | `eslint.config.mjs` の `globalIgnores` に **`.claude/**` を追加**する（下記） |
+
+`.claude/statusline.js` は Node で直接実行される CommonJS のため `require()` が
+`@typescript-eslint/no-require-imports` に引っかかる。除外しないと**アプリのコードが 0 行の時点で
+`npm run lint` が失敗し、`/harness-core:build-check` が初回から赤くなる**。
+
+```js
+globalIgnores([
+  ".next/**", "out/**", "build/**", "next-env.d.ts",
+  // ハーネスが提供する設定・スクリプト群。アプリのソースではない
+  ".claude/**",
+]),
+```
+
+初期化が済んだら、このセクションの `Stack:` 行を**実際に採用した構成へ更新**すること
+（既定から外した場合は理由も1行残す）。
 
 ### アーキテクチャ規約
 
