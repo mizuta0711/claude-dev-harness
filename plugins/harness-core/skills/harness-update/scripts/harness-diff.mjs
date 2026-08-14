@@ -356,11 +356,10 @@ function cmdAnalyze(opts) {
   // 解析後はクローンを最新へ戻しておく（次回 analyze の起点を揃える）
   git(["checkout", "--quiet", latestCommit], repo.dir);
 
+  // 比較対象は A ∪ B に存在するファイルだけ。プロジェクト側のツリーは walk しない —
+  // C にしか無いファイルは定義上すべて「プロジェクト固有」で対象外なうえ、
+  // 実プロジェクトの walk は node_modules / Library / .next 等の巨大ツリーを舐めてしまう。
   const rels = new Set([...walk(latestDir), ...(baseDir ? walk(baseDir) : [])]);
-  for (const rel of walk(opts.project)) {
-    if (rel.startsWith(".claude/.harness-update/")) continue;
-    rels.add(rel);
-  }
 
   const results = [];
   for (const rel of [...rels].sort()) {
@@ -368,7 +367,6 @@ function cmdAnalyze(opts) {
     const a = baseDir ? readText(path.join(baseDir, rel)) : null;
     const b = readText(path.join(latestDir, rel));
     const c = readText(path.join(opts.project, rel));
-    if (b === null && c !== null && a === null) continue; // プロジェクト固有ファイル（対象外）
 
     const verdict = classify(a, b, c);
     if (!verdict || verdict.kind === "unchanged") continue;
@@ -471,6 +469,16 @@ function cmdApply(opts) {
       );
     }
 
+    // ローカル改変の上書きも既定で拒否する（apply は B の内容で上書きするため、
+    // project-local に対して実行するとローカルの変更が失われる = テンプレートへの巻き戻し）。
+    // 意図的に巻き戻す場合のみ --force。
+    if (byFile.get(rel) === "project-local" && !opts.force) {
+      fail(
+        `${rel} は「プロジェクト固有の改変」に分類されています。apply するとローカルの変更が` +
+          `テンプレートの内容で失われます。テンプレートへ意図的に戻す場合のみ --force を付けてください。`
+      );
+    }
+
     const src = path.join(idealDir, rel);
     const content = readText(src);
     if (content === null) fail(`${rel} は「あるべき姿」に存在しません。パスを確認してください。`);
@@ -525,6 +533,19 @@ function cmdFinalize(opts) {
     console.warn(`⚠️  未適用のテンプレート改善が ${unappliedImprovements.length} 件あります:`);
     for (const f of unappliedImprovements) console.warn(`      ${f}`);
     console.warn("    これらは次回から「プロジェクト固有の改変」として扱われます（再提案されません）。\n");
+  }
+
+  // template-removed も baseline が進むと視界から消える（A からも消えるため）。
+  // 「残す」は正当な判断なのでブロックはしないが、黙って飲み込まない
+  const unresolvedRemovals = report.files
+    .filter((f) => f.kind === "template-removed")
+    .map((f) => f.file)
+    .filter((rel) => readText(path.join(opts.project, rel)) !== null);
+
+  if (unresolvedRemovals.length) {
+    console.warn(`⚠️  テンプレートから削除されたファイルが ${unresolvedRemovals.length} 件プロジェクトに残っています:`);
+    for (const f of unresolvedRemovals) console.warn(`      ${f}`);
+    console.warn("    残す判断は有効ですが、次回以降は差分として提示されません。\n");
   }
 
   const file = path.join(opts.project, BASELINE_REL);
