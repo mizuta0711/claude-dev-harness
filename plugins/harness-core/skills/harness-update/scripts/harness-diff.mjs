@@ -41,6 +41,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
 const REPO_URL = "https://github.com/mizuta0711/claude-dev-harness.git";
@@ -88,6 +89,18 @@ function readText(file) {
   } catch {
     return null;
   }
+}
+
+/**
+ * 正規化済みテキストのハッシュ。
+ *
+ * `readText` が BOM と CRLF を落としたあとの内容を対象にするため、
+ * 改行コードの違いだけで「変更された」と誤判定しない。
+ * ファイルが存在しない場合（`null`）は固定値を返す。
+ */
+function hashOf(text) {
+  if (text === null) return "absent";
+  return createHash("sha256").update(text).digest("hex");
 }
 
 function readJson(file) {
@@ -370,7 +383,11 @@ function cmdAnalyze(opts) {
 
     const verdict = classify(a, b, c);
     if (!verdict || verdict.kind === "unchanged") continue;
-    results.push({ file: rel, ...verdict });
+    // 競合は finalize で「解決されたか」を判定する必要がある。
+    // 判定に使うため、analyze 時点の現物のハッシュを控えておく（下の cmdFinalize を参照）
+    const entry = { file: rel, ...verdict };
+    if (verdict.kind === "conflict") entry.currentHash = hashOf(c);
+    results.push(entry);
   }
 
   const configDiff = schemaDiff(
@@ -509,16 +526,31 @@ function cmdFinalize(opts) {
     return b !== c;
   };
 
+  // 競合が「解決されたか」は **analyze 以降に人が手を入れたか** で判定する。
+  //
+  // かつては「現物 == 最新テンプレート」を解決条件にしていたが、競合の正しい解決は
+  // 多くの場合「テンプレートの改善 + ローカル改変の統合」であり、**必然的にテンプレートとは
+  // 一致しない**。そのため正しく統合するほど「未解決」と判定され、毎回 --force が要求されていた。
+  // 本来「見送り」用の安全弁が日常操作になって鈍る（C1 の還元 #14。実際に2回とも要求された）。
+  //
+  // 手を入れていれば、統合したのであれテンプレートを丸ごと採ったのであれ、人が判断を下している。
+  // 手つかずのままなら、それが本当の「見送り」なので従来どおり --force を要求する。
   const unresolvedConflicts = report.files
     .filter((f) => f.kind === "conflict")
-    .map((f) => f.file)
-    .filter(stillDiffers);
+    .filter((f) => {
+      // analyze 時のハッシュが無い古い report は、従来どおりテンプレートとの一致で判定する
+      if (!f.currentHash) return stillDiffers(f.file);
+      const now = hashOf(readText(path.join(opts.project, f.file)));
+      return now === f.currentHash;
+    })
+    .map((f) => f.file);
 
   if (unresolvedConflicts.length && !opts.force) {
     fail(
-      `未解決の競合が ${unresolvedConflicts.length} 件残っています:\n` +
+      `手つかずの競合が ${unresolvedConflicts.length} 件残っています:\n` +
         unresolvedConflicts.map((f) => `  ${f}`).join("\n") +
-        `\n\nbaseline を進めると、これらは次回から「プロジェクト固有の改変」に見え、` +
+        `\n\nこれらは analyze 以降ファイルが変更されていません。` +
+        `\nbaseline を進めると、次回から「プロジェクト固有の改変」に見え、` +
         `\nテンプレート側の変更が差分として出てこなくなります。` +
         `\n先に競合を解決してください。意図的に見送る場合のみ --force を付けてください。`
     );
