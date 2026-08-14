@@ -9,6 +9,10 @@ secrets/
 .claude/settings.local.json
 .claude/.session-context.json
 .claude/.pre-commit-head
+.claude/.harness-update/
+
+# 注: .claude/harness-baseline.json は **コミットする**。
+#     harness-update がチーム全員で同じ基準点を使うために必要。
 
 # ローカル専用の設定・状態ファイル
 *.local.json

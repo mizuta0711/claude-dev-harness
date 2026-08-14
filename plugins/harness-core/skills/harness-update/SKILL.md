@@ -1,54 +1,148 @@
 ---
 name: harness-update
-description: "テンプレート層（CLAUDE.md / rules / harness.config.json / docs 骨格）を claude-dev-harness の最新に追従させる。※ Phase 3 で実装予定の骨子のみ"
+description: テンプレート層（CLAUDE.md / constitution.md / .claude/rules/ / harness.config.json / docs 骨格）を claude-dev-harness の最新へ追従させる。差分を3分類で提示し、ユーザー承認を得たものだけを適用する。
 disable-model-invocation: true
+allowed-tools: "Bash(node:*), Read, Glob, Grep"
 ---
 
 # テンプレート層の追従（harness-update）
 
-> **状態: 骨子のみ（未実装）。実装は Phase 3。**
-> このスキルを呼び出した場合は、「未実装である」ことを伝え、
-> 現時点では手動での差分適用が必要である旨を案内すること。
-
-## 目的
-
 プラグイン（skills / agents / hooks）は marketplace 経由で自動更新されるが、
-**CLAUDE.md / `.claude/rules/` / `.claude/harness.config.json` / `docs/` 骨格は
+**CLAUDE.md / `constitution.md` / `.claude/rules/` / `.claude/harness.config.json` / `docs/` 骨格は
 プロジェクト生成時のコピー**であり、そのままでは改善が伝播しない。
+その差分を検出し、**ユーザー承認のうえで**適用するのがこのスキル。
 
-その差分を検出し、ユーザー承認のうえで適用するのがこのスキルの役割。
-Next.js 版テンプレートにあった「派生プロジェクト適用手順」（長大な手動プロンプト集）の置き換えにあたる。
+差分の判定は同梱の `scripts/harness-diff.mjs` が機械的に行う。
+**目視で差分を分類しないこと** — 3点比較はスクリプトの仕事。
 
-## 手順（実装予定）
+## 大原則
 
-### Step 1: 最新テンプレートの取得
-
-- `claude-dev-harness` の `templates/base` と `templates/<environment>` を取得する
-- `<environment>` は `.claude/harness.config.json` の `environment` を使う
-- 取得手段（git clone / sparse-checkout / プラグイン同梱）は Phase 3 で確定する
-
-### Step 2: 差分の提示
-
-- プロジェクト側の対応ファイルと比較し、差分を3分類で提示する:
-  - **テンプレート側の改善**（取り込むべき差分）
-  - **プロジェクト固有の改変**（保持すべき差分）
-  - **競合**（同じ箇所を両方が変更している。ユーザー判断が必要）
-- `harness.config.json` は**スキーマ差分**（新フィールドの追加・非推奨化）として扱い、値は保持する
-
-### Step 3: 承認と適用
-
-- ファイル単位・ハンク単位でユーザーの承認を取る
 - **プロジェクト側のローカル改変を無断で上書きしない**
-- 適用後、変更点のサマリを報告する
+- 適用はファイル単位でユーザーの承認を取る。競合はハンク単位で提示する
+- ネットワーク不通などで取得できない場合は**中断して報告**する。作業自体は止めない
 
-### Step 4: 記録
+## Step 1: 解析
 
-- 適用したテンプレートのバージョン（コミット）をプロジェクト内に記録し、次回の差分計算の基準にする
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze
+```
 
-## 実装時の要検討事項
+スクリプトは次を行う:
 
-| # | 論点 |
-|---|------|
-| 1 | テンプレート取得の手段（ネットワーク前提にするか、プラグイン同梱にするか） |
-| 2 | 適用済みバージョンの記録先（`.claude/harness.config.json` に持たせるか、別ファイルか） |
-| 3 | `schemaVersion` が上がった場合の config マイグレーション手順 |
+1. `.claude/harness.config.json` の `environment` と `.claude/harness-baseline.json` を読む
+2. claude-dev-harness を `git clone --depth 1` で一時取得する（public なので認証不要）
+3. **クローン側の `tools/create-project.mjs` を実行して「あるべき姿」を再現する**
+   - **B** = 最新コミットでの生成結果
+   - **A** = baseline コミットでの生成結果（`--depth 1` に無ければそのコミットだけ追加 fetch する）
+   - 置換値は baseline の `placeholders` を再利用する
+4. **C**（プロジェクトの現物）と3点比較して分類する
+
+### オフライン・開発時
+
+ローカルクローンを使うとネットワークを使わない:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze --repo /path/to/claude-dev-harness
+```
+
+### baseline が無いプロジェクト（Phase 2 以前の生成物）
+
+`placeholders` が分からないため、**そのままでは差分が過剰に出る**。
+スクリプトが警告を出すので、`CLAUDE.md` 等から実際の値を読み取って渡し直すこと:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze \
+  --set PROJECT_NAME=MyApp --set PROJECT_DESCRIPTION="..." \
+  --set CORE_PROJECT=MyApp.Core --set UI_PROJECT=MyApp.UI
+```
+
+この場合は A が無いため**2点比較**になり、差分は全て「競合」として提示される（安全側に倒している）。
+
+## Step 2: 分類の提示
+
+スクリプトの出力をそのままユーザーへ流さず、**次の形に整理して提示する**:
+
+| 分類 | 意味 | 既定の扱い |
+|------|------|-----------|
+| `template-improvement` | テンプレート側だけが変わった（A≠B かつ A=C） | **適用を提案** |
+| `project-local` | プロジェクト側だけが変わった（A=B かつ A≠C） | **保持**（触らない） |
+| `already-applied` | 同じ変更が既に入っている（B=C） | 対応不要 |
+| `conflict` | 両方が同じファイルを変更した | **ユーザー判断が必須** |
+| `template-removed` | テンプレートから消えたファイル | 判断（削除するか残すか） |
+
+各ファイルについて、**何が変わるのかを1行で説明する**こと。
+ファイル名の羅列だけでは承認の judgement ができない。差分の中身は
+`{workDir}/latest/<path>`（B）と現物を Read して要約する。
+
+## Step 3: 承認と適用
+
+### template-improvement
+
+まとめて提示し、**ユーザーが承認したものだけ**を適用する:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" apply CLAUDE.md .claude/rules/typescript.md
+```
+
+### conflict
+
+`apply` を使わない。A / B / C の3つを Read して**ハンク単位で提示**し、
+どちらを採るか（あるいは統合するか）をユーザーに決めてもらってから Edit で書く。
+
+- A: `{baselineDir}/<path>` — 前回適用時のテンプレート
+- B: `{idealDir}/<path>` — 最新のテンプレート
+- C: プロジェクトの現物
+
+### harness.config.json
+
+**ファイル全体を上書きしない。** スクリプトが出す**スキーマ差分**に従う:
+
+- 新フィールド → 既定値つきで追加を提案する（既存の値は保持）
+- 消えたフィールド → 非推奨の可能性を伝え、削除するかを確認する
+- `schemaVersion` の引き上げ → **マイグレーション内容を提示してユーザー承認を取る**。無断で上げない
+
+### 追従対象外（スクリプトが自動で除外する）
+
+`docs/features/` / `docs/reviews/` / `docs/設計書/`（`.doc-sync.md` を除く）は
+**プロジェクトの資産**であり、テンプレートが上書きしてはいけない。
+
+## Step 4: 記録
+
+適用が終わったら baseline を更新する:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" finalize
+```
+
+`templatesCommit` が最新コミットへ更新され、作業ディレクトリ（`.claude/.harness-update/`）が削除される。
+
+> **競合を「後で対応する」まま finalize しない。** baseline が進むと、
+> 次回の解析でその競合は差分として見えなくなる（A=B になるため）。
+> 未対応の競合が残る場合は finalize せずに報告し、対応後に改めて実行する。
+
+## Step 5: 報告
+
+```markdown
+### ハーネス追従（harness-update）結果
+
+| 項目 | 内容 |
+|------|------|
+| 取得元 | {URL または --repo のパス} |
+| baseline | {前回のコミット} → {最新のコミット} |
+| 適用 | N 件 |
+| 保持（プロジェクト固有） | N 件 |
+| 競合 | N 件（対応済み / 未対応の内訳） |
+| config スキーマ変更 | {あれば内容。無ければ「なし」} |
+
+#### 適用した変更
+- `<path>` — {何が変わったか}
+
+#### 保持した改変
+- `<path>` — {プロジェクト固有の内容}
+
+#### 未対応（あれば）
+- `<path>` — {理由。baseline は更新していない旨も書く}
+```
+
+最後に、**適用した差分をユーザーが確認してからコミットするよう促す**こと
+（このスキルはコミットしない）。

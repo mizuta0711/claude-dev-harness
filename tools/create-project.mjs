@@ -32,6 +32,13 @@ const TEMPLATES_DIR = path.join(HARNESS_ROOT, "templates");
 /** 生成先へコピーしないテンプレート層のメタファイル */
 const TEMPLATE_META_FILES = new Set(["template.json", "CLAUDE.section.md"]);
 
+/**
+ * 適用済みテンプレートの記録先（Phase 3 §0-2）。
+ * `harness-update` スキルが「前回どの時点のテンプレートを適用したか」を知るために読む。
+ * `harness.config.json` には入れない — config は実行時の契約、baseline は適用メタ情報で関心が異なる。
+ */
+const BASELINE_RELATIVE_PATH = ".claude/harness-baseline.json";
+
 /** BOM を付けて出力する拡張子（§0-10） */
 const BOM_EXTENSIONS = new Set([".ps1"]);
 
@@ -81,6 +88,30 @@ function usage() {
 function fail(message) {
   console.error(`エラー: ${message}`);
   process.exit(1);
+}
+
+/**
+ * このハーネスリポジトリの現在のコミットハッシュ。
+ * git リポジトリでない（zip 展開など）場合は null を返し、baseline には記録しない
+ * （その場合 harness-update は3点比較ができず、全差分を「競合」として提示する）。
+ */
+function harnessCommit() {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: HARNESS_ROOT,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** `YYYY-MM-DD` */
+function today() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function listEnvironments() {
@@ -301,6 +332,24 @@ async function main() {
   for (const [rel, content] of composed) {
     rendered.set(substitute(rel, values), substitute(content, values));
   }
+
+  // 適用済みテンプレートの記録（Phase 3 §0-2）。
+  // placeholders も残すのは、harness-update が「同じ置換値で最新テンプレートを再合成し、
+  // プロジェクトの現物と比較する」ために必要なため（値が無いと差分が全て別物になる）。
+  const commit = harnessCommit();
+  rendered.set(
+    BASELINE_RELATIVE_PATH,
+    JSON.stringify(
+      {
+        templatesCommit: commit,
+        environment: opts.env,
+        appliedAt: today(),
+        placeholders: values,
+      },
+      null,
+      2
+    ) + "\n"
+  );
 
   // 未置換のプレースホルダが残っていないか（§7-1.5）
   const leftovers = [];
