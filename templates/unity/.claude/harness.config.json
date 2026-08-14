@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "environment": "unity",
+  "commands": {
+    "build": null,
+    "typecheck": null,
+    "lint": null,
+    "format": null,
+    "test": null,
+    "dev": null
+  },
+  "gates": { "preCommit": [] },
+  "envOptions": {
+    "rootNamespace": "{{PROJECT_NAME}}"
+  },
+  "paths": {
+    "source": ["Assets/Scripts/**", "Assets/Prefabs/**", "Assets/Scenes/**"],
+    "docTriggers": [
+      { "pattern": "^Assets/Scripts/", "docs": ["スクリプト一覧.md", "コンポーネント一覧.md"] },
+      { "pattern": "\\.unity$", "docs": ["シーン一覧.md"] },
+      { "pattern": "^Assets/Prefabs/|\\.prefab$", "docs": ["プレハブ一覧.md"] }
+    ]
+  },
+  "designDocs": {
+    "dir": "docs/設計書",
+    "ledger": "docs/設計書/.doc-sync.md",
+    "docs": [
+      { "file": "スクリプト一覧.md", "tracks": "C#スクリプト一覧", "sources": ["Assets/Scripts/**"] },
+      { "file": "コンポーネント一覧.md", "tracks": "MonoBehaviour/SOコンポーネント", "sources": ["Assets/Scripts/**"] },
+      { "file": "シーン一覧.md", "tracks": "シーン構成", "sources": ["Assets/Scenes/**"] },
+      { "file": "プレハブ一覧.md", "tracks": "プレハブ構成", "sources": ["Assets/Prefabs/**"] }
+    ]
+  },
+  "verification": { "skill": "unity-verify", "manualGate": true }
+}

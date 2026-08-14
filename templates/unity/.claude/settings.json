@@ -1,0 +1,13 @@
+{
+  "enabledMcpjsonServers": ["UnityMCP"],
+  "enabledPlugins": {
+    "harness-unity@dev-harness": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)"
+    ]
+  }
+}

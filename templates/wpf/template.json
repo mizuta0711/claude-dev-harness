@@ -1,0 +1,29 @@
+{
+  "environment": "wpf",
+  "description": "WPF (.NET 8) + ModernWpfUI + CommunityToolkit.Mvvm（Core/UI 2プロジェクト構成）",
+  "plugin": "harness-wpf@dev-harness",
+  "placeholders": [
+    {
+      "key": "PROJECT_NAME",
+      "prompt": "プロジェクト名（ソリューション名。PascalCase 推奨）",
+      "example": "MyApp"
+    },
+    {
+      "key": "PROJECT_DESCRIPTION",
+      "prompt": "プロジェクトの概要（1行）",
+      "example": "ログ解析用のデスクトップツール"
+    },
+    {
+      "key": "CORE_PROJECT",
+      "prompt": "コアロジックのプロジェクト名（WPF 非依存）",
+      "example": "MyApp.Core",
+      "default": "{{PROJECT_NAME}}.Core"
+    },
+    {
+      "key": "UI_PROJECT",
+      "prompt": "WPF UI のプロジェクト名",
+      "example": "MyApp.UI",
+      "default": "{{PROJECT_NAME}}.UI"
+    }
+  ]
+}

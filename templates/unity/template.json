@@ -1,0 +1,17 @@
+{
+  "environment": "unity",
+  "description": "Unity + C#（Unity MCP による Editor 操作つき）",
+  "plugin": "harness-unity@dev-harness",
+  "placeholders": [
+    {
+      "key": "PROJECT_NAME",
+      "prompt": "プロジェクト名（C# の root namespace にもなる。PascalCase 推奨）",
+      "example": "MyGame"
+    },
+    {
+      "key": "PROJECT_DESCRIPTION",
+      "prompt": "プロジェクトの概要（1行）",
+      "example": "2D アクションゲーム"
+    }
+  ]
+}

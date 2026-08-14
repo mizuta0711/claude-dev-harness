@@ -1,0 +1,26 @@
+{
+  "enabledMcpjsonServers": ["playwright"],
+  "enabledPlugins": {
+    "harness-nextjs@dev-harness": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm run build)",
+      "Bash(npm run lint)",
+      "Bash(npm run dev)",
+      "Bash(npx tsc --noEmit:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma validate:*)",
+      "Bash(npx tsx tools/scripts/generate-table-docs.ts)",
+      "Bash(npx tsx tools/export-to-sql.ts)"
+    ],
+    "ask": [
+      "Bash(*prisma migrate*)",
+      "Bash(*prisma db push*)"
+    ],
+    "deny": [
+      "Bash(*prisma migrate reset*)"
+    ]
+  }
+}

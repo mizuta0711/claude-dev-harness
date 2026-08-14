@@ -1,2 +1,9 @@
 # 全ファイル LF 固定（Phase 1 指示書 §0「改行 LF」の決定に対応）
 * text=auto eol=lf
+
+# PowerShell スクリプトは **UTF-8 BOM 付き**で管理する（Phase 2 指示書 §0-10）。
+#   Windows PowerShell 5.1 は BOM 無し UTF-8 を CP932 と誤読して日本語が化けるため、
+#   BOM が唯一の判別材料になる。git は BOM を通常のバイト列として扱うので
+#   normalize されないが、意図を明示するために eol を固定しておく。
+#   （BOM を削るツールを通さないこと。改行は他ファイルと同じく LF）
+*.ps1 text eol=lf

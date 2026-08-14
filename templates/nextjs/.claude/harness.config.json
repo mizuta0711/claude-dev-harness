@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "environment": "nextjs",
+  "commands": {
+    "build": "npm run build",
+    "typecheck": "npx tsc --noEmit",
+    "lint": "npm run lint",
+    "format": null,
+    "test": null,
+    "dev": "npm run dev"
+  },
+  "gates": { "preCommit": ["typecheck"] },
+  "paths": {
+    "source": ["src/**", "prisma/**"],
+    "docTriggers": [
+      { "pattern": "^src/app/api/", "docs": ["API一覧.md", "API・サービス・リポジトリ・フック対応表.md"] },
+      { "pattern": "^src/lib/services/", "docs": ["サービス・リポジトリ一覧.md"] },
+      { "pattern": "^src/(features/.+/hooks|hooks)/", "docs": ["フック一覧.md"] },
+      { "pattern": "schema\\.prisma$", "docs": ["テーブル定義書.md", "ER図.md"] }
+    ]
+  },
+  "designDocs": {
+    "dir": "docs/設計書",
+    "ledger": "docs/設計書/.doc-sync.md",
+    "docs": [
+      { "file": "API一覧.md", "tracks": "APIエンドポイント一覧", "sources": ["src/app/api/**"] },
+      { "file": "サービス・リポジトリ一覧.md", "tracks": "サービス層・リポジトリ層の一覧", "sources": ["src/lib/services/**"] },
+      { "file": "フック一覧.md", "tracks": "カスタムフック一覧", "sources": ["src/features/*/hooks/**", "src/hooks/**"] },
+      { "file": "テーブル定義書.md", "tracks": "DBテーブル定義(自動生成)", "sources": ["prisma/schema.prisma"] },
+      { "file": "ER図.md", "tracks": "エンティティ関連図", "sources": ["prisma/schema.prisma"] },
+      { "file": "API・サービス・リポジトリ・フック対応表.md", "tracks": "レイヤ間の対応関係", "sources": ["src/**"] }
+    ]
+  },
+  "verification": { "skill": "browser-test", "manualGate": false }
+}

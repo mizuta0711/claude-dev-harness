@@ -39,7 +39,11 @@
     ]
   },
 
-  "verification": { "skill": "browser-test", "manualGate": false }
+  "verification": { "skill": "browser-test", "manualGate": false },
+
+  "envOptions": {                      // 任意。環境プラグイン専用の設定置き場（§7）
+    "rootNamespace": "MyGame"
+  }
 }
 ```
 
@@ -126,3 +130,26 @@ hook は `CLAUDE_PROJECT_DIR` 環境変数があればそれを、無ければ `
 
 `startup|resume|clear|compact` を対象にする。
 `fork` は**意図的に含めない** — fork 元セッションの文脈を引き継ぐため、状況の再注入は冗長になる。
+
+## 7. `envOptions`（任意フィールド・環境プラグイン専用）
+
+環境プラグインの hook が必要とする「値」を置くための**任意**フィールド。
+
+| 項目 | 内容 |
+|------|------|
+| 必須か | **任意**。無くてよい |
+| schemaVersion | **1 のまま**（追加は任意フィールドであり、参照側は未知フィールドを無視するため互換） |
+| 読む主体 | **環境プラグインの hook のみ**。harness-core は一切読まない |
+| 無い場合の挙動 | **その検査だけをスキップする（fail-open）**。ブロックしない |
+
+`commands` / `gates` のような「全環境共通の軸」に載らない環境固有の値をここへ逃がす。
+**ロジックは入れない**（ロジックは環境プラグインの実装として持つ — 04仕様 §1-3 の原則は変わらない）。
+
+### 現在の利用箇所
+
+| キー | 環境 | 消費者 | 挙動 |
+|------|------|--------|------|
+| `envOptions.rootNamespace` | unity | `harness-unity` の `pre-commit-cs-check.js` | ステージ済み `Assets/Scripts/**/*.cs` に `namespace <値>` が宣言されているかを検査し、未宣言なら**警告**（ブロックはしない）。**キーが無ければ namespace 検査自体をスキップ**し、その旨をメッセージに添える |
+
+Unity テンプレートでは `create-project` が `"rootNamespace": "{{PROJECT_NAME}}"` を生成時に実値へ置換する。
+これにより、移植元の Unity テンプレートにあった **namespace `YourApp` のハードコード**（Phase 0 発見事項 F5）が解消されている。

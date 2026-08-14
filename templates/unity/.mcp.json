@@ -1,0 +1,9 @@
+{
+  "_comment": "Unity MCP（MCP For Unity）をプロジェクトスコープで登録する。ユーザー単位設定（~/.claude.json）に書く方式と違い、Windows のドライブレター大文字/小文字の不一致で登録が迷子になる問題が起きない。",
+  "mcpServers": {
+    "UnityMCP": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+# ---- 共通（claude-dev-harness テンプレート層） ----
+
+# 秘密情報
+.env*
+!.env.example
+secrets/
+
+# Claude Code のローカル設定・作業ファイル（共有しない）
+.claude/settings.local.json
+.claude/.session-context.json
+.claude/.pre-commit-head
+
+# ローカル専用の設定・状態ファイル
+*.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

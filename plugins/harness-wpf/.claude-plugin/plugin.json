@@ -1,0 +1,6 @@
+{
+  "name": "harness-wpf",
+  "version": "0.1.0",
+  "description": "WPF (.NET 8) 環境向けの開発ハーネス拡張。UIAutomation による実機スクリーンショット撮影スキルと企画レビューエージェントを提供する。harness-core と併用する",
+  "author": { "name": "mizuta0711" }
+}

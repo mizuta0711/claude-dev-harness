@@ -1,0 +1,19 @@
+{
+  "enabledPlugins": {
+    "harness-wpf@dev-harness": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet format:*)",
+      "Bash(dotnet test:*)",
+      "PowerShell(dotnet build:*)",
+      "PowerShell(dotnet format:*)",
+      "PowerShell(dotnet test:*)"
+    ],
+    "ask": [
+      "Bash(dotnet run:*)",
+      "PowerShell(dotnet run:*)"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "environment": "nextjs",
+  "description": "Next.js 16 (App Router) + React 19 + TypeScript + Prisma",
+  "plugin": "harness-nextjs@dev-harness",
+  "placeholders": [
+    {
+      "key": "PROJECT_NAME",
+      "prompt": "プロジェクト名",
+      "example": "my-app"
+    },
+    {
+      "key": "PROJECT_DESCRIPTION",
+      "prompt": "プロジェクトの概要（1行）",
+      "example": "社内向けの申請管理アプリ"
+    }
+  ]
+}

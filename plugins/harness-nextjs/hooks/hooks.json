@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-migrate-backup.js\"",
+            "timeout": 60,
+            "statusMessage": "DB バックアップを確認中..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-edit-lint.js\"",
+            "timeout": 30,
+            "statusMessage": "lint 自動修正中..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "environment": "wpf",
+  "commands": {
+    "build": "dotnet build --nologo -v quiet -clp:NoSummary",
+    "typecheck": null,
+    "lint": null,
+    "format": "dotnet format --verify-no-changes --no-restore",
+    "test": null,
+    "dev": "dotnet run"
+  },
+  "gates": { "preCommit": ["build"] },
+  "paths": {
+    "source": ["{{CORE_PROJECT}}/**", "{{UI_PROJECT}}/**"],
+    "docTriggers": [
+      { "pattern": "^{{UI_PROJECT}}/ViewModels/", "docs": ["ViewModel・コマンド一覧.md"] },
+      { "pattern": "^{{UI_PROJECT}}/Views/", "docs": ["View-ViewModel-Service対応表.md"] },
+      { "pattern": "^{{CORE_PROJECT}}/", "docs": ["サービス一覧.md"] }
+    ]
+  },
+  "designDocs": {
+    "dir": "docs/設計書",
+    "ledger": "docs/設計書/.doc-sync.md",
+    "docs": [
+      { "file": "サービス一覧.md", "tracks": "Coreサービス一覧", "sources": ["{{CORE_PROJECT}}/**"] },
+      { "file": "ViewModel・コマンド一覧.md", "tracks": "ViewModelとコマンド", "sources": ["{{UI_PROJECT}}/ViewModels/**"] },
+      { "file": "View-ViewModel-Service対応表.md", "tracks": "View-VM-Serviceの対応", "sources": ["{{UI_PROJECT}}/Views/**", "{{UI_PROJECT}}/ViewModels/**"] }
+    ]
+  },
+  "verification": { "skill": "capture-screenshots", "manualGate": false }
+}

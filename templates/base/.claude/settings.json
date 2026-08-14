@@ -1,0 +1,66 @@
+{
+  "effortLevel": "high",
+  "env": {
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node .claude/statusline.js",
+    "padding": 1
+  },
+  "extraKnownMarketplaces": {
+    "dev-harness": {
+      "source": {
+        "source": "github",
+        "repo": "mizuta0711/claude-dev-harness"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "harness-core@dev-harness": true
+  },
+  "permissions": {
+    "deny": [
+      "Read(./.env*)",
+      "Read(./secrets/**)",
+      "Edit(./.env*)",
+      "Write(./.env*)",
+      "Bash(grep * .env*)",
+      "Bash(rg * .env*)",
+      "PowerShell(Select-String*.env*)",
+      "PowerShell(Get-Content*.env*)",
+      "Bash(rm -r*)",
+      "Bash(rm -f*)",
+      "Bash(rm --recursive*)",
+      "Bash(rm --force*)",
+      "PowerShell(Remove-Item*-Recurse*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push * +*)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f *)",
+      "PowerShell(git push * +*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "PowerShell(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git clean:*)"
+    ],
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(node --check:*)"
+    ]
+  }
+}
