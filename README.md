@@ -71,6 +71,26 @@ claude-dev-harness/
 core の hooks / skills は**すべてこのファイルを読んで動く**。仕様は
 [docs/harness-config-contract.md](docs/harness-config-contract.md) を参照。
 
+## プロジェクトからの利用（marketplace 経由）
+
+利用側プロジェクトの `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "dev-harness": {
+      "source": { "source": "github", "repo": "mizuta0711/claude-dev-harness" }
+    }
+  },
+  "enabledPlugins": {
+    "harness-core@dev-harness": true
+  }
+}
+```
+
+スキルは `/harness-core:<name>` の形式で呼び出す（プラグインのスキルは名前空間が付くため、
+Claude Code の組み込みスキルと同名でも衝突しない）。
+
 ## ローカルでの動作確認
 
 ```
