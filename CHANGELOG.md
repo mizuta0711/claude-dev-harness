@@ -3,6 +3,37 @@
 このリポジトリの変更履歴。バージョンは各プラグインの semver を指す。
 経緯・設計判断の詳細は ProjectTemplete リポジトリの `docs/` と `docs/reviews/` にある。
 
+## [Unreleased] — B1（`unity-verify` の Play モード手順の確定）
+
+### harness-unity 0.2.0
+
+#### Added
+- **`unity-verify` に「Step 4.5: Play モードでの確認」を追加**。
+  唯一残っていた `[NEEDS CLARIFICATION]` を解消した。手順は推測ではなく、
+  MCP for Unity の実装コードと**実運用プロジェクトでの成功した呼び出し列**から確定させている
+  （調査記録: ProjectTemplete `docs/reviews/20260814_151615_B1_UnityMCP_Playモード調査.md`）
+  - 開始 `manage_editor {action:"play"}` / 停止 `manage_editor {action:"stop"}`（ともに冪等）
+  - 状態の待機は MCP リソース `mcpforunity://editor/state` のポーリング
+    （`editor.play_mode.is_playing` / `is_changing` / `activity.phase`）。
+    リソースが読めない場合の `execute_code` による代替手順も併記した
+  - **前提条件として `PlayerSettings.runInBackground = true` を明記**。false のままだと
+    Editor が非アクティブな間ゲームが進まず、MCP 経由の Play モード確認が成立しない（実測で確認）
+  - 画面確認に `manage_camera {action:"screenshot", include_image:true, max_resolution:900}` を追加
+  - 時間経過の待機は Bash の until ループ（PowerShell の `Start-Sleep` はハーネスにブロックされる）
+- Step 4 に `refresh_unity {compile:"request", wait_for_ready:true}` を明記。
+  「再コンパイル完了を待つ」の具体手順が無かった
+
+#### Changed
+- `allowed-tools` に `Bash(until:*)` / `ReadMcpResourceTool` / `mcp__UnityMCP__*` を追加。
+  Step 3・Step 4 の時点で既に MCP ツールを使う手順だったが宣言に含まれていなかった（既存の不備）
+- Step 5 の報告フォーマットに「Play モード確認」行を追加。
+  「確認できていないこと」を*面白さ・操作感・難易度バランス*と*見た目の判断*に分けて明記した
+  （静止画は撮れるようになったが、良し悪しの判断は依然ユーザーが行うため）
+
+> **`verification.manualGate: true` は変更していない。**
+> Play モードで分かるのは「例外が出ないか」「進行するか」「数値状態」「静止画」までであり、
+> 体感確認を代替しないという原則は維持する。
+
 ## [Unreleased] — Phase 3（harness-update と後始末）
 
 ### harness-core 0.2.0
