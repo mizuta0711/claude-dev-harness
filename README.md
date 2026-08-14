@@ -57,6 +57,9 @@ claude-dev-harness/
 │   └── wpf/
 ├── tools/create-project.mjs           # base + env を合成してプロジェクトを生成する
 └── docs/                              # ハーネス自体の仕様・運用文書
+    ├── guide/                         # 使い方（セットアップ / オプション MCP）
+    ├── diagrams/                      # 構造・フロー・フックの図（mermaid）
+    ├── background/                    # なぜそうしたか（意思決定記録・追従しない）
     ├── plugin-development.md          # プラグインの修正・反映手順（開発しながら直したいとき）
     ├── harness-config-contract.md     # harness.config.json の設定契約
     └── permissions-baseline.md        # permissions の設計と実測記録

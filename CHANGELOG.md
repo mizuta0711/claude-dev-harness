@@ -97,6 +97,13 @@ C1 2周目で hooks を実測した結果の修正。
   環境プラグインが前提とする Playwright / Unity MCP は範囲外（役割比較図とセットアップガイドへ委譲）。
   スキル名を名前空間付きへ更新し、環境固有の注意（drawio MCP と dev server のポート競合）は
   **【nextjs】** と明示して分離
+- **`docs/background/01_統合前後の差異.md`**（B-1）/ **`docs/background/02_SpecKitとの差異.md`**（B-2）—
+  統合検討時の差異解説2本（HTML 計1,671行）を Markdown へ変換して収録。
+  **`docs/background/` は「なぜそうしたか」の意思決定記録**であり、
+  実装変更に追従しない（`docs/guide/` との性質の違いを各冒頭に明記）。
+  B-2 の §3 フロー対比は **mermaid 化**し、Spec Kit とハーネスの2本のフローを
+  **「誰が起動するか」（人 / AI / 自動 hooks）で塗り分けた**。
+  公開にあたり実プロジェクト名と絶対パスを伏せた
 - CHANGELOG の書式に **`docs 影響`** 欄の運用を追加（本ファイル冒頭）
 
 #### Changed
