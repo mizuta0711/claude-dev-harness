@@ -28,7 +28,11 @@ node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
 > claude plugin install harness-<env>@dev-harness
 > ```
 >
-> 導入できたかは起動時の `[harness] environment: <env>` の表示で判別する。
+> 導入できたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧）** で確認する。
+> SessionStart フックの `[harness] environment: <env>` は `additionalContext` のため
+> **画面には表示されない**。表示の有無で判断しないこと。
+>
+> 詳細は [../docs/guide/セットアップガイド.md](../docs/guide/セットアップガイド.md)。
 
 ## 合成のルール
 

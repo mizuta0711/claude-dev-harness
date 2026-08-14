@@ -20,15 +20,19 @@ nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレー�
 
 ```bash
 node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
+cd ../MyProject
+claude plugin install harness-core@dev-harness          # ★必須
+claude plugin install harness-<env>@dev-harness         # ★必須
 ```
 
 プレースホルダ（プロジェクト名など）は対話で尋ねられる（`--set KEY=VALUE` でも指定可）。
 `--dry-run` を付けると、生成予定のファイル一覧と置換内容を表示するだけで何も書き込まない。
 
-生成物は `templates/base` と `templates/<env>` の合成結果で、
-`.claude/settings.json` に marketplace 経由のプラグイン導入設定が入っているため、
-生成先で `claude` を起動してプラグインを信頼すれば、そのまま
-`/harness-core:new-feature` から開発を始められる。
+> ⚠️ **`claude plugin install` を飛ばすとスキルも hooks も動かない。**
+> `.claude/settings.json` の `enabledPlugins` は初回起動でプラグインを導入しない（実測）。
+
+**手順の詳細・環境ごとの追加セットアップ・よくある失敗は
+[docs/guide/セットアップガイド.md](docs/guide/セットアップガイド.md) を参照。**
 
 ## 構成
 
@@ -133,33 +137,13 @@ core の hooks / skills は**すべてこのファイルを読んで動く**。�
 
 （この設定は `create-project.mjs` が生成時に書き込むため、通常は手で書く必要はない。）
 
-### ⚠️ 初回起動ではプラグインが導入されない — CLI 導入を推奨
-
-実測（2026-08-14・C1 の初回適用）で判明した挙動:
-
-| 設定 | 実際の効果 |
-|------|-----------|
-| `extraKnownMarketplaces` | ✅ **初回起動で** marketplace の登録とクローンを自動で行う。`claude plugin marketplace add` は不要 |
-| `enabledPlugins` | ⚠️ **初回起動ではプラグインが導入されなかった**。2回目以降の起動で project スコープの導入が自動記録された |
-
-初回起動の時点ではスキルも hooks も使えない状態になる。確実に1回で済ませるため、
-プロジェクトを開いたら**最初に一度だけ**次を実行する:
-
-```bash
-claude plugin install harness-core@dev-harness
-claude plugin install harness-<env>@dev-harness    # nextjs / unity / wpf
-```
-
-導入できたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧に `harness-core:new-feature`）**
-で確認する。
-
-> **未確定**: 2回目以降の自動導入が「marketplace のクローン完了後なら自動で入る」ためなのか、
-> 「CLI で user スコープに導入済みだったものを project スコープへ登録しただけ」なのかは切り分けできていない
-> （検証時に CLI 導入を挟んでしまったため）。**CLI 導入を明示する運用ならどちらでも確実に動く**ため、
-> 上の手順を正とする。
-
-> SessionStart フックが出す `[harness] environment: <env>` は `additionalContext` として
-> Claude に渡されるもので、**画面には表示されない**。表示の有無で導入の成否を判断しないこと。
+> ⚠️ **`enabledPlugins` は初回起動ではプラグインを導入しない**（実測）。
+> `extraKnownMarketplaces` が行うのは marketplace の登録とクローンまでで、
+> **導入は `claude plugin install` が必須**。導入確認は `/plugin` と `/` で行う
+> （SessionStart フックの `[harness] ...` は `additionalContext` のため画面に出ない）。
+>
+> 手順・確認方法・つまずいたときの対処は
+> **[docs/guide/セットアップガイド.md](docs/guide/セットアップガイド.md)** に集約してある。
 
 スキルは `/harness-core:<name>` の形式で呼び出す（プラグインのスキルは名前空間が付くため、
 Claude Code の組み込みスキルと同名でも衝突しない）。

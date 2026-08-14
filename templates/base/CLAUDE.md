@@ -39,6 +39,10 @@
 | `/harness-core:done` | 完了報告を定型テーブル形式で出力する |
 | `/harness-core:harness-update` | テンプレート層を claude-dev-harness の最新へ追従させる |
 
+> **ハーネスの使い方**（導入・確認・つまずいたとき）は
+> [セットアップガイド](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/guide/セットアップガイド.md)、
+> 更新の流れは [改善還元フロー図](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/diagrams/06_改善還元フロー図.md) を参照。
+
 > **注意**: 素の `/code-review` は Claude Code 組み込みスキルが起動する。
 > 本ハーネスのレビューを使うときは必ず `/harness-core:code-review` と名前空間付きで呼ぶこと。
 > 環境固有のスキルは `/harness-<環境>:...` で提供される（本ファイル末尾の「環境」セクションを参照）。

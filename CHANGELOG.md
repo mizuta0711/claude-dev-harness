@@ -3,6 +3,20 @@
 このリポジトリの変更履歴。バージョンは各プラグインの semver を指す。
 経緯・設計判断の詳細は ProjectTemplete リポジトリの `docs/` と `docs/reviews/` にある。
 
+## 書式
+
+各エントリの末尾に **`docs 影響: あり（対象） / なし`** を1行書く。
+
+`docs/diagrams/` と `docs/guide/` は `update-docs` / `sync-check` の対象外（あれはプロジェクトの設計書向け）で、
+**放置すれば必ず実装と乖離する**。乖離を機械では検出しないため、変更時に自分で申告する運用にしている。
+
+```
+docs 影響: あり（guide/セットアップガイド.md — 導入手順が変わるため）
+docs 影響: なし
+```
+
+「あり」と書いたものは、その版を push する前に更新して**各文書冒頭の「対応ハーネス版」を上げる**。
+
 ## [Unreleased] — D5（C1 2周目の還元：hooks の実測で判明した欠陥）
 
 C1 2周目で hooks を実測した結果の修正。
@@ -47,6 +61,29 @@ C1 2周目で hooks を実測した結果の修正。
   （`pre-commit-check` の情報通知・`pre-compact-save`・`subagent-stop-diff` が該当）。
   今回**実測できたのは PostToolUse のみ**のため、他は変更していない。
   ブロック系（`permissionDecision` / `continue:false`）は実際に効いていることが確認済み
+
+## [Unreleased] — ドキュメント整備（図・ガイド）
+
+### テンプレート層（版番号なし）／ docs
+
+#### Added
+- **`docs/diagrams/06_改善還元フロー図.md`**（D-6）— 「直した」と「配信された」の間にある
+  版番号・コミット・push・update・再起動の**5つの関門**を図にした。
+  C1 で実際に踏んだ「直したのに1件も届いていなかった」事故の再発防止
+- **`docs/guide/セットアップガイド.md`**（G-4）— 新規生成 → **`claude plugin install`（必須）** →
+  導入確認（`/plugin`・`/`）→ 環境ごとの追加手順 → よくある失敗。
+  **既存プロジェクトへの後付け導入（未実測）と取り外し手順**を含む
+- CHANGELOG の書式に **`docs 影響`** 欄の運用を追加（本ファイル冒頭）
+
+#### Changed
+- `README.md` の導入情報をセットアップガイドへ集約し、概要＋リンクに縮小
+- `templates/base/CLAUDE.md` にセットアップガイドと改善還元フロー図へのリンクを追加
+- `templates/README.md` の**誤った導入確認方法を修正**
+  （「起動時の `[harness] environment: <env>` の表示で判別する」→ `/plugin` と `/` で確認）。
+  `additionalContext` は画面に出ないため、この確認方法は成立しない
+
+docs 影響: あり（本エントリ自体が docs の追加。`templates/base/CLAUDE.md` の変更は
+利用側で `/harness-core:harness-update` が要る）
 
 ## [Unreleased] — D3（`finalize` の競合解決判定）
 
