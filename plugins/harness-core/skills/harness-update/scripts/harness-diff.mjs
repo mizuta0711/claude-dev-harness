@@ -126,6 +126,7 @@ function parseArgs(argv) {
     repo: null,
     set: new Map(),
     json: false,
+    force: false,
     files: [],
   };
   for (let i = 1; i < argv.length; i++) {
@@ -133,6 +134,7 @@ function parseArgs(argv) {
     if (a === "--project") opts.project = argv[++i];
     else if (a === "--repo") opts.repo = argv[++i];
     else if (a === "--json") opts.json = true;
+    else if (a === "--force") opts.force = true;
     else if (a === "--set") {
       const kv = argv[++i] || "";
       const eq = kv.indexOf("=");
@@ -452,9 +454,23 @@ function cmdApply(opts) {
   if (!report) fail("先に analyze を実行してください（report.json がありません）。");
 
   const idealDir = path.join(opts.project, report.idealDir);
+  const byFile = new Map(report.files.map((f) => [f.file, f.kind]));
   const applied = [];
   for (const rel of opts.files) {
     if (isNeverTouch(rel)) fail(`${rel} は追従対象外です（プロジェクトの資産）。`);
+
+    // 競合をまとめて上書きさせない（「ローカル改変の無断上書き禁止」の機械的な担保）。
+    // 競合は A/B/C を突き合わせてハンク単位で解決し、Edit で書くこと。
+    if (byFile.get(rel) === "conflict") {
+      fail(
+        `${rel} は「競合」に分類されています。apply では上書きしません。\n` +
+          `  A（前回適用時）: ${report.baselineDir ? report.baselineDir + "/" + rel : "(baseline 無し)"}\n` +
+          `  B（最新）      : ${report.idealDir}/${rel}\n` +
+          `  C（現物）      : ${rel}\n` +
+          `この3つを突き合わせ、ハンク単位でユーザーの判断を得てから直接編集してください。`
+      );
+    }
+
     const src = path.join(idealDir, rel);
     const content = readText(src);
     if (content === null) fail(`${rel} は「あるべき姿」に存在しません。パスを確認してください。`);
@@ -474,6 +490,42 @@ function cmdFinalize(opts) {
   const work = path.join(opts.project, WORK_REL);
   const report = readJson(path.join(work, "report.json"));
   if (!report) fail("先に analyze を実行してください（report.json がありません）。");
+
+  // baseline を進めると、未解決の差分は次回から「プロジェクト固有」に見える
+  // （A=B になるため）。テンプレート側の変更が視界から消えるので、
+  // **未解決の競合が残ったままの finalize はブロックする**。
+  const idealDir = path.join(opts.project, report.idealDir);
+  const stillDiffers = (rel) => {
+    const b = readText(path.join(idealDir, rel));
+    const c = readText(path.join(opts.project, rel));
+    return b !== c;
+  };
+
+  const unresolvedConflicts = report.files
+    .filter((f) => f.kind === "conflict")
+    .map((f) => f.file)
+    .filter(stillDiffers);
+
+  if (unresolvedConflicts.length && !opts.force) {
+    fail(
+      `未解決の競合が ${unresolvedConflicts.length} 件残っています:\n` +
+        unresolvedConflicts.map((f) => `  ${f}`).join("\n") +
+        `\n\nbaseline を進めると、これらは次回から「プロジェクト固有の改変」に見え、` +
+        `\nテンプレート側の変更が差分として出てこなくなります。` +
+        `\n先に競合を解決してください。意図的に見送る場合のみ --force を付けてください。`
+    );
+  }
+
+  const unappliedImprovements = report.files
+    .filter((f) => f.kind === "template-improvement")
+    .map((f) => f.file)
+    .filter(stillDiffers);
+
+  if (unappliedImprovements.length) {
+    console.warn(`⚠️  未適用のテンプレート改善が ${unappliedImprovements.length} 件あります:`);
+    for (const f of unappliedImprovements) console.warn(`      ${f}`);
+    console.warn("    これらは次回から「プロジェクト固有の改変」として扱われます（再提案されません）。\n");
+  }
 
   const file = path.join(opts.project, BASELINE_REL);
   const baseline = readJson(file) || {};

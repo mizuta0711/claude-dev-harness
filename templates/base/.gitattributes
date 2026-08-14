@@ -1,0 +1,11 @@
+# 改行コードの固定
+#
+# 生成されたプロジェクトにも LF 固定を引き継ぐ。これが無いと Windows の
+# core.autocrlf=true 環境で作業ツリーが CRLF になり、harness-update の3点比較で
+# 全ファイルが差分として出る（Phase 3 T1 の検証中に実際に発生した）。
+* text=auto eol=lf
+
+# PowerShell スクリプトは UTF-8 BOM 付きで管理する。
+#   Windows PowerShell 5.1 は BOM 無し UTF-8 を CP932 と誤読して日本語が化けるため、
+#   BOM が唯一の判別材料になる。BOM を削るツールを通さないこと。
+*.ps1 text eol=lf

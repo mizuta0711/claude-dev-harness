@@ -11,8 +11,10 @@ nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレー�
 | フェーズ | 内容 | 状態 |
 |---------|------|------|
 | Phase 1 | `harness-core` の抽出と config 契約化 | ✅ 完了 |
-| Phase 2 | 環境プラグイン3本（nextjs / unity / wpf）とテンプレート層、`create-project.mjs` | ✅ 本リポジトリの現状 |
-| Phase 3 | `harness-update` の実装、既存3テンプレートの後始末 | ⬜ 未着手 |
+| Phase 2 | 環境プラグイン3本（nextjs / unity / wpf）とテンプレート層、`create-project.mjs` | ✅ 完了 |
+| Phase 3 | `harness-update` の実装、既存3テンプレートの後始末、CHANGELOG | ✅ 本リポジトリの現状 |
+
+変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
 
 ## クイックスタート（新規プロジェクトの生成）
 
@@ -83,7 +85,7 @@ claude-dev-harness/
 | `complete-feature` | 完了処理（受け入れ基準ゲート → `completed/` へ移動） |
 | `pre-push-check` | push 前の台帳同期チェック |
 | `done` | 完了報告 |
-| `harness-update` | テンプレート層の追従（**骨子のみ・Phase 3 で実装**） |
+| `harness-update` | テンプレート層の追従（3点比較で差分を分類し、承認したものだけ適用） |
 
 ### フック
 
@@ -140,6 +142,33 @@ claude --plugin-dir <このリポジトリ>/plugins/harness-core \
 対象プロジェクトに `.claude/harness.config.json` を置いた状態で起動すると、
 SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 `/harness-<env>:<name>` で呼び出せる。
+
+## 運用原則: 改善はコアへ還元する
+
+**このハーネスは「使いながら育てる」前提で設計されている。** 各プロジェクトで見つけた改善は、
+そのプロジェクトに直接パッチを当てるのではなく、**このリポジトリへ入れて全プロジェクトへ配信する**。
+
+| 改善の種類 | 入れる場所 | プロジェクトへの届き方 |
+|-----------|-----------|---------------------|
+| スキル・エージェント・フック | `plugins/harness-*/` | **marketplace 経由で自動更新** |
+| CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` / docs 骨格 | `templates/` | `/harness-core:harness-update` で追従 |
+| ハーネス自体の仕様・設計記録 | `docs/` | （参照用） |
+
+### なぜプロジェクト側で直さないのか
+
+プロジェクト側の場当たり修正は**他プロジェクトへ伝播せず、差分の温床になる**。
+3テンプレートを別々に保守していた結果として実際に起きた劣化（permissions の欠落、
+呼び名の分裂、同じバグの重複）が、この統合の動機そのものである。
+
+### 手順
+
+1. 改善に気づいたら、まずこのリポジトリで直す
+2. 影響範囲に応じてバージョンを上げる（semver）。`CHANGELOG.md` に記録する
+3. プラグインの変更は push した時点で各プロジェクトへ届く
+4. テンプレート層の変更は、各プロジェクトで `/harness-core:harness-update` を実行して取り込む
+
+プロジェクト固有の事情でどうしてもローカル改変が必要な場合は、そのまま残してよい。
+`harness-update` の3点比較が**「プロジェクト固有の改変」として保持**する（無断で上書きしない）。
 
 ## 開発ルール
 
