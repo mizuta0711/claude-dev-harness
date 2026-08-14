@@ -19,7 +19,29 @@ const { execSync } = require("child_process");
 /** core が理解できる契約バージョン */
 const SCHEMA_VERSION = 1;
 
+/**
+ * PreToolUse hook 全体の時間予算（ミリ秒）。
+ *
+ * タイムアウトした PreToolUse hook は「ブロックせず続行」する仕様のため、
+ * hook 自体がタイムアウトするとゲートが静かに無効化される。
+ * hooks.json の timeout（600 秒）から起動・出力のマージンを引いた値を予算とし、
+ * 複数コマンドを実行する場合はこの予算内に収める。
+ */
+const TOTAL_BUDGET_MS = 570000;
+
+/** 1コマンドあたりの上限（予算が潤沢でも1コマンドで使い切らせない） */
+const MAX_COMMAND_MS = 170000;
+
 const CONFIG_RELATIVE_PATH = path.join(".claude", "harness.config.json");
+
+/**
+ * コミット直前の HEAD を記録する場所。
+ *
+ * PreToolUse（pre-commit-check）が書き、PostToolUse（post-commit-doc-check）が読んで消す。
+ * 「この `git commit` で実際にコミットが作られたか」を HEAD の変化で判定するために使う。
+ * プロジェクト側では `.claude/.pre-commit-head` を .gitignore 対象にしてよい（無くても動く）。
+ */
+const HEAD_MARKER_RELATIVE_PATH = path.join(".claude", ".pre-commit-head");
 
 /**
  * プロジェクトルート。Claude Code は CLAUDE_PROJECT_DIR を渡すが、
@@ -49,9 +71,15 @@ function toolCommand(payload) {
   return payload?.tool_input?.command || "";
 }
 
-/** `git commit` を含むコマンドか（matcher が Bash|PowerShell 全体に効くため各スクリプトで判定する） */
+/**
+ * `git commit` を含むコマンドか（matcher が Bash|PowerShell 全体に効くため各スクリプトで判定する）。
+ *
+ * `git` と `commit` の間にはグローバルオプションが挟まりうる（`git -C dir commit`、
+ * `git -c user.name=x commit`、`git --no-pager commit`）。
+ * **見逃し（ゲート素通り）は不可・誤検知（余計にチェックが走るだけ）は許容**の方針で広めに取る。
+ */
 function isGitCommit(command) {
-  return /\bgit\s+commit\b/.test(command || "");
+  return /\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+commit\b/.test(command || "");
 }
 
 /** Windows のパス区切りを `/` に正規化する（docTriggers の正規表現は `/` 前提） */
@@ -117,6 +145,23 @@ function commandFor(config, key) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+/**
+ * commands.<key> を「キー不在」と「値が null」を区別して解決する。
+ *
+ * - `missing`: commands にキー自体が無い → config の書き間違い（typo）の可能性が高い。警告する
+ * - `null`   : キーはあるが値が null → この環境には無い（意図的）。黙ってスキップする
+ * - `ok`     : 実行可能なコマンド文字列
+ *
+ * @returns {{status: "ok"|"null"|"missing", key: string, command: string|null}}
+ */
+function resolveCommand(config, key) {
+  const commands = config?.commands;
+  const exists = commands && Object.prototype.hasOwnProperty.call(commands, key);
+  if (!exists) return { status: "missing", key, command: null };
+  const command = commandFor(config, key);
+  return command ? { status: "ok", key, command } : { status: "null", key, command: null };
+}
+
 /** git コマンドを実行し、失敗しても例外にしない（情報取得目的のみに使う） */
 function git(args, timeout = 5000) {
   try {
@@ -133,9 +178,14 @@ function git(args, timeout = 5000) {
 
 /**
  * 任意のコマンドを実行する。
- * @returns {{ok: boolean, output: string}} output は stdout+stderr の結合
+ *
+ * @param {string} command
+ * @param {number} timeout ミリ秒
+ * @returns {{ok: boolean, output: string, timedOut: boolean, elapsedMs: number, timeout: number}}
+ *   output は stdout+stderr+例外メッセージの結合。timedOut は timeout 超過で殺された場合に true
  */
-function run(command, timeout = 170000) {
+function run(command, timeout = MAX_COMMAND_MS) {
+  const startedAt = Date.now();
   try {
     const stdout = execSync(command, {
       cwd: projectDir(),
@@ -143,10 +193,18 @@ function run(command, timeout = 170000) {
       timeout,
       stdio: "pipe",
     });
-    return { ok: true, output: (stdout || "").trim() };
+    return {
+      ok: true,
+      output: (stdout || "").trim(),
+      timedOut: false,
+      elapsedMs: Date.now() - startedAt,
+      timeout,
+    };
   } catch (e) {
     const output = ((e.stdout || "") + "\n" + (e.stderr || "") + "\n" + (e.message || "")).trim();
-    return { ok: false, output };
+    // execSync は timeout 超過時にシグナルでプロセスを殺す
+    const timedOut = Boolean(e.killed) || e.code === "ETIMEDOUT" || Boolean(e.signal);
+    return { ok: false, output, timedOut, elapsedMs: Date.now() - startedAt, timeout };
   }
 }
 
@@ -170,6 +228,43 @@ function errorExcerpt(output, maxLines = 20) {
   return picked.slice(0, maxLines).join("\n");
 }
 
+/** 現在の HEAD（コミットが1つも無ければ空文字） */
+function headCommit() {
+  return git("rev-parse HEAD", 3000);
+}
+
+/** コミット直前の HEAD を記録する（失敗しても無視する — 記録が無ければ後段は fail-open で動く） */
+function writeHeadMarker() {
+  try {
+    fs.writeFileSync(
+      path.join(projectDir(), HEAD_MARKER_RELATIVE_PATH),
+      headCommit() || "(none)"
+    );
+  } catch {
+    /* .claude/ が無い等。判定は reflog にフォールバックする */
+  }
+}
+
+/**
+ * 記録した HEAD を読んで消す。
+ * @returns {string|null} 記録が無ければ null
+ */
+function consumeHeadMarker() {
+  const file = path.join(projectDir(), HEAD_MARKER_RELATIVE_PATH);
+  let value = null;
+  try {
+    value = fs.readFileSync(file, "utf-8").trim();
+  } catch {
+    return null;
+  }
+  try {
+    fs.unlinkSync(file);
+  } catch {
+    /* 消せなくても判定には影響しない */
+  }
+  return value || null;
+}
+
 /** hook の JSON 出力（1回だけ呼ぶ） */
 function emit(payload) {
   console.log(JSON.stringify(payload));
@@ -182,7 +277,13 @@ function passThrough() {
 
 module.exports = {
   SCHEMA_VERSION,
+  TOTAL_BUDGET_MS,
+  MAX_COMMAND_MS,
   CONFIG_RELATIVE_PATH,
+  HEAD_MARKER_RELATIVE_PATH,
+  headCommit,
+  writeHeadMarker,
+  consumeHeadMarker,
   projectDir,
   readPayload,
   toolCommand,
@@ -190,6 +291,7 @@ module.exports = {
   toPosix,
   loadConfig,
   commandFor,
+  resolveCommand,
   git,
   run,
   errorExcerpt,

@@ -6,6 +6,9 @@
  *
  * 動作:
  *   - `git commit` を含むコマンド以外は即素通り
+ *   - **コミットが実際に成立したかを reflog で確認**する（R-2）。
+ *     `git commit` が失敗（ステージ無し、外部 pre-commit hook の拒否等）しても PostToolUse は発火するため、
+ *     確認しないと「直前の別コミット」の差分で誤通知してしまう
  *   - config 不在・壊れている → 素通り（fail-open）
  *   - 直近コミットの変更ファイルを docTriggers[].pattern（正規表現）と突き合わせ、
  *     一致した設計書名を挙げて /harness-core:update-docs を促す
@@ -18,6 +21,24 @@ const payload = lib.readPayload();
 if (!payload) lib.passThrough();
 
 if (!lib.isGitCommit(lib.toolCommand(payload))) lib.passThrough();
+
+// --- コミットが実際に成立したかの確認（2段構え） ---
+//
+// (1) HEAD 比較: pre-commit-check（PreToolUse）が同じ git commit 呼び出しの直前に記録した HEAD と
+//     現在の HEAD を比べる。変化していなければコミットは作られていない。最も確実な判定
+// (2) reflog: 記録が無い場合（PreToolUse が動いていない構成など）のフォールバック。
+//     直前の git 操作が commit 以外なら素通りする
+//
+// どちらも判断材料が無い場合は従来どおり判定に進む（fail-open。
+// 通知が誤る可能性より、通知が完全に死ぬことを避ける）
+const previousHead = lib.consumeHeadMarker();
+if (previousHead) {
+  const currentHead = lib.headCommit() || "(none)";
+  if (previousHead === currentHead) lib.passThrough();
+} else {
+  const lastReflog = lib.git("reflog -1 --format=%gs", 3000);
+  if (lastReflog && !/^commit(\s+\([^)]*\))?:/.test(lastReflog)) lib.passThrough();
+}
 
 const { status, config, message } = lib.loadConfig();
 if (status === "missing" || status === "invalid") lib.passThrough();

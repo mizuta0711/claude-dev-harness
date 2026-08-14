@@ -15,8 +15,9 @@ allowed-tools: "Bash(git log:*), Bash(git status:*), Read"
 
 | config | 「動作確認」行の書き方 |
 |--------|---------------------|
-| `verification.skill` が非 null | `✅ /{skill} を実施（エビデンス: パス）` |
-| `verification.manualGate` が true | 未実施なら `⚠️ 要手動確認` として明示する（勝手に ✅ にしない） |
+| `skill` 非 null / `manualGate: false` | `✅ /{skill} を実施（エビデンス: パス）` |
+| `skill` 非 null / `manualGate: true` | **両方必要**。スキルを実施したうえで、人手確認が済むまで `⚠️ 要手動確認（/{skill} は実施済み）` のままにする。両方揃って初めて ✅ |
+| `skill` が null / `manualGate: true` | 未実施なら `⚠️ 要手動確認` として明示する（勝手に ✅ にしない） |
 | 両方が無効（skill が null かつ manualGate が false） | `⬜ 不要（この環境に自動確認手段なし）` |
 | config 不在 | `⬜ 不明（harness.config.json 未配置）` |
 
