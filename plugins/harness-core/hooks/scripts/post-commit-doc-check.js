@@ -44,7 +44,12 @@ if (previousHead) {
 const { status, config, message } = lib.loadConfig();
 if (status === "missing" || status === "invalid") lib.passThrough();
 if (status === "newer") {
-  lib.emit({ systemMessage: `[doc-sync] ${message}` });
+  lib.emit({
+    hookSpecificOutput: {
+      hookEventName: "PostToolUse",
+      additionalContext: `[doc-sync] ${message}`,
+    },
+  });
   process.exit(0);
 }
 
@@ -77,8 +82,13 @@ for (const trigger of triggers) {
 
 if (!hit.size) lib.passThrough();
 
+// **`systemMessage` は PostToolUse では画面に出ない**（C1 2周目で実測）。
+// SessionStart と同じ `hookSpecificOutput.additionalContext` で Claude へ渡す。
 lib.emit({
-  systemMessage:
-    `[doc-sync] このコミットには ${[...hit].join("・")} の更新が必要な変更が含まれています。` +
-    `M/L 規模の作業であれば /harness-core:update-docs を実行してください。`,
+  hookSpecificOutput: {
+    hookEventName: "PostToolUse",
+    additionalContext:
+      `[doc-sync] このコミットには ${[...hit].join("・")} の更新が必要な変更が含まれています。` +
+      `M/L 規模の作業であれば /harness-core:update-docs を実行してください。`,
+  },
 });

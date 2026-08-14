@@ -3,6 +3,51 @@
 このリポジトリの変更履歴。バージョンは各プラグインの semver を指す。
 経緯・設計判断の詳細は ProjectTemplete リポジトリの `docs/` と `docs/reviews/` にある。
 
+## [Unreleased] — D5（C1 2周目の還元：hooks の実測で判明した欠陥）
+
+C1 2周目で hooks を実測した結果の修正。
+1周目で唯一未回答だった「hooks の発火頻度・待ち時間が実用範囲か」への回答が
+**「外れている」**だったため、その原因を潰した。
+
+### harness-core 0.2.3
+
+#### Fixed
+- **`post-commit-doc-check` の通知が届いていなかった**（#17b）。
+  `systemMessage` は **PostToolUse では画面に出ない**ことが実測で確定したため、
+  SessionStart と同じ `hookSpecificOutput.additionalContext` へ変更した。
+  > 検証方法: 自動修正できる指摘（`prefer-const`）と自動修正できない error を
+  > 同居させたファイルを編集し、**`--fix` は適用されるのに通知だけ届かない**ことを確認。
+  > フックは走っており `catch` にも入っているため、出力形式の問題だと切り分けられた。
+
+### harness-nextjs 0.1.2
+
+#### Fixed
+- **`post-edit-lint` が `npx` 経由で eslint を起動していた**（#17a）。
+  スクリプト内で `node_modules/.bin/eslint` のパスを確定させているのに実行は `npx` で、
+  毎編集に**約 0.9 秒**（全体の約 24%・実測）が上乗せされていた。直接起動へ変更。
+  Windows の `.cmd` ラッパーも解決する
+  > **これは主因ではない。** 実測では ESLint 自身の起動（設定解決・TS パーサ・
+  > プラグイン読み込み）が約 2.76 秒を占め、**対象ファイル数がほぼ効いていない**。
+  > 4.2 秒 → 3.3 秒程度の改善にとどまる。体感を大きく変えるには常駐化か
+  > 連続編集のバッチ化が要る（未対応・`docs/backlog-phase0-findings.md` 級の課題）
+- **`post-edit-lint` の「自動修正できない指摘」の通知が届いていなかった**（#17b）。
+  上記 `post-commit-doc-check` と同じ原因。**フックの価値の半分が失われていた**
+  （lint エラー2件を抱えたまま実装が進み、`npm run lint` を回すまで気づかなかった）
+- **`pre-migrate-backup` が読み取り専用の呼び出しでも発火していた**（#16）。
+  判定が `prisma migrate\b` の前方一致だけで、`migrate status` / `migrate diff` /
+  `--help` でもバックアップが走っていた。**実 migrate ゼロ回で同一内容の `.bak` が
+  7 個溜まった**（実測）。ヘッダに書かれた「実際に実行するときのみ」という
+  設計意図に実装を合わせた
+  - `resolve` は `_prisma_migrations` を書き換えるため**除外しない**
+  - 11 ケース（`dev` / `deploy` / `reset` / `resolve` / `status` / `diff` / `--help` /
+    `-h` / 環境変数付き / コミットメッセージ内の文字列 / 無関係コマンド）で判定を確認
+
+#### 未対応（記録）
+- `systemMessage` は **PreToolUse / PreCompact / SubagentStop でも surface されない可能性**がある
+  （`pre-commit-check` の情報通知・`pre-compact-save`・`subagent-stop-diff` が該当）。
+  今回**実測できたのは PostToolUse のみ**のため、他は変更していない。
+  ブロック系（`permissionDecision` / `continue:false`）は実際に効いていることが確認済み
+
 ## [Unreleased] — D3（`finalize` の競合解決判定）
 
 ### harness-core 0.2.2

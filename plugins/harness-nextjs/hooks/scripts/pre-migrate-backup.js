@@ -29,6 +29,14 @@ const lib = require("./plugin-lib.js");
 /** バックアップツールの場所（テンプレート層が配置する位置） */
 const EXPORT_TOOL = "tools/export-to-sql.ts";
 
+/**
+ * DB を変更しない `prisma migrate` のサブコマンド。
+ *
+ * これらでバックアップを走らせても、守るものが無いのに時間（実測 約1.2秒）と
+ * ディスクを消費するだけになる。`resolve` は `_prisma_migrations` を書き換えるため**含めない**。
+ */
+const READ_ONLY_MIGRATE_SUBCOMMANDS = new Set(["status", "diff"]);
+
 const payload = lib.readPayload();
 if (!payload) process.exit(0);
 
@@ -69,9 +77,21 @@ function runsPrismaMigrate(raw) {
       .replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
 
     // 4. prisma migrate の起動そのものか
-    if (/^(?:(?:npx|pnpm|yarn|bunx|bun)\s+)?prisma\s+migrate\b/.test(stripped)) {
-      return true;
-    }
+    const m = stripped.match(
+      /^(?:(?:npx|pnpm|yarn|bunx|bun)\s+)?prisma\s+migrate\b(.*)$/
+    );
+    if (!m) continue;
+
+    // 5. **DB を変更しない呼び出しは対象外**にする（C1 2周目の還元 #16）。
+    //    `prisma migrate\b` の前方一致だけだと `migrate status` や `--help` でも
+    //    バックアップが走り、実 migrate ゼロ回で同一内容の .bak が 7 個溜まった（実測）。
+    //    ヘッダの「実際に実行するときのみ」という設計意図に実装を合わせる。
+    const rest = m[1].trim();
+    if (/^(?:-h\b|--help\b)/.test(rest)) continue; // ヘルプ表示
+    const sub = rest.split(/\s+/)[0] || "";
+    if (READ_ONLY_MIGRATE_SUBCOMMANDS.has(sub)) continue;
+
+    return true;
   }
   return false;
 }
