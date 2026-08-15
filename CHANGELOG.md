@@ -17,6 +17,17 @@ docs 影響: なし
 
 「あり」と書いたものは、その版を push する前に更新して**各文書冒頭の「対応ハーネス版」を上げる**。
 
+## [Unreleased] — フェーズ2-0 の実測反映（テンプレート層のみ・版番号なし）
+
+### Fixed
+- **nextjs `react-nextjs.md` の「ストアの利用」節** — `state-management.md` を無条件に参照していたため、
+  **ストアライブラリを使わないプロジェクトで参照先が存在しない状態**になっていた（bookmark-app の
+  `harness-update` で実地に発生。実行したエージェントがローカルで文面を調整して回避した）。
+  「使っている場合のみ適用」と明示し、参照先が配置されない場合がある旨を追記した。
+  wpf の3本（mvvm-viewmodel / csharp-wpf / xaml-ui）は常に同時配布されるため同種の問題は無い（確認済み）
+
+docs 影響: なし
+
 ## [0.6.0] harness-core / [0.3.0] harness-nextjs / [0.2.0] harness-wpf — 設計方針層の復活と②規約の回収
 
 統合時に脱落していた**設計方針層**を戻し、`03_library_docs/` から `.claude/rules/` への移設で
