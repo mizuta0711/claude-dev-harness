@@ -103,7 +103,12 @@ function runsPrismaMigrate(raw) {
  * 空のまま migrate すると **中身が空のダンプができ、「バックアップ済み」と誤認する**。
  * 移植元はこれを黙って通していた（01調査 §8 の既知問題）。ここで検出して止める。
  *
- * @returns {{ok: true} | {ok: false, reason: string}}
+ * 既存プロジェクトへ移行した場合、`export-to-sql.ts` が**プロジェクト側の実装**のことがある
+ * （実測: 一覧が `orderedTableNames`、マップが `dbTableNameMap` という命名だった）。
+ * 名前が違うと判定できないが、**黙って通すとチェックが効いていないことに誰も気づかない**。
+ * その場合は `unknown: true` を返し、呼び出し側が**警告を出したうえで先へ進める**。
+ *
+ * @returns {{ok: true, unknown?: true} | {ok: false, reason: string}}
  */
 function backupTargetsConfigured(root) {
   const file = path.join(root, EXPORT_TOOL);
@@ -112,10 +117,15 @@ function backupTargetsConfigured(root) {
     src = fs.readFileSync(file, "utf-8");
   } catch {
     // ツール自体が無いプロジェクト構成もありうる。実行時に失敗するのでここでは判定しない
-    return { ok: true };
+    return { ok: true, unknown: true };
   }
-  const m = src.match(/ORDERED_TABLES\s*(?::[^=]*)?=\s*\[([\s\S]*?)\]/);
-  if (!m) return { ok: true }; // 形が変わっている場合は判定を諦める（fail-open）
+  // テンプレート出荷時の命名（ORDERED_TABLES）と、既存プロジェクトでよく見る
+  // ローワーキャメル（orderedTableNames 等）の両方を拾う
+  const m = src.match(
+    /(?:ORDERED_TABLES|orderedTableNames?|ORDERED_TABLE_NAMES)\s*(?::[^=]*)?=\s*\[([\s\S]*?)\]/
+  );
+  // 形が変わっている場合は判定を諦めるが、**黙らない**（呼び出し側で警告する）
+  if (!m) return { ok: true, unknown: true };
   // コメントを除いた実質的な要素があるか
   const body = m[1]
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -177,6 +187,17 @@ if (isFirstMigration(root)) {
 }
 
 const configured = backupTargetsConfigured(root);
+if (configured.ok && configured.unknown) {
+  // 判定できなかった。**通すが黙らない。**
+  // 黙って通すと「ブロックが効いている」と誤認したまま運用が続く（実測で発生した）。
+  lib.emit({
+    systemMessage:
+      `[harness] ${EXPORT_TOOL} のバックアップ対象一覧を判定できませんでした` +
+      `（テンプレートの ORDERED_TABLES とは別の命名の可能性）。\n` +
+      `バックアップ自体はこのあと実行しますが、**「対象が空でないか」のチェックは行われていません**。\n` +
+      `対象: ${EXPORT_TOOL}。命名を確認し、.claude/rules/prisma.md の3点同期の記述を実態に合わせてください。`,
+  });
+}
 if (!configured.ok) {
   lib.emit({
     continue: false,
