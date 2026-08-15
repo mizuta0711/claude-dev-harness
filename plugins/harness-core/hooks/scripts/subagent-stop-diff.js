@@ -1,12 +1,27 @@
 /**
- * SubagentStop フック: サブエージェント終了時に差分確認を促す
+ * SubagentStop フック: サブエージェントが動いたことを記録する
  *
  * 「サブエージェントの結果は必ずメインで差分確認・フロー検証してからコミットする」という
- * 運用ルールを文言で重ねるだけでは既読スルーされるため、
- * **変更ファイル数と実行できるコマンドをその場に出す**ことで
- * 「読む」から「実行する」までの距離を縮めることを狙う。
+ * 運用ルールを、**コミットしようとした瞬間に**思い出させるための記録係。
  *
- * 非ブロッキング。変更が無ければ何も出さない。
+ * ## なぜ通知しないのか（2026-08-15 の実測・還元 #22）
+ *
+ * **SubagentStop には通知経路が無い。**
+ *
+ * | 経路 | 結果 |
+ * |------|------|
+ * | `systemMessage` | **ユーザーの画面に出ない** |
+ * | `hookSpecificOutput.additionalContext` | **親（メイン）の文脈に届かない。** さらにサブエージェント自身へ戻り、**停止がキャンセルされてループする**（実測: 8回・42秒・23.7k トークン） |
+ *
+ * 移設先として PostToolUse（`Task` / `Agent`）も検証した。画面には出るが、
+ * **サブエージェントがバックグラウンドで動く場合、ツールが返った時点＝起動直後に発火する**ため、
+ * 「終わった時点の変更ファイル数」を出す用途には使えない。
+ *
+ * よって**この場では何も出さず、届くイベントまで情報を持ち越す**。
+ * 合流先は `pre-commit-check`（PreToolUse・画面に出ることを実測で確認済み）。
+ * コミットは必ずそこを通るので、**最も効いてほしい瞬間**に出せる。
+ *
+ * 非ブロッキング。変更が無ければ何も記録しない。
  */
 const lib = require("./harness-lib");
 
@@ -18,15 +33,7 @@ const agent = payload?.agent_type || payload?.subagent_type || "サブエージ�
 const files = lib.git("status --porcelain", 3000).split("\n").filter(Boolean);
 if (!files.length) lib.passThrough();
 
-const preview = files
-  .slice(0, 5)
-  .map((l) => `  ${l.trim()}`)
-  .join("\n");
-const more = files.length > 5 ? `\n  ...ほか ${files.length - 5} 件` : "";
+lib.writeSubagentMarker({ agent, files: files.length });
 
-lib.emit({
-  systemMessage:
-    `[subagent] ${agent} の終了時点で ${files.length} ファイルに変更があります。\n` +
-    `${preview}${more}\n` +
-    "コミット前に `git diff` で内容を確認すること（ビルド成功 ≠ 正しい実装）。",
-});
+// 出力しない。この経路では誰にも届かないため（上記）
+process.exit(0);

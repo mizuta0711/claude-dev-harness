@@ -72,12 +72,16 @@ for (const file of staged) {
 }
 
 if (errors.length > 0) {
+  const reason =
+    "C# スクリプトにエラーがあります。コミット前に修正してください:\n" + errors.join("\n");
+  // ブロックの理由は `permissionDecisionReason` で Claude へ、
+  // 同じ内容を `systemMessage` でユーザーの画面へ（#23）
   lib.emit({
+    systemMessage: `[cs-check] ❌ ${reason}`,
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason:
-        "C# スクリプトにエラーがあります。コミット前に修正してください:\n" + errors.join("\n"),
+      permissionDecisionReason: reason,
     },
   });
   process.exit(0);
@@ -94,4 +98,4 @@ if (!rootNamespace) {
     "（.claude/harness.config.json の envOptions.rootNamespace が未設定のため namespace 検査はスキップしました）"
   );
 }
-lib.emit({ systemMessage: notes.join("\n") });
+lib.notify("PreToolUse", notes.join("\n"));

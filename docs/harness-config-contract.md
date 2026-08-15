@@ -120,6 +120,34 @@ hook は `CLAUDE_PROJECT_DIR` 環境変数があればそれを、無ければ `
 `.claude/.pre-commit-head` は PostToolUse 側が読んだ時点で削除する。プロジェクトの `.gitignore` に
 加えてよい（無くても段2・段3で動作する）。
 
+### 6-3. サブエージェントの記録の受け渡し（`.claude/.subagent-touch.json`）
+
+**SubagentStop には通知経路が無い**（下の「通知の届き方」を参照）。そこで
+`subagent-stop-diff` は**通知せずに記録だけ残し**、`pre-commit-check` が
+**コミットしようとした瞬間**に読み出して通知へ添える。
+
+| 段 | 誰が | 何をする |
+|----|------|---------|
+| 1 | `subagent-stop-diff`（SubagentStop） | 変更があれば `{agent, files}` を**追記**する。上限20件 |
+| 2 | `pre-commit-check`（PreToolUse・`git commit` 時） | 読んで消し、通知の末尾に「差分を確認してからコミットすること」を添える |
+| 3 | 同（**ブロックした場合**） | 記録を**書き戻す**。コミットは成立していないため、次の試行でも出す |
+
+`.gitignore` に加えること（テンプレートには入れてある）。**無くても全体は動く**（fail-open）。
+
+### 6-4. 通知の届き方（2026-08-15 実測・Claude Code v2.1.232）
+
+| イベント | `systemMessage`（画面） | `additionalContext`（Claude の文脈） |
+|---------|------------------------|-----------------------------------|
+| SessionStart | ✅ | ✅ |
+| PreToolUse | ✅ | ✅ |
+| PostToolUse（Bash / Edit / Write / Task） | ✅ | ✅ |
+| SubagentStop | ❌ | ❌ 親には届かない。**サブエージェント自身へ戻り、停止をキャンセルしてループする** |
+
+- 通知は **`lib.notify(hookEventName, message)` で2経路とも出す**のが既定。片方に賭けない
+- **SubagentStop で `notify` を使ってはいけない**（ループする）
+- PostToolUse（`Task`）は**サブエージェントが背景実行の場合、起動直後に発火する**ため、
+  「終了時点の変更ファイル数」を出す用途には使えない
+
 > **実測メモ**: 現行の Claude Code では **Bash ツールが非ゼロ終了した場合 PostToolUse hook は発火しない**
 > （同一セッションで失敗コミットは発火せず、成功コマンドは発火することを確認）。
 > したがって単純な失敗コミットでは誤通知は起きないが、`git commit --dry-run` や

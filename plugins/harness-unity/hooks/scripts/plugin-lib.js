@@ -98,6 +98,37 @@ function emit(payload) {
   console.log(JSON.stringify(payload));
 }
 
+/**
+ * 通知を**2経路とも**出す（#23 / 2026-08-15 の実測に基づく）。
+ *
+ * | 経路 | 届く先 |
+ * |------|--------|
+ * | `systemMessage` | **ユーザーの画面** |
+ * | `hookSpecificOutput.additionalContext` | **Claude の文脈** |
+ *
+ * 片方だけでは必ず片側に届かない。**同時に出せば両方に届く**ことを実測で確認した。
+ * core の `harness-lib.js` に同じものがあるが、プラグイン間参照は保証されないため
+ * ここにも持つ（重複は意図的）。
+ *
+ * ⚠️ **SubagentStop では使わないこと。** `additionalContext` を返すと
+ * サブエージェントの停止がキャンセルされてループする（実測: 8回・42秒・23.7k トークン）。
+ *
+ * @param {string} hookEventName 実在するイベント名
+ * @param {string} message 本文
+ * @param {object} [extra] 併せて出す追加フィールド
+ */
+function notify(hookEventName, message, extra = {}) {
+  emit({
+    ...extra,
+    systemMessage: message,
+    hookSpecificOutput: {
+      ...(extra.hookSpecificOutput || {}),
+      hookEventName,
+      additionalContext: message,
+    },
+  });
+}
+
 module.exports = {
   SCHEMA_VERSION,
   CONFIG_RELATIVE_PATH,
@@ -108,4 +139,5 @@ module.exports = {
   loadConfig,
   git,
   emit,
+  notify,
 };

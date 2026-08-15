@@ -9,6 +9,7 @@ secrets/
 .claude/settings.local.json
 .claude/.session-context.json
 .claude/.pre-commit-head
+.claude/.subagent-touch.json
 .claude/.harness-update/
 
 # 注: .claude/harness-baseline.json は **コミットする**。

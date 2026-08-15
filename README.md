@@ -159,7 +159,7 @@ core の hooks / skills は**すべてこのファイルを読んで動く**。�
 > ⚠️ **`enabledPlugins` は初回起動ではプラグインを導入しない**（実測）。
 > `extraKnownMarketplaces` が行うのは marketplace の登録とクローンまでで、
 > **導入は `claude plugin install` が必須**。導入確認は `/plugin` と `/` で行う
-> （SessionStart フックの `[harness] ...` は `additionalContext` のため画面に出ない）。
+> （起動時の `[harness] <環境> / config OK` の1行でも分かる。harness-core 0.5.0 以降）。
 >
 > 手順・確認方法・つまずいたときの対処は
 > **[docs/guide/セットアップガイド.md](docs/guide/セットアップガイド.md)** に集約してある。

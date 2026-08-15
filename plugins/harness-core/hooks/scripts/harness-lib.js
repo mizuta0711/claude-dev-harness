@@ -44,6 +44,19 @@ const CONFIG_RELATIVE_PATH = path.join(".claude", "harness.config.json");
 const HEAD_MARKER_RELATIVE_PATH = path.join(".claude", ".pre-commit-head");
 
 /**
+ * サブエージェントが動いたことを記録する場所。
+ *
+ * SubagentStop（`subagent-stop-diff`）が書き、PreToolUse（`pre-commit-check`）が
+ * コミット時に読んで消す。
+ *
+ * **なぜファイル経由なのか**: SubagentStop には通知経路が無いことが実測で分かったため
+ * （`systemMessage` は画面に出ず、`additionalContext` は親に届かないうえサブエージェントを
+ * ループさせる）。**届くイベントまで情報を持ち越す**しかない。
+ * コミットは `pre-commit-check` が確実に捕まえるので、そこで合流させる。
+ */
+const SUBAGENT_MARKER_RELATIVE_PATH = path.join(".claude", ".subagent-touch.json");
+
+/**
  * プロジェクトルート。Claude Code は CLAUDE_PROJECT_DIR を渡すが、
  * 単体テストや手動実行では未設定なので cwd にフォールバックする。
  */
@@ -265,9 +278,91 @@ function consumeHeadMarker() {
   return value || null;
 }
 
+/**
+ * サブエージェントが動いたことを記録する（追記式）。
+ *
+ * 同じコミットまでに複数のサブエージェントが動くのが普通なので、**上書きせず足す**。
+ * 記録は「どのエージェントが」「何ファイル触った時点で終わったか」だけ。
+ * 差分そのものは記録しない（コミット時点で `git status` を見れば足りる）。
+ */
+function writeSubagentMarker(entry) {
+  const file = path.join(projectDir(), SUBAGENT_MARKER_RELATIVE_PATH);
+  let list = [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+    if (Array.isArray(parsed)) list = parsed;
+  } catch {
+    /* 無い・壊れている → 新規で作る */
+  }
+  list.push(entry);
+  // 際限なく増やさない（同一コミット内で何十回も回ることは想定しない）
+  if (list.length > 20) list = list.slice(-20);
+  try {
+    fs.writeFileSync(file, JSON.stringify(list));
+  } catch {
+    /* .claude/ が無い等。記録できなくても作業は止めない（fail-open） */
+  }
+}
+
+/**
+ * サブエージェントの記録を読んで消す。
+ * @returns {Array<{agent: string, files: number}>} 記録が無ければ空配列
+ */
+function consumeSubagentMarker() {
+  const file = path.join(projectDir(), SUBAGENT_MARKER_RELATIVE_PATH);
+  let list = [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+    if (Array.isArray(parsed)) list = parsed;
+  } catch {
+    return [];
+  }
+  try {
+    fs.unlinkSync(file);
+  } catch {
+    /* 消せなくても判定には影響しない */
+  }
+  return list;
+}
+
 /** hook の JSON 出力（1回だけ呼ぶ） */
 function emit(payload) {
   console.log(JSON.stringify(payload));
+}
+
+/**
+ * 通知を**2経路とも**出す（#23 / 2026-08-15 の実測に基づく）。
+ *
+ * | 経路 | 届く先 |
+ * |------|--------|
+ * | `systemMessage` | **ユーザーの画面** |
+ * | `hookSpecificOutput.additionalContext` | **Claude の文脈** |
+ *
+ * 片方だけでは必ず片側に届かない。**同時に出せば両方に届く**ことを実測で確認した
+ * （SessionStart / PreToolUse / PostToolUse の Bash・Write・Task で確認）。
+ *
+ * > 経緯: D5（`b22c887`）は「`systemMessage` は PostToolUse では画面に出ない」と判断して
+ * > `additionalContext` へ**移した**が、これは誤りだった（同じ Claude Code v2.1.232 で出る）。
+ * > 移したことで今度はユーザーの画面から消えていた（#23）。**どちらか一方に賭けない。**
+ *
+ * ⚠️ **SubagentStop では使わないこと。** `additionalContext` を返すと
+ * サブエージェントの停止がキャンセルされ、ループする（実測: 8回・42秒・23.7k トークン）。
+ * しかも親の文脈には届かない。SubagentStop に通知経路は無い（`subagent-stop-diff.js` を参照）。
+ *
+ * @param {string} hookEventName 実在するイベント名（"PreToolUse" / "PostToolUse" 等）
+ * @param {string} message 本文
+ * @param {object} [extra] 併せて出す追加フィールド（`continue` 等）
+ */
+function notify(hookEventName, message, extra = {}) {
+  emit({
+    ...extra,
+    systemMessage: message,
+    hookSpecificOutput: {
+      ...(extra.hookSpecificOutput || {}),
+      hookEventName,
+      additionalContext: message,
+    },
+  });
 }
 
 /** 素通り（何も出力しない） */
@@ -281,9 +376,12 @@ module.exports = {
   MAX_COMMAND_MS,
   CONFIG_RELATIVE_PATH,
   HEAD_MARKER_RELATIVE_PATH,
+  SUBAGENT_MARKER_RELATIVE_PATH,
   headCommit,
   writeHeadMarker,
   consumeHeadMarker,
+  writeSubagentMarker,
+  consumeSubagentMarker,
   projectDir,
   readPayload,
   toolCommand,
@@ -296,5 +394,6 @@ module.exports = {
   run,
   errorExcerpt,
   emit,
+  notify,
   passThrough,
 };

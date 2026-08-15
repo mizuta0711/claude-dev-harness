@@ -17,6 +17,73 @@ docs 影響: なし
 
 「あり」と書いたものは、その版を push する前に更新して**各文書冒頭の「対応ハーネス版」を上げる**。
 
+## [Unreleased] — 還元 #22 / #23（フック通知の可視性を実測で決着させる）
+
+**イベント横断の実測（Claude Code v2.1.232 / Windows・ProjectTemplete の実測キット）で
+通知の届き方を確定させた。** これにより D5 の #17b の結論を**訂正**する。
+
+| イベント | `systemMessage`（画面） | `additionalContext`（Claude の文脈） |
+|---------|------------------------|-----------------------------------|
+| SessionStart | ✅ | ✅ |
+| PreToolUse | ✅ | ✅ |
+| PostToolUse（Bash / Edit / Write / Task） | ✅ | ✅ |
+| SubagentStop | ❌ | ❌ 親には届かない。**サブエージェント自身へ戻り、停止をキャンセルしてループする**（実測: 8回・42秒・23.7k トークン） |
+
+> ### ⚠️ D5（`b22c887`）の #17b は誤りだった
+>
+> 「`systemMessage` は PostToolUse では画面に出ない」と判断して `additionalContext` へ**移した**が、
+> **同じ Claude Code v2.1.232 で出る**。バージョン差ではなく**切り分けの誤り**である。
+> 当時は「`--fix` は効くのに通知が来ない」という**1点の観測から出力形式を原因と断定**し、
+> 他の原因を潰していなかった。結果として**ユーザーの画面から通知を自分で消していた**（#23）。
+>
+> §8 の教訓「1点の観測から一般化しない」の3例目。**片方の経路に賭けない**という形で構造的に潰した。
+
+### harness-core 0.5.0
+
+#### Fixed
+- **通知を2経路とも出すようにした**（#23）。`harness-lib.js` に **`notify(hookEventName, message)`**
+  を追加し、`systemMessage`（画面）と `hookSpecificOutput.additionalContext`（Claude の文脈）へ
+  **同じ本文を同時に出す**。対象は `pre-commit-check` / `post-commit-doc-check`
+- **ブロック時も画面に出るようにした**。`permissionDecisionReason` は Claude には届くが、
+  同じ内容を `systemMessage` にも載せてユーザーにも見えるようにした
+
+#### Changed
+- **`subagent-stop-diff` を「通知」から「記録」へ変更**（#22）。SubagentStop には通知経路が無いため、
+  この場では**何も出さず** `.claude/.subagent-touch.json` に `{agent, files}` を追記し、
+  **`pre-commit-check` がコミット時に読み出して通知へ添える**
+  > 移設先として PostToolUse（`Task`）も検証した。画面には出るが、**サブエージェントが
+  > 背景実行の場合は起動直後に発火する**ため「終了時点の変更ファイル数」には使えない。
+  > **届くイベントまで情報を持ち越す**方式にした。合流先をコミット時にしたのは、
+  > 差分確認の督促が**最も効いてほしい瞬間**だから
+  - **ブロックした場合は記録を書き戻す。** コミットが成立していない以上、次の試行でも出す
+    （繰り返し出ても誤警報にならない ─ §8「安全弁は正常な操作で鳴らないことが要件」）
+  - 記録が無ければ従来どおり**完全に無出力**（fail-open）
+
+### harness-nextjs 0.2.1
+
+#### Fixed
+- `post-edit-lint` の通知を2経路とも出すようにした（#23）。**`Edit` / `Write` の PostToolUse でも
+  `systemMessage` が画面に出ることを実測で確認**したうえでの復旧
+- `pre-migrate-backup` の情報通知（初回スキップ / バックアップ完了）も2経路へ
+
+### harness-unity 0.2.1
+
+#### Fixed
+- `pre-commit-cs-check` の通知を2経路とも出すようにした（#23）。エラーでブロックする場合も、
+  理由が**ユーザーの画面に出る**ようになった
+
+### テンプレート層 / docs
+
+#### Changed
+- `templates/base/.gitignore` に `.claude/.subagent-touch.json` を追加
+- `docs/harness-config-contract.md` に §6-3（記録の受け渡し）と **§6-4（通知の届き方の実測表）** を追加
+- `docs/diagrams/05_フック発火タイミング図.md` の「通知が届かない経路」を実測に合わせて全面改訂
+- `docs/guide/運用ガイド.md` §5-3 を「通知は画面に出ない」から**実際の届き方**へ改訂
+
+docs 影響: あり（`harness-config-contract.md` / `diagrams/05` / `guide/運用ガイド.md` —
+いずれも本エントリで更新済み。`templates/base/.gitignore` の変更は利用側で
+`/harness-core:harness-update` が要る）
+
 ## [Unreleased] — 還元 A（日本語校正 — AI が書いた文章の品質ゲート）
 
 ### harness-core 0.4.0

@@ -105,7 +105,24 @@ if (input.source === "compact") {
 
 if (!lines.length) process.exit(0);
 
+/**
+ * 画面には**1行だけ**出す（#23）。
+ *
+ * SessionStart の `systemMessage` は画面に出ることが実測で分かったが、
+ * 状況の詳細（未プッシュ数・進行中の設計書・コンパクト前の文脈）は
+ * **Claude が使うための情報**であって、毎回の起動で人に読ませるものではない。
+ * 人が知りたいのは **「ハーネスが載っているか」**の一点なので、そこだけを出す。
+ *
+ * これで「導入できたのか分からない」（C1 のつまずき）が起動時に解消する。
+ * 設定不在の警告は**見逃されると全機能が黙って素通りする**ため、画面にも出す。
+ */
+const screen =
+  cfg.status === "ok"
+    ? `[harness] ${cfg.config?.environment || "environment 未設定"} / config OK`
+    : `[harness] ⚠️ ${cfg.message}`;
+
 lib.emit({
+  systemMessage: screen,
   hookSpecificOutput: {
     hookEventName: "SessionStart",
     additionalContext: lines.join("\n"),

@@ -44,12 +44,7 @@ if (previousHead) {
 const { status, config, message } = lib.loadConfig();
 if (status === "missing" || status === "invalid") lib.passThrough();
 if (status === "newer") {
-  lib.emit({
-    hookSpecificOutput: {
-      hookEventName: "PostToolUse",
-      additionalContext: `[doc-sync] ${message}`,
-    },
-  });
+  lib.notify("PostToolUse", `[doc-sync] ${message}`);
   process.exit(0);
 }
 
@@ -82,13 +77,12 @@ for (const trigger of triggers) {
 
 if (!hit.size) lib.passThrough();
 
-// **`systemMessage` は PostToolUse では画面に出ない**（C1 2周目で実測）。
-// SessionStart と同じ `hookSpecificOutput.additionalContext` で Claude へ渡す。
-lib.emit({
-  hookSpecificOutput: {
-    hookEventName: "PostToolUse",
-    additionalContext:
-      `[doc-sync] このコミットには ${[...hit].join("・")} の更新が必要な変更が含まれています。` +
-      `M/L 規模の作業であれば /harness-core:update-docs を実行してください。`,
-  },
-});
+// **2経路とも出す**（#23 / 2026-08-15 の実測）。
+// `systemMessage` はユーザーの画面に、`additionalContext` は Claude の文脈に届く。
+// C1 2周目は「PostToolUse では systemMessage が出ない」と判断して additionalContext へ
+// **移した**が、これは誤りだった（同じ v2.1.232 で出る）。片方に賭けない。
+lib.notify(
+  "PostToolUse",
+  `[doc-sync] このコミットには ${[...hit].join("・")} の更新が必要な変更が含まれています。` +
+    `M/L 規模の作業であれば /harness-core:update-docs を実行してください。`
+);

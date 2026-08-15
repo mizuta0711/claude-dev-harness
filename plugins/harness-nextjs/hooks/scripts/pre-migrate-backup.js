@@ -165,13 +165,14 @@ if (!runsPrismaMigrate(command)) {
 const root = lib.projectDir();
 
 if (isFirstMigration(root)) {
-  lib.emit({
-    systemMessage:
-      "初回マイグレーションのため DB バックアップをスキップしました" +
+  // 画面と Claude の文脈の両方へ（#23）
+  lib.notify(
+    "PreToolUse",
+    "初回マイグレーションのため DB バックアップをスキップしました" +
       "（prisma/migrations/ に適用済みマイグレーションが無く、保護すべき既存データが存在しないため）。\n" +
       `2回目以降は ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP が必要になります。` +
-      "スキーマが固まった時点で記入してください（.claude/rules/prisma.md の「3点同期」）。",
-  });
+      "スキーマが固まった時点で記入してください（.claude/rules/prisma.md の「3点同期」）。"
+  );
   process.exit(0);
 }
 
@@ -199,7 +200,7 @@ try {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30000,
   });
-  lib.emit({ systemMessage: "DB backup completed before migrate." });
+  lib.notify("PreToolUse", "DB backup completed before migrate.");
 } catch (e) {
   const excerpt = ((e.stdout || "") + "\n" + (e.stderr || ""))
     .split("\n")
