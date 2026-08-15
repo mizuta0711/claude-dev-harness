@@ -68,6 +68,8 @@
 | ライフサイクル段階 | SK | Spec Kit の実現手段 | HN | ハーネスの実現手段 |
 |-----------------|----|-------------------|----|------------------|
 | プロジェクト原則 | ● | `/speckit.constitution` → `.specify/memory/constitution.md` | ● | `constitution.md`（変更にユーザー承認必須・原則の優先順位を明記） |
+| **設計方針の蓄積** | — | 無い。機能ごとの `plan.md` に閉じ、**横断する設計判断の置き場が無い** | ● | `.claude/01_development_docs/` 等（`projectDocs.policy`）。**Stage 2 が既存方針との整合を検査**し、新たな判断は `complete-feature` が**書き戻しを強制**する |
+| **要件・ドメイン知識** | ◐ | `spec.md` に都度書く（機能をまたぐ知識の置き場は無い） | ● | `.claude/00_project/`（`projectDocs.requirements`）。**Stage 1 の入力**として読む |
 | **規模判定** | — | 無い。shorter / full の2経路を**人間が選ぶ** | ● | **S/M/L を AI が推測 → ユーザー承認**。5軸基準・UX変更は自動 L・スコープ拡大時の再判定 |
 | 要求・仕様（WHAT） | ● | `/speckit.specify` → `spec.md`（ユーザーストーリー） | ● | `new-feature` → 設計書 **Stage 1**（機能・画面設計） |
 | 曖昧さの解消 | ● | `/speckit.clarify`（plan 前推奨・複数回可） | ● | `new-feature` Step 2。`[NEEDS CLARIFICATION]` ＋ §3-3 未解決事項表に回答を記録 |
@@ -181,7 +183,7 @@ flowchart LR
 | コミット前 | **ゲートが無い**。壊れていてもコミットできる | — | PreToolUse hook が `git commit` を捕まえ `gates.preCommit` を実行。**失敗でブロック** | **自動** |
 | コミット後 | — | — | PostToolUse hook が変更を解析し**設計書更新の必要を通知** | **自動** |
 | 実装↔仕様の突合 | `/speckit.converge` を**思い出して叩く** | 人 | `update-docs`（変更駆動）＋ `sync-check`（全量照合）の二層 | AI |
-| 完了 | 工程が無い（`specs/` はそのまま残る） | — | `complete-feature` が**受け入れ基準の未チェックを見て完了を拒否** → `done` で報告 | AI |
+| 完了 | 工程が無い（`specs/` はそのまま残る） | — | `complete-feature` が**受け入れ基準の未チェック**と**設計方針への未反映**を見て完了を拒否 → `done` で報告 | AI |
 | push 前 | 工程が無い | — | `pre-push-check` が**台帳に未記録のコミットを検出して止める** | AI |
 | セッション跨ぎ | 工程が無い | — | SessionStart で文脈注入 / PreCompact で退避 | **自動** |
 
