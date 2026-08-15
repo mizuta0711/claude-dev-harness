@@ -19,6 +19,10 @@
       { "pattern": "schema\\.prisma$", "docs": ["テーブル定義書.md", "ER図.md"] }
     ]
   },
+  "projectDocs": {
+    "requirements": [],
+    "policy": [".claude/01_development_docs", ".claude/02_design_system"]
+  },
   "designDocs": {
     "dir": "docs/設計書",
     "ledger": "docs/設計書/.doc-sync.md",

@@ -62,7 +62,8 @@
 - push はフェーズ完了時、またはユーザーから指示された時のみ。軽微な修正のたびに push しない
 - サブエージェントの結果は**必ずメインで差分確認**してからコミットする。**ビルド成功 ≠ 正しい実装**
 - **CLAUDE.md の肥大化防止**: 追記前に「これは方針か実態か」を自問する。実態は `docs/設計書/`、
-  方針の詳細は `.claude/rules/` または constitution.md へ。全体で 300 行を超えたら整理対象
+  汎用の規約は `.claude/rules/`、**このプロジェクトの設計方針は `.claude/01_development_docs/`**、
+  不変原則は constitution.md へ。全体で 300 行を超えたら整理対象
 - 同じ手順を将来も繰り返しそうだと気づいたら、その場でスキル化を提案する
 
 ## ドキュメント構成
@@ -74,6 +75,8 @@
 | `constitution.md` | プロジェクトの不変原則（変更にはユーザー承認） | 極低 |
 | `.claude/rules/` | パス条件付きコーディング規約（該当ファイルを読むと自動ロード） | 低 |
 | `.claude/harness.config.json` | ハーネスの設定契約（コマンド・ゲート・設計書の軸） | 低 |
+| `.claude/00_project/` | **要件・ドメイン知識**（Stage 1 で読む）。`projectDocs.requirements` に登録する | 低 |
+| `.claude/01_development_docs/` `02_design_system/` | **このプロジェクトの設計方針**（Stage 2 で読む）。`projectDocs.policy` に登録する。書き方は [README](.claude/01_development_docs/README.md) | 低 |
 | `docs/設計書/` | **実態**の一覧・定義。軸は `harness.config.json` の `designDocs` が定義する | 高（コードと同期） |
 | `docs/features/` | 機能設計書（`yyyymmdd_機能名.md`） | 高 |
 | `docs/reviews/` | レビュー結果の記録（**手順書は置かない**） | 中 |

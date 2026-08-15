@@ -1,6 +1,6 @@
 {
   "name": "harness-nextjs",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Next.js 環境向けの開発ハーネス拡張。ブラウザテスト（Playwright MCP）・企画レビュー・編集後 lint・migrate 前バックアップを提供する。harness-core と併用する",
   "author": {
     "name": "mizuta0711"

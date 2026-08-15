@@ -17,6 +17,84 @@ docs 影響: なし
 
 「あり」と書いたものは、その版を push する前に更新して**各文書冒頭の「対応ハーネス版」を上げる**。
 
+## [0.6.0] harness-core / [0.3.0] harness-nextjs / [0.2.0] harness-wpf — 設計方針層の復活と②規約の回収
+
+統合時に脱落していた**設計方針層**を戻し、`03_library_docs/` から `.claude/rules/` への移設で
+痩せていた**環境共通の規約**を回収する。経緯は ProjectTemplete `docs/14_設計方針層_調査と導入計画.md`。
+
+> **背景（2件のリグレッション）**: 旧3テンプレートは全て `.claude/01_development_docs/` 等の
+> 設計方針スケルトンを配っていたが、プラグイン化の際に**テンプレート層から丸ごと欠落**していた。
+> また `03_library_docs/` は「汎用ガイドは不要」として落としたものの、その中の**規約**は
+> 移設先の rules に十分書かれておらず、実質的に失われていた（wpf 576行→109行 / nextjs 325行→148行）。
+
+### harness-core 0.6.0
+
+#### Added
+- **`projectDocs` 設定キー**（`requirements` / `policy`）— プロジェクトが育てる文書の場所を宣言する。
+  `designDocs`（＝実装の**現況**）とは別物で、こちらは「**これから何に従うか**」。
+  **未登録・空なら素通り**（fail-open）。`schemaVersion` は 1 のまま
+- **`new-feature` Step 2 に要件文書の参照**を追加 — Stage 1 の前に `projectDocs.requirements` を読み、
+  依頼内容と矛盾するドメイン制約が無いかを確認する
+- **`TEMPLATE.md` に §4-0「設計方針への書き戻し」**を追加 — Stage 2 で決めた「今後も従う設計判断」の
+  行き先を書く欄。ここが無いと決定が機能設計書に埋もれる
+- **`complete-feature` にゲート3（書き戻し確認）**を追加 — §4-0 に未反映が残っていたら完了を止める。
+  併せて `allowed-tools` に `Write` を追加（メニューから新規ファイルを起こせなかったため）
+- **`design-review` が `projectDocs` を読む** — `feature` は requirements、`tech` は policy と突き合わせ、
+  **Stage 2 が既存方針に反していないか**を検査する
+
+#### Changed
+- **`harness-update` が設計方針層を追従対象外にする**（`harness-diff.mjs` の `NEVER_TOUCH`）。
+  `.claude/01_development_docs/`（**`README.md` を除く**）/ `02_design_system/` / `00_project/` が対象。
+  除外しなければ、既存の大規模プロジェクト（6,500行級）で**差分が全て競合**になり finalize がブロックされる
+
+### templates（版番号なし）
+
+#### Added
+- **`base/.claude/01_development_docs/README.md`** — 設計方針層の運用ルールと**環境別の推奨軸メニュー**。
+  「必要になった時点でファイルを起こす」方式（空スケルトンの大量配布はしない）
+- **環境別の architecture 骨格** — nextjs/wpf は `01_architecture_design.md`、
+  **unity は `01_app_architecture.md`**（既存プロジェクトと rules の参照に合わせた別名）。
+  `create-project.mjs` は md をマージせず env が base を上書きするため、**base には置かない**
+- **`templates/nextjs/.devcontainer/devcontainer.json`** — 旧テンプレートにあり統合時に落ちていた。
+  `bypassPermissions` はコンテナ隔離を前提とした設定であり、**前提が崩れる使い方をする場合は削除する**旨を明記
+- `templates/nextjs/tools/README.md` / `tests/browser-evidence/.gitkeep` — 同じく取りこぼしの復帰
+
+#### Changed（②の規約を rules へ回収 — **埋めてから消す**）
+- **wpf `mvvm-viewmodel.md`**（37行 → 約140行）— `partial class` 必須（**忘れるとビルドが通らない**）/
+  `[ObservableProperty]` の命名規則と変更フック / `CanExecute` + `NotifyCanExecuteChanged` の定石 /
+  **非同期コマンド一式**（`IAsyncRelayCommand` / `CancellationToken` 自動供給 / 再入防止）/
+  **例外は ViewModel でログ化・Core ではキャッチしない** / Messenger / チェックリスト
+- **wpf `csharp-wpf.md`**（46行 → 約140行）— 非同期とスレッド（`.Result`/`.Wait()` 禁止 /
+  `ConfigureAwait` の判断基準 / Dispatcher の使い分け / `PeriodicTimer` / **冪等な停止パターン**）と、
+  **動的コード実行・プラグインのセキュリティ方針7項目**（64行 → 3行に圧縮されていたものを復元）
+- **wpf `xaml-ui.md`（新規）** — バインディング規約 / リソースとスタイル / ModernWpfUI セットアップ /
+  **デザイントークン**（セマンティックカラー・4px スペーシング・タイポグラフィ）/ IValueConverter /
+  再利用コンポーネント / よくある落とし穴。
+  **`ResourceDictionary.ThemeDictionaries` は WPF ではビルドエラー（MC3074）**、
+  **コンバータでブラシを `Freeze()`・キャッシュするとテーマ切替に追従しない**という2つのハマりどころを含む
+- **nextjs `state-management.md`（新規）** — Zustand の設計原則 / **ストアに入れるものと入れないものの判断基準** /
+  永続化の判断 / セレクターによる再レンダリング抑制 / ハイドレーション不一致。
+  移設時に rules へ**一切残っていなかった**もの
+- **nextjs `api.md`** — レスポンス形式の既定 / **ページネーションキーは `items` に統一** /
+  認証と **`userId` スコープ** / **N+1 クエリを作らない**（旧 `review-impl` の観点。改名時に落ちていた）
+- **nextjs `react-nextjs.md`** — レスポンシブの確認幅（**375px / 1280px**）/
+  インライン `style={{ width }}` の幅超過 / ストア利用時の注意
+
+#### Changed（波及）
+- `base/CLAUDE.md` のドキュメント構成表と肥大化防止の記述、`base/constitution.md` §4・§8 に設計方針層を追加
+- `docs/harness-config-contract.md` に **§8 `projectDocs`** を新設（`designDocs` との違いの対比表つき）
+- `docs/background/01_統合前後の差異.md` の Before/After 図に**欠落していた層**を明記し、修復内容を追記
+- `docs/diagrams/` 01（全体アーキテクチャ）/ 03（役割比較）/ 04（スキル実行シーケンス）/ 06（改善還元フロー）を更新。
+  06 には**③→② の昇格**（プロジェクトの設計方針が汎用と分かったら rules へ還元する）を追加
+- `guide/既存プロジェクト移行指示書.md` 1.1 — §3 の仕分け対象に `.claude/` 直下の文書群を追加。
+  **開発フロー文書は番号でなく中身で特定して削除し、CLAUDE.md の参照を張り替える**（番号は実プロジェクトで
+  振り直されており、CommSim では 08 が別ファイル）。§5 に `projectDocs` 登録、§8-2 に
+  **プロジェクト側 `TEMPLATE.md` への「書き戻し先」欄の追加**（同梱版を直しても届かないため）
+
+docs 影響: あり（harness-config-contract.md / guide/セットアップガイド.md / guide/運用ガイド.md /
+guide/既存プロジェクト移行指示書.md / background/01 / diagrams 01・03・04・06 / README.md / plugin-development.md
+— いずれも本エントリで更新済み）
+
 ## [Unreleased] — 既存プロジェクトの移行（C4 の実測1本目）
 
 ### docs（版番号なし）

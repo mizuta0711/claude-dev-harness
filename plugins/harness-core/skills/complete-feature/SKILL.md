@@ -3,7 +3,7 @@ name: complete-feature
 description: "機能設計書の完了処理。受け入れ基準と全タスクの完了を確認し、設計書の整合性チェックの後 completed/ へ移動する。"
 argument-hint: "[設計書ファイル名（省略時は一覧から選択）]"
 disable-model-invocation: true
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Edit, Bash(mv:*)"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Edit, Write, Bash(mv:*)"
 ---
 
 # 機能設計書の完了処理
@@ -32,6 +32,18 @@ M/L フローの最後に実行する。設計書の全タスクが完了した�
   - 動作確認で満たしたことを確認してチェックを入れる
   - 満たさないと決めた場合は、理由を書いて「対象外」に変更する（黙って消さない）
 - Stage 1 が `⚪ 不要`（M 規模）の場合はこのゲートをスキップする
+
+### ゲート3: 設計方針への書き戻し（Stage 2「4-0」相当）
+
+設計書の「4-0. 設計方針への書き戻し」表に **⚪ 未反映** が残っていたら**中断**する。
+
+- 未反映の項目を、`.claude/harness.config.json` の `projectDocs.policy` 配下の
+  指定ファイルへ反映してから ✅ に変える（該当ファイルが無ければ新規作成し、改訂履歴を付ける）
+- 反映しないと決めた場合は、理由を書いて行を「対象外」に変更する（黙って消さない）
+- 表が「なし」または存在しない場合、および `projectDocs.policy` が未登録の場合はスキップする
+
+> **なぜゲートにするか**: 「今後も従う設計判断」が機能設計書の中だけに残ると、
+> 次の機能を作るときに誰も見つけられない。完了時に設計方針へ移すことで初めて効く。
 
 ## Step 3: 整合性チェック
 

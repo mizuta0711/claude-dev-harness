@@ -18,6 +18,10 @@
       { "pattern": "^{{CORE_PROJECT}}/", "docs": ["サービス一覧.md"] }
     ]
   },
+  "projectDocs": {
+    "requirements": [],
+    "policy": [".claude/01_development_docs", ".claude/02_design_system"]
+  },
   "designDocs": {
     "dir": "docs/設計書",
     "ledger": "docs/設計書/.doc-sync.md",

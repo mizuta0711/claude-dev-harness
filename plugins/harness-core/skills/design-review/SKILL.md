@@ -41,12 +41,20 @@ grep -n "^## .*動作確認計画" {設計書パス}
 
 | モード | 読む範囲 |
 |-------|---------|
-| `feature` | メタ情報 + Stage 1 + 関連する `designDocs.docs` の該当文書 |
-| `tech` | メタ情報 + Stage 2 + 関連する `designDocs.docs` の該当文書 |
+| `feature` | メタ情報 + Stage 1 + 関連する `designDocs.docs` の該当文書 + `projectDocs.requirements` の見出し |
+| `tech` | メタ情報 + Stage 2 + 関連する `designDocs.docs` の該当文書 + `projectDocs.policy` の該当文書 |
 | (省略) | 設計書全体 + 関連する設計書 |
 
 `designDocs` は `.claude/harness.config.json` の `designDocs.docs`（`file` / `tracks` / `sources`）を見て決める。
 config が無い場合は `docs/設計書/` 配下から関連しそうな文書を推定する。
+
+**2種類の文書を混同しないこと**（どちらも config が正典。登録が無ければ素通りする）:
+
+| キー | 中身 | 検査の向き |
+|------|------|-----------|
+| `designDocs` | **実装の現況**（API一覧・ER図等） | 設計書の内容が実態と食い違っていないか |
+| `projectDocs.policy` | **プロジェクトの設計方針**（層構成・エラー処理方式等） | **Stage 2 が既存の方針に反していないか**。反するなら「方針を変えるのか、設計を直すのか」を明示させる |
+| `projectDocs.requirements` | **要件・ドメイン知識** | Stage 1 がドメイン制約・ビジネスルールに反していないか |
 
 ## Step 3: トレーサビリティ検査（全モード共通・軽量）
 

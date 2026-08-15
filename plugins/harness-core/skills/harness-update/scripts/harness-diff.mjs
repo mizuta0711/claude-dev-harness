@@ -55,6 +55,11 @@ const NEVER_TOUCH = [
   /^docs\/features\//,
   /^docs\/reviews\//,
   /^docs\/設計書\/(?!\.doc-sync\.md$)/, // 台帳以外の設計書は実態なので触らない
+  // 設計方針層。骨格は初回生成時のみ配り、以後の中身はプロジェクトが育てる。
+  // README.md だけはテンプレ所有（運用ルールと推奨軸メニュー）なので追従させる。
+  /^\.claude\/01_development_docs\/(?!README\.md$)/,
+  /^\.claude\/02_design_system\//,
+  /^\.claude\/00_project\//,
   /^\.claude\/harness-baseline\.json$/,
   /^\.claude\/\.harness-update\//,
 ];

@@ -31,6 +31,11 @@
     ]
   },
 
+  "projectDocs": {                     // 任意。プロジェクトが育てる文書の場所（§8）
+    "requirements": [],                //   要件・ドメイン知識（Stage 1 で読む）
+    "policy": [".claude/01_development_docs", ".claude/02_design_system"]  // 設計方針（Stage 2 で読む）
+  },
+
   "designDocs": {
     "dir": "docs/設計書",
     "ledger": "docs/設計書/.doc-sync.md",
@@ -58,6 +63,8 @@
 | `paths.docTriggers` | `post-commit-doc-check.js` | 直近コミットの変更ファイル（`/` 正規化済み）を `pattern` の正規表現で判定し、一致した `docs` を通知 |
 | `paths.source` | `pre-push-check` スキル | ソース変更を含まないコミットを台帳チェックから SKIP |
 | `designDocs.*` | `update-docs` / `sync-check` / `complete-feature` スキル | 照合対象の決定（`sources`）、粒度の決定（`tracks`）、記録先（`ledger`） |
+| `projectDocs.requirements` | `new-feature`（Step 2）/ `design-review feature` | Stage 1 の前にドメイン制約・ビジネスルールを読む。**未登録・空なら素通り** |
+| `projectDocs.policy` | `new-feature/TEMPLATE.md`（§4）/ `design-review tech` / `complete-feature`（ゲート3） | Stage 2 が既存の設計方針に反していないかを検査し、新たな設計判断を**完了時に書き戻させる**。**未登録・空なら素通り** |
 | `verification.*` | `done` / `code-review` スキル | 完了報告の「動作確認」行、レビュー後のリマインド文 |
 
 ## 3. fail-open の挙動（実装が保証すること）
@@ -181,3 +188,33 @@ hook は `CLAUDE_PROJECT_DIR` 環境変数があればそれを、無ければ `
 
 Unity テンプレートでは `create-project` が `"rootNamespace": "{{PROJECT_NAME}}"` を生成時に実値へ置換する。
 これにより、移植元の Unity テンプレートにあった **namespace `YourApp` のハードコード**（Phase 0 発見事項 F5）が解消されている。
+
+## 8. `projectDocs`（任意フィールド・プロジェクトが育てる文書の場所）
+
+**「これから何に従うか」を書いた文書の場所**をスキルへ教えるための**任意**フィールド。
+`designDocs`（＝**実装の現況**）とは別物なので混同しないこと。
+
+| 項目 | 内容 |
+|------|------|
+| 必須か | **任意**。無くてよい |
+| schemaVersion | **1 のまま**（`envOptions` と同じ扱い） |
+| 読む主体 | **スキルのみ**（`new-feature` / `design-review` / `complete-feature`）。hook は一切読まない |
+| 無い場合の挙動 | **その導線だけをスキップする（fail-open）**。ブロックしない |
+
+| キー | 中身 | 読まれる場面 |
+|------|------|-------------|
+| `requirements` | 要件・ドメイン知識（`.claude/00_project/` 等） | **Stage 1**（機能・画面設計）。`new-feature` Step 2 と `design-review feature` |
+| `policy` | このプロジェクトの設計方針（`.claude/01_development_docs/` `02_design_system/` 等） | **Stage 2**（技術設計）。`TEMPLATE.md` §4、`design-review tech`、`complete-feature` ゲート3 |
+
+いずれもディレクトリパスの配列。既定値は環境テンプレートが持つ（`requirements` は空、
+`policy` は設計方針層のディレクトリ）。
+
+### `designDocs` との違い
+
+| | `designDocs` | `projectDocs.policy` |
+|---|---|---|
+| 中身 | **実装の現況**（API一覧・ER図・テーブル定義書） | **設計方針**（層構成・依存方向・エラー処理方式） |
+| 誰が書くか | 実装のたびに AI が同期する | 設計判断が確定したときに書き戻す |
+| 検査の向き | 設計書の記述が実態と食い違っていないか | **Stage 2 が既存の方針に反していないか** |
+| 構造 | `{ file, tracks, sources }` のオブジェクト配列 | ディレクトリパスの文字列配列 |
+| harness-update | `.doc-sync.md` のみ追従 | **README.md のみ追従**（中身は project-owned） |

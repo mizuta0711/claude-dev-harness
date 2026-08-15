@@ -103,8 +103,17 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" apply CLAUDE.md .claude/rule
 
 ### 追従対象外（スクリプトが自動で除外する）
 
-`docs/features/` / `docs/reviews/` / `docs/設計書/`（`.doc-sync.md` を除く）は
-**プロジェクトの資産**であり、テンプレートが上書きしてはいけない。
+以下は**プロジェクトの資産**であり、テンプレートが上書きしてはいけない。
+
+| 対象 | 理由 |
+|------|------|
+| `docs/features/` / `docs/reviews/` | プロジェクトが作った成果物 |
+| `docs/設計書/`（`.doc-sync.md` を除く） | 実装の現況。テンプレートは骨格しか知らない |
+| `.claude/01_development_docs/`（**`README.md` を除く**） | 設計方針層。骨格は初回生成時のみ配り、中身はプロジェクトが育てる |
+| `.claude/02_design_system/` / `.claude/00_project/` | 同上 |
+| `.claude/harness-baseline.json` | 適用メタ情報（`finalize` が更新する） |
+
+> `01_development_docs/README.md` だけは**テンプレ所有**（運用ルールと推奨軸メニュー）なので追従する。
 
 ## Step 4: 記録
 

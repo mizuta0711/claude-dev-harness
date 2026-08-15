@@ -21,6 +21,10 @@
       { "pattern": "^Assets/Prefabs/|\\.prefab$", "docs": ["プレハブ一覧.md"] }
     ]
   },
+  "projectDocs": {
+    "requirements": [],
+    "policy": [".claude/01_development_docs"]
+  },
   "designDocs": {
     "dir": "docs/設計書",
     "ledger": "docs/設計書/.doc-sync.md",

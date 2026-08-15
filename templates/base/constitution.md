@@ -42,7 +42,8 @@ Stage 1（機能・画面設計）と Stage 2（技術設計）は、**ユーザ
 
 - 設計書の更新が不要なコミットも「更新不要（理由）」として台帳に記録する — 無記録は許さない
 - **未 push コミットの全ハッシュが台帳に載るまで push しない**
-- 同じ情報を2箇所に書かない（方針は `.claude/`、実態は `docs/設計書/`）
+- 同じ情報を2箇所に書かない。**方針は `.claude/`**（汎用の規約は `rules/`、
+  このプロジェクトの設計方針は `01_development_docs/`）、**実態は `docs/設計書/`**
 
 ## 5. バグ修正原則
 
@@ -89,8 +90,12 @@ hooks / skills は **fail-open** で実装する。
   - 手元で試すだけなら `claude plugin uninstall` → `install` → 再起動
   - プラグインの導入・更新・削除は**すべて `--scope project` を付ける**。
     既定の `user` に入れると二重登録になり、更新のたびに両方へ当てることになる
-- **テンプレート層**（CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` / docs 骨格）の
-  追従は `/harness-core:harness-update` で行う
+- **テンプレート層**（CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` /
+  設計方針層の骨格 / docs 骨格）の追従は `/harness-core:harness-update` で行う
+  - **設計方針層（`.claude/01_development_docs/` `02_design_system/` `00_project/`）の中身は追従対象外**。
+    骨格だけが初回に配られ、以後はプロジェクトが育てる
+  - **③→② の昇格**: 設計方針として書いた規約が「同じ環境の別プロジェクトにもそのまま貼れる」と
+    分かったら、`.claude/rules/` 相当としてハーネスへ還元する
 
 ## 9. このプロジェクト固有の原則
 

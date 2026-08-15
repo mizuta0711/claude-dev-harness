@@ -242,7 +242,7 @@ v.forEach(e=>console.log('  ',e.scope,e.version,e.projectPath||''))}"
 
 ## 5. テンプレート層（プラグインではない部分）の修正
 
-`CLAUDE.md` / `constitution.md` / `.claude/rules/` / `harness.config.json` / `docs/` 骨格は
+`CLAUDE.md` / `constitution.md` / `.claude/rules/` / `harness.config.json` / 設計方針層の骨格 / `docs/` 骨格は
 **プラグインではなくテンプレート層**であり、上記の手順では配布されない。
 
 - ハーネス側の修正: `templates/` を直して push する

@@ -67,8 +67,8 @@ claude-dev-harness/
 │   ├── harness-unity/
 │   └── harness-wpf/
 ├── templates/                         # 薄いテンプレート層
-│   ├── base/                          # 全環境共通（CLAUDE.md 共通部 / constitution.md / docs 骨格）
-│   ├── nextjs/                        # 環境差分（CLAUDE.section.md / rules / config / 設計書の枠）
+│   ├── base/                          # 全環境共通（CLAUDE.md 共通部 / constitution.md / 設計方針層 README / docs 骨格）
+│   ├── nextjs/                        # 環境差分（CLAUDE.section.md / rules / config / 設計方針の骨格 / 設計書の枠）
 │   ├── unity/
 │   └── wpf/
 ├── tools/create-project.mjs           # base + env を合成してプロジェクトを生成する
@@ -187,7 +187,7 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 | 改善の種類 | 入れる場所 | プロジェクトへの届き方 |
 |-----------|-----------|---------------------|
 | スキル・エージェント・フック | `plugins/harness-*/` | marketplace 経由。**版を上げて push → 利用側で `plugin update` → 再起動** |
-| CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` / docs 骨格 | `templates/` | `/harness-core:harness-update` で追従 |
+| CLAUDE.md / constitution.md / `.claude/rules/` / `harness.config.json` / 設計方針層の骨格 / docs 骨格 | `templates/` | `/harness-core:harness-update` で追従 |
 | ハーネス自体の仕様・設計記録 | `docs/` | （参照用） |
 
 ### なぜプロジェクト側で直さないのか
