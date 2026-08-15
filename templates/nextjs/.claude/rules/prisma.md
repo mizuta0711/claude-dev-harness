@@ -25,6 +25,24 @@ paths:
 > できてしまうため、`harness-nextjs` の `pre-migrate-backup` hook がこれを検出して
 > `prisma migrate` をブロックする。最初の migrate の前に必ず記入すること。
 
+## 補足情報の置き場（重要）
+
+> ⚠️ **`docs/設計書/テーブル定義書.md` に手書きで追記してはいけない。**
+> `generate-table-docs.ts` は `fs.writeFileSync` で**全文を上書き生成**するため、
+> 手書きの補注は次回生成時に**無言で消える**。
+
+補足したいこと（`Json` カラムの形状、値の意味、単位など）は **`schema.prisma` の `///` コメントに書く**。
+生成スクリプトがこれを「説明」列へ取り込むため、**そこが唯一の永続的な置き場**になる。
+
+```prisma
+model ChatMessage {
+  /// クイックリプライ候補。{ label: string, value: string }[] 形式
+  quickReplies Json?
+}
+```
+
+書いたら `npx tsx tools/scripts/generate-table-docs.ts` を実行し、説明列に反映されたことを確認する。
+
 ## 参照
 
 - テーブル定義の実態: [docs/設計書/テーブル定義書.md](../../docs/設計書/テーブル定義書.md) / [ER図.md](../../docs/設計書/ER図.md)
