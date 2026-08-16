@@ -9,8 +9,12 @@ paths:
 
 - **UI 状態は ViewModel が持ち、Composable は受け取って描くだけにする**（状態ホイスティング）。
   画面の Composable は「状態」と「イベントのラムダ」を引数に取る形を基本にする
-- ViewModel は `viewModel()` / `hiltViewModel()` で取得する。
-  **自分で `remember { MyViewModel() }` しない**（構成変更で作り直され、状態が消える）
+- ViewModel は `viewModel()` で取得する（**DI を導入している場合のみ** `hiltViewModel()` 等）。
+  **自分で `remember { MyViewModel() }` しない** — 構成変更で作り直されるうえ、
+  `onCleared()` が呼ばれず `viewModelScope` が畳まれない
+  <!-- 既存プロジェクトへ適用する場合: この行は**新規プロジェクト向けの既定**である。
+       すでに `remember` 保持が定着しているなら、規約を先に配らず「どちらへ寄せるか」を決めること
+       （混在が最も害が大きい）。DI 未導入のプロジェクトに `hiltViewModel()` を書かない。 -->
 - **画面をまたいで共有する状態は、共有したい範囲のスコープで ViewModel を取る**
   （ナビゲーショングラフ単位など）。画面ごとに取ると、戻ったときに**別インスタンスになる**
 - `remember` は「再コンポーズをまたいで保持したいもの」、`rememberSaveable` は
