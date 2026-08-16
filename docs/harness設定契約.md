@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.6.4 / harness-nextjs 0.3.1 / harness-unity 0.2.1 / harness-wpf 0.2.0 |
+| 対応ハーネス版 | harness-core 0.7.0 / harness-nextjs 0.3.1 / harness-unity 0.2.1 / harness-wpf 0.2.0 |
 | 最終更新 | 2026-08-16 |
 | 正典 | ProjectTemplete リポジトリ `docs/04_harness設定契約_仕様.md` |
 | 本書の役割 | 04仕様のうち **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
