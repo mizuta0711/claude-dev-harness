@@ -1,12 +1,13 @@
 {
   "name": "harness-nextjs",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Next.js 環境向けの開発ハーネス拡張。ブラウザテスト（Playwright MCP）・企画レビュー・編集後 lint・migrate 前バックアップを提供する。harness-core と併用する",
   "author": {
     "name": "mizuta0711"
   },
   "homepage": "https://github.com/mizuta0711/claude-dev-harness",
   "repository": "https://github.com/mizuta0711/claude-dev-harness",
+  "license": "MIT",
   "keywords": [
     "claude-code",
     "harness",

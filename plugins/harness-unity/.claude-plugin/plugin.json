@@ -1,12 +1,13 @@
 {
   "name": "harness-unity",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Unity 環境向けの開発ハーネス拡張。Unity MCP による動作確認スキル・ゲームデザインレビュー・コミット前 C# 静的検査を提供する。harness-core と併用する",
   "author": {
     "name": "mizuta0711"
   },
   "homepage": "https://github.com/mizuta0711/claude-dev-harness",
   "repository": "https://github.com/mizuta0711/claude-dev-harness",
+  "license": "MIT",
   "keywords": [
     "claude-code",
     "harness",
