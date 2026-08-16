@@ -182,7 +182,21 @@ Linux と Windows の両方で回す。
 | ファイル | 役割 |
 |---------|------|
 | `.claude/settings.json` | PreToolUse に `repo-guard.js` を登録 |
-| `.claude/hooks/repo-guard.js` | **`git add -A` / `git add .` を deny**（§1）／**`git push` 前に `claude plugin validate . --strict` を実行し、失敗したら deny**（§2・§3） |
+| `.claude/hooks/repo-guard.js` | 下表のとおり止める／知らせる |
+
+| 対象 | 扱い |
+|------|------|
+| `git add -A` / `.` / `--all` / `:/` | **deny**（§1） |
+| `git commit -a` / `-am` / `--all` | **deny**。追跡済みを全部巻き込むので**実害は `add -A` とほぼ同じ** |
+| `git stash`（退避する形。`list` / `show` / `pop` / `apply` / `drop` は通す） | **deny** |
+| `git checkout -- .` / `git restore .` / パス指定なしの `git clean` | **deny**（`git clean -n` は通す） |
+| **パス指定なしの `git commit -m`** | **警告のみ。** `git add <path>` の直後など正当な使い方があるため止めない |
+| `git push` 前の `claude plugin validate . --strict` | **deny**（§2・§3）。`claude` が無い場合は**そう言う**（版番号のせいにしない） |
+
+**判定は「コマンド位置」に限る。** 引用符・コメントの内側は対象外。
+このリポジトリでは禁止コマンド名は**頻出する説明対象**であり、
+**鳴りすぎる安全弁はいずれ外される**（`pre-commit-check.js:62`「安全弁は正常な操作で
+鳴らないことが要件」）。実際、初版は説明文の文字列で2回ブロックした。
 
 **配布物のプラグイン（`plugins/harness-core/hooks/`）には置かない。**
 自分が編集中のプラグインに自分の規律を依存させると、
