@@ -1,0 +1,53 @@
+name: CI
+
+# 判定ロジックの検査（R6）。
+# 依存パッケージを入れない方針なので `npm ci` は無い。`node --test` だけを回す。
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows とコンテナの両方で使われるハーネスなので、両方で回す。
+        # パス区切り・改行の扱いで壊れるのがこの層の典型的な事故。
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: node --test
+        run: node --test "tests/*.test.mjs"
+
+      - name: hooks の構文チェック
+        shell: bash
+        run: |
+          set -e
+          for f in $(find plugins .claude/hooks -name "*.js" 2>/dev/null); do
+            node --check "$f"
+          done
+          for f in $(find plugins tools -name "*.mjs" 2>/dev/null); do
+            node --input-type=module --check < "$f" || node --check "$f"
+          done
+
+  validate:
+    # marketplace マニフェストの整合。`claude` が無い環境ではスキップする
+    # （push 前の検査は repo-guard がローカルで担保している）。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: claude plugin validate --strict
+        run: |
+          if command -v claude >/dev/null 2>&1; then
+            claude plugin validate . --strict
+          else
+            echo "claude が無いためスキップ（ローカルの repo-guard が push 前に検査する）"
+          fi

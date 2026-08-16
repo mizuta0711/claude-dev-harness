@@ -24,7 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HARNESS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TEMPLATES_DIR = path.join(HARNESS_ROOT, "templates");
@@ -430,4 +430,10 @@ async function main() {
 `);
 }
 
-main().catch((e) => fail(e?.stack || String(e)));
+// エントリポイントとして起動されたときだけ実行する。
+// `import` されたとき（テスト）は純関数だけを取り出せるようにしておく。
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => fail(e?.stack || String(e)));
+}
+
+export { deepMerge };

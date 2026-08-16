@@ -131,6 +131,64 @@ guide 2本 / diagrams 2本 — いずれもパス参照の追随。**文書の�
 
 docs 影響: あり（README.md — 構成図から `Phase0持ち越し課題.md` を削除 / templates/README.md — 上記2点）
 
+## [Unreleased] — R6: 判定ロジックのテストと CI を入れる（第1便）
+
+**判定ロジックを検査する仕組みが1つも無かった。** 唯一の機械的検査である
+`claude plugin validate --strict` は**マニフェストの整合しか見ない**。
+実体は Node スクリプト群（12ファイル・約2,880行）で、**判定の中心は正規表現＝純関数**という、
+テストが最も効く形をしているのに、**ロジックは1行も検査されていなかった**。
+
+**プラグインの版番号は変わらない**（挙動を変えていないため）。
+
+### Added
+
+- **`tests/`（41ケース・`node --test`）**。依存パッケージなし（`node:test` / `node:assert` だけ）
+  | ファイル | 守るもの |
+  |---|---|
+  | `is-git-commit.test.mjs` | グローバルオプション付き `git commit` の取りこぼし。**unity 側の複製との乖離**も同時に見る |
+  | `created-branch-name.test.mjs` | 作成形と一覧・削除・改名形の切り分け（除外リストが長い） |
+  | `repo-guard.test.mjs` | `git add` の範囲指定／`git push` の対象ディレクトリ解決 |
+  | `classify.test.mjs` | 3点比較の5分類。**追従の中核で、壊れると無断上書きになる** |
+  | `deep-merge.test.mjs` | `settings.json` の合成（非破壊であることを含む） |
+  | `glob-to-regexp.test.mjs` | `paths.source` の一致判定（`**` と `*` の違い） |
+  | `create-project.smoke.test.mjs` | 3環境の生成で**未置換プレースホルダ 0 件** |
+- **`.github/workflows/ci.yml`**。`node --test` を **Linux と Windows の両方**で回す
+  （パス区切り・改行で壊れるのがこの層の典型的な事故）。
+  `claude plugin validate` は `claude` が無ければスキップする
+- **`CLAUDE.md` §4「判定ロジックは `tests/` で守る」**。
+  **CHANGELOG に「〜ケースで確認した」と書くなら同じものを `tests/` に置く**を明記
+
+### Fixed
+
+- **`post-edit-lint.js` がソースにリテラルの NUL バイトを含んでおり、git が binary 判定していた。**
+  `globToRegExp` が `**` の変換途中で NUL を目印に使っており、それを**ソースに直接**書いていた。
+  - 実害: **差分が一度もレビューできていなかった**（`b22c887` は
+    `Bin 3687 -> 4397 bytes / 1 file changed, 0 insertions(+), 0 deletions(-)`）。
+    `grep` もこのファイルを飛ばす
+  - **` ` のエスケープ表記に直した。** 実行時の値は同じ（テストで挙動を固定）
+  - `CLAUDE.md` §7 は「全ファイル UTF-8」と定めており、**その規約に反していた**
+
+### Changed
+
+- テストのため、5つのモジュールで**実行部を囲い、純関数を export した**。
+  囲わないと `require` した瞬間に stdin を読みに行って固まる
+  - `post-branch-notice.js` / `post-edit-lint.js` / `repo-guard.js` → `require.main === module`
+  - `harness-diff.mjs` / `create-project.mjs` → `import.meta.url` の比較
+  - **`harness-diff.mjs` は `pathToFileURL` の import 漏れで CLI 実行時に落ちる状態を1度作った。**
+    CLI と import の両方で確認して解消済み
+
+### 既知の挙動として固定したもの（直さない）
+
+- `isGitCommit` は **`git commit-tree` も拾う**（`\b` が `-` の前で成立する）。
+  plumbing で HEAD を動かさないため、ゲートが余計に走るだけ。
+  方針「**見逃しは不可・誤検知は許容**」に従い直さない
+- `repo-guard` の `findPush` は**引用符の内側も拾う**。これは **R3（誤検知）の既知の欠陥**で、
+  第2便で直す。**テストのケースは消さず、期待値を変えること**
+
+docs 影響: なし（`tests/README.md` を新設。`docs/` 配下の記述は変わらない）
+
+---
+
 ## [Unreleased] — H19: ハーネス自身に `.claude/` を置き、規律をフックで強制する
 
 **「規約は書いても守られない。真因はハーネスが自分自身をハーネスで守っていないこと」**（H19）への対応。

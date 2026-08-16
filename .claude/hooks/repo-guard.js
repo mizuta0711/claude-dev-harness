@@ -121,6 +121,26 @@ function resolveTargetDir(cmd, at) {
   return process.env.CLAUDE_PROJECT_DIR || process.cwd();
 }
 
+/**
+ * `git add` に「範囲まるごと」の指定が付いているか。
+ *
+ * `--dry-run` が付く形は対象外（実際にはステージしないため）。
+ */
+function isBlockedAdd(command) {
+  const m = /\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+add\b(?![^\n;&|]*--dry-run)([^\n;&|]*)/.exec(
+    command || ""
+  );
+  if (!m) return false;
+  return /(^|\s)(-A|--all|\.|:\/)(\s|$)/.test(m[1] || "");
+}
+
+/** `git push` の出現位置（無ければ -1）。対象ディレクトリの解決に位置が要る */
+function findPush(command) {
+  const m = /\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+|-C\s*\S+))*\s+push\b/.exec(command || "");
+  return m ? m.index : -1;
+}
+
+function main() {
 const payload = readPayload();
 if (!payload) process.exit(0);
 
@@ -128,9 +148,8 @@ const command = payload?.tool_input?.command || "";
 if (!command) process.exit(0);
 
 // --- 1. git add -A / git add . を止める（どのリポジトリでも） -----------------
-if (/\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+add\b(?![^\n;&|]*--dry-run)([^\n;&|]*)/.test(command)) {
-  const args = RegExp.$1 || "";
-  if (/(^|\s)(-A|--all|\.|:\/)(\s|$)/.test(args)) {
+{
+  if (isBlockedAdd(command)) {
     deny(
       "git add -A / git add . は使えません",
       "**コミットは必ずパス指定**です（`claude-dev-harness/CLAUDE.md` §1）。\n" +
@@ -148,10 +167,9 @@ if (/\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+add\b(?![^\n;&|]*--dry-run)([^\n;&|]
 //
 // 対象ディレクトリが marketplace を持つリポジトリのときだけ走る。
 // ProjectTemplete など普通のリポジトリへの push は素通りする。
-const pushRe = /\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+|-C\s*\S+))*\s+push\b/;
-const pushHit = pushRe.exec(command);
-if (pushHit) {
-  const dir = resolveTargetDir(command, pushHit.index);
+const pushAt = findPush(command);
+if (pushAt >= 0) {
+  const dir = resolveTargetDir(command, pushAt);
   if (!fs.existsSync(path.join(dir, ".claude-plugin", "marketplace.json"))) process.exit(0);
 
   let output = "";
@@ -185,3 +203,10 @@ if (pushHit) {
 }
 
 process.exit(0);
+}
+
+// フックとして起動されたときだけ実行する。
+// `require` されたとき（テスト）は判定関数だけを取り出せるようにしておく。
+if (require.main === module) main();
+
+module.exports = { isBlockedAdd, findPush, resolveTargetDir, toNativePath };

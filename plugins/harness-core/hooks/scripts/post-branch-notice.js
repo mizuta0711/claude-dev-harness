@@ -21,12 +21,6 @@
  */
 const lib = require("./harness-lib");
 
-const payload = lib.readPayload();
-if (!payload) lib.passThrough();
-
-const command = lib.toolCommand(payload);
-if (!command) lib.passThrough();
-
 /**
  * ブランチ作成コマンドかを判定し、指定された名前を返す（取れなければ空文字）。
  *
@@ -57,25 +51,39 @@ function createdBranchName(cmd) {
   return "";
 }
 
-const requested = createdBranchName(command);
-if (!requested) lib.passThrough();
+function main() {
+  const payload = lib.readPayload();
+  if (!payload) lib.passThrough();
 
-// 実際に切り替わったか（`git branch <name>` は作るだけで移動しない）
-const current = lib.git("branch --show-current", 3000);
+  const command = lib.toolCommand(payload);
+  if (!command) lib.passThrough();
 
-// リモートの既定ブランチ（origin/HEAD → origin/master 等）。取れなければ空
-const defaultRef = lib.git("symbolic-ref --short refs/remotes/origin/HEAD", 3000);
-const defaultBranch = defaultRef ? defaultRef.replace(/^origin\//, "") : "";
+  const requested = createdBranchName(command);
+  if (!requested) lib.passThrough();
 
-const parts = [`[branch] ブランチ \`${requested}\` を作成しました`];
-if (current && current !== requested) parts.push(`（現在は \`${current}\`）`);
-if (defaultBranch && requested !== defaultBranch) {
-  parts.push(`。既定ブランチは \`${defaultBranch}\` で、このブランチには upstream がありません`);
+  // 実際に切り替わったか（`git branch <name>` は作るだけで移動しない）
+  const current = lib.git("branch --show-current", 3000);
+
+  // リモートの既定ブランチ（origin/HEAD → origin/master 等）。取れなければ空
+  const defaultRef = lib.git("symbolic-ref --short refs/remotes/origin/HEAD", 3000);
+  const defaultBranch = defaultRef ? defaultRef.replace(/^origin\//, "") : "";
+
+  const parts = [`[branch] ブランチ \`${requested}\` を作成しました`];
+  if (current && current !== requested) parts.push(`（現在は \`${current}\`）`);
+  if (defaultBranch && requested !== defaultBranch) {
+    parts.push(`。既定ブランチは \`${defaultBranch}\` で、このブランチには upstream がありません`);
+  }
+
+  lib.notify(
+    "PostToolUse",
+    parts.join("") +
+      "。**この作成をユーザーに報告すること**（作業の完了報告に1行含める）。" +
+      "ユーザーが知らないブランチにコミットが積み上がると、push もマージもされないまま残ります。"
+  );
 }
 
-lib.notify(
-  "PostToolUse",
-  parts.join("") +
-    "。**この作成をユーザーに報告すること**（作業の完了報告に1行含める）。" +
-    "ユーザーが知らないブランチにコミットが積み上がると、push もマージもされないまま残ります。"
-);
+// フックとして起動されたときだけ実行する。
+// `require` されたとき（テスト）は判定関数だけを取り出せるようにしておく。
+if (require.main === module) main();
+
+module.exports = { createdBranchName };

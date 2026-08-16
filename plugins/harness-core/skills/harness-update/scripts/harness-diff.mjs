@@ -43,6 +43,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const REPO_URL = "https://github.com/mizuta0711/claude-dev-harness.git";
 const CONFIG_REL = ".claude/harness.config.json";
@@ -608,6 +609,9 @@ function cmdFinalize(opts) {
 // main
 // ============================================================
 
+// エントリポイントとして起動されたときだけ実行する（require されたときは判定関数を取り出せるように）
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
 const opts = parseArgs(process.argv.slice(2));
 try {
   if (opts.command === "analyze") cmdAnalyze(opts);
@@ -617,3 +621,6 @@ try {
 } catch (e) {
   fail(e?.message || String(e));
 }
+}
+
+export { classify };
