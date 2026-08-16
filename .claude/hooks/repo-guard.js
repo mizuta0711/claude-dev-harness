@@ -80,22 +80,44 @@ function toNativePath(p) {
 }
 
 /**
- * コマンドが実際に作用するディレクトリを解く。
+ * `git push` が実際に作用するディレクトリを解く。
  *
  * `cd X && git push` のように**セッションのプロジェクト外**を操作する形が常態なので、
  * `CLAUDE_PROJECT_DIR` だけを見ると**対象を取り違える**。
+ *
+ * ⚠️ **`cd` は「最初の1つ」ではなく「push の直前の1つ」を採る。**
+ * `cd A && ... && cd B && git push` で最初の `cd A` を採ると、
+ * **A を検査して B へ push する**という最悪の取り違えが起きる。
+ * 実際これで検査が素通りした（2026-08-16・初版の欠陥）。
+ *
+ * ⚠️ **残る穴**: Bash ツールの作業ディレクトリは呼び出しをまたいで保持されるが、
+ * フックは**そのコマンド文字列しか見えない**。前の呼び出しで `cd` して、
+ * 次の呼び出しで裸の `git push` を打つと `CLAUDE_PROJECT_DIR` に落ちて**取り違える**。
+ * 対象リポジトリへの操作は **`cd X && git push` を1コマンドにまとめる**こと。
+ *
+ * @param {string} cmd コマンド全体
+ * @param {number} at `git push` がコマンド内で始まる位置
  */
-function resolveTargetDir(cmd) {
-  const viaC = cmd.match(/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/);
+function resolveTargetDir(cmd, at) {
+  // `git -C X push` は push 自身に付くので最優先
+  const viaC = cmd.slice(at).match(/^\s*git\s+(?:-[cC]\s*\S+\s+|--\S+\s+)*-C\s+("[^"]+"|'[^']+'|\S+)/);
   if (viaC) {
     const d = toNativePath(viaC[1]);
     if (fs.existsSync(d)) return d;
   }
-  const viaCd = cmd.match(/(?:^|[;&|]\s*)cd\s+("[^"]+"|'[^']+'|\S+)/);
-  if (viaCd) {
-    const d = toNativePath(viaCd[1]);
+
+  // push より前にある `cd` のうち**最後のもの**
+  const re = /(?:^|[;&|]\s*)cd\s+("[^"]+"|'[^']+'|\S+)/g;
+  let last = null;
+  for (let m; (m = re.exec(cmd)) !== null; ) {
+    if (m.index >= at) break;
+    last = m[1];
+  }
+  if (last) {
+    const d = toNativePath(last);
     if (fs.existsSync(d)) return d;
   }
+
   return process.env.CLAUDE_PROJECT_DIR || process.cwd();
 }
 
@@ -126,8 +148,10 @@ if (/\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+add\b(?![^\n;&|]*--dry-run)([^\n;&|]
 //
 // 対象ディレクトリが marketplace を持つリポジトリのときだけ走る。
 // ProjectTemplete など普通のリポジトリへの push は素通りする。
-if (/\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+push\b/.test(command)) {
-  const dir = resolveTargetDir(command);
+const pushRe = /\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+|-C\s*\S+))*\s+push\b/;
+const pushHit = pushRe.exec(command);
+if (pushHit) {
+  const dir = resolveTargetDir(command, pushHit.index);
   if (!fs.existsSync(path.join(dir, ".claude-plugin", "marketplace.json"))) process.exit(0);
 
   let output = "";
