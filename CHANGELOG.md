@@ -35,6 +35,47 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [Unreleased] — `docs/reference/` を新設し、docs 直下の3本を読者別に整理
+
+**「`docs` 直下にこのファイル名であるけど、目的が良く分からない」**（ユーザー指摘）への対応。
+**プラグインの版番号は変わらない**（配布物の変更は `templates/base/constitution.md` の
+リンク1本のみで、内容は変わらないため）。
+
+### 何が問題だったか
+
+`docs/` は `guide/` `diagrams/` `background/` の3ディレクトリと、**直下に3ファイル**という構成だった。
+直下の3本は名前が**設計者の語彙**（「契約」「ベースライン」）で、読者と用途が名前から読み取れない。
+
+さらに**索引に載っていなかった**のが効いていた。
+
+| 索引 | 想定読者 | 載っていたもの |
+|------|---------|--------------|
+| `README.md` の「ドキュメント」表 | **利用者** | guide / diagrams / background のみ。**3本とも無い** |
+| `CLAUDE.md` の「作業前に読むもの」表 | ハーネス開発者 | プラグイン開発手順 / harness設定契約（**permissionsベースラインは無い**） |
+
+`permissionsベースライン.md` は**どちらの索引にも無く**、構成図の1行コメントでしか存在を知れなかった。
+
+### Added
+
+- **`docs/reference/`** — **ハーネスを直す人・設定を触る人**向けの層。
+  `guide/`（使う人向けの読み物）と対になる。**読み物ではなく、必要になったときに引くもの**
+
+### Changed
+
+- **`docs/` 直下の3本を `docs/reference/` へ移動**（`プラグイン開発手順.md` /
+  `harness設定契約.md` / `permissionsベースライン.md`）。**docs 直下にファイルが無くなり、
+  4ディレクトリすべてが読者と用途を名前で示す**構成になった
+- **`README.md`** — ドキュメント表に `reference/` の行と、3本の「**引くのはいつか**」の表を追加。
+  構成図も新しい階層に合わせた
+- **`CLAUDE.md`** — 「作業前に読むもの」に `permissionsベースライン.md` の行を追加（索引の穴を埋めた）
+- 参照の張り替え: `templates/README.md` / `templates/base/constitution.md`（GitHub URL）/
+  `docs/guide/` 2本 / `docs/diagrams/` 2本。**リンク切れが無いことを機械的に確認**した
+  （全 `.md` の相対リンクを解決するスクリプトで検査。残存3件は生成時に合成される
+  `01_development_docs/README.md` への参照で、誤検出）
+
+docs 影響: あり（README.md / CLAUDE.md / templates/README.md / templates/base/constitution.md /
+guide 2本 / diagrams 2本 — いずれもパス参照の追随。**文書の内容は変えていない**）
+
 ## [Unreleased] — Phase 0 持ち越し課題を完了・削除し、判断記録を `background/` へ退避
 
 `docs/Phase0持ち越し課題.md` の未了項目（⬜）を**現物と1件ずつ突き合わせ**、

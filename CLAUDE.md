@@ -9,8 +9,9 @@
 
 | 文書 | いつ読むか |
 |------|-----------|
-| [docs/プラグイン開発手順.md](docs/プラグイン開発手順.md) | プラグイン（`plugins/`）を直すとき。**反映手順・版番号・スコープ** |
-| [docs/harness設定契約.md](docs/harness設定契約.md) | `harness.config.json` の契約に触れるとき |
+| [docs/reference/プラグイン開発手順.md](docs/reference/プラグイン開発手順.md) | プラグイン（`plugins/`）を直すとき。**反映手順・版番号・スコープ** |
+| [docs/reference/harness設定契約.md](docs/reference/harness設定契約.md) | `harness.config.json` の契約に触れるとき |
+| [docs/reference/permissionsベースライン.md](docs/reference/permissionsベースライン.md) | テンプレートの `permissions` を触るとき。**単純化してはいけない4点がある** |
 | [docs/background/](docs/background/) | 「なぜこの設計なのか」で迷ったとき |
 | [CHANGELOG.md](CHANGELOG.md) | 変更を入れる前後（**書式の規約が冒頭にある**） |
 

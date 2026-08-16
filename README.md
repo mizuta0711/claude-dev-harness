@@ -48,7 +48,16 @@ claude plugin install harness-<env>@dev-harness --scope project   # ★必須
 | [既存プロジェクト移行指示書](docs/guide/既存プロジェクト移行指示書.md) | **旧テンプレートからの移行**。エージェントにそのまま渡す手順書 |
 | [オプションMCP追加ガイド](docs/guide/オプションMCP追加ガイド.md) | 標準以外の MCP を足すとき |
 | [図（diagrams/）](docs/diagrams/) | 全体構造 / 開発フロー / 役割比較 / スキル実行 / フック発火 / 改善還元 の6本 |
+| [リファレンス（reference/）](docs/reference/) | **ハーネスを直す人・設定を触る人**向け。読み物ではなく**必要になったときに引く**もの（下表） |
 | [背景（background/）](docs/background/) | **なぜこの設計なのか**（意思決定記録。**決定は書き換えず、差異の記載は現行版へ追従する**） |
+
+`reference/` の3本は読む場面がはっきり分かれる。
+
+| 文書 | 引くのはいつか |
+|------|--------------|
+| [プラグイン開発手順](docs/reference/プラグイン開発手順.md) | `plugins/` を直したとき。**版番号を上げないと利用側に届かない**・スコープ・キャッシュの扱い |
+| [harness設定契約](docs/reference/harness設定契約.md) | `.claude/harness.config.json` に手を入れるとき。**どのキーを書くと、どの hook / skill が何をするか** |
+| [permissionsベースライン](docs/reference/permissionsベースライン.md) | `.claude/settings.json` の `permissions` を変えるとき。とくに**既存プロジェクトへ後付けして衝突したとき** |
 
 ## 構成
 
@@ -74,12 +83,13 @@ claude-dev-harness/
 │   └── wpf/
 ├── tools/create-project.mjs           # base + env を合成してプロジェクトを生成する
 └── docs/                              # ハーネス自体の仕様・運用文書
-    ├── guide/                    # 使い方（セットアップ / オプション MCP）
+    ├── guide/                    # **使う人**向け（導入・運用・移行・オプション MCP）
+    ├── reference/                # **直す人・設定を触る人**向け（仕様と方針。必要なときに引く）
+    │   ├── プラグイン開発手順.md      # プラグインの修正・反映手順（版番号・スコープ・キャッシュ）
+    │   ├── harness設定契約.md         # harness.config.json の全フィールドと、それを読む hook / skill
+    │   └── permissionsベースライン.md # permissions の設計方針と、単純化してはいけない4点
     ├── diagrams/                 # 構造・フロー・フックの図（mermaid）
-    ├── background/               # なぜそうしたか（意思決定記録。決定は不変・差異の記載は追従）
-    ├── プラグイン開発手順.md      # プラグインの修正・反映手順（開発しながら直したいとき）
-    ├── harness設定契約.md         # harness.config.json の設定契約
-    └── permissionsベースライン.md # permissions の設計方針（単純化してはいけない点つき）
+    └── background/               # なぜそうしたか（意思決定記録。決定は不変・差異の記載は追従）
 ```
 
 ### 環境プラグイン
@@ -138,7 +148,7 @@ claude-dev-harness/
 ## 設定契約 `.claude/harness.config.json`
 
 core の hooks / skills は**すべてこのファイルを読んで動く**。仕様は
-[docs/harness設定契約.md](docs/harness設定契約.md) を参照。
+[docs/reference/harness設定契約.md](docs/reference/harness設定契約.md) を参照。
 
 ## プロジェクトからの利用（marketplace 経由）
 
@@ -203,7 +213,7 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 
 1. 改善に気づいたら、**その場では直さずメモに残して開発を続ける**（区切りでまとめて対応する）
 2. 区切りでこのリポジトリを直す。手元での試し方は
-   **[docs/プラグイン開発手順.md](docs/プラグイン開発手順.md)** に手順がある
+   **[docs/reference/プラグイン開発手順.md](docs/reference/プラグイン開発手順.md)** に手順がある
 3. 影響範囲に応じてバージョンを上げる（semver）。`CHANGELOG.md` に記録する
 4. push する
 5. 各プロジェクトで `claude plugin marketplace update dev-harness` →
