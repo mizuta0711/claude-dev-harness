@@ -37,6 +37,7 @@
 | `/harness-core:complete-feature` | 機能設計書の完了処理。受け入れ基準を確認して `completed/` へ移動する |
 | `/harness-core:pre-push-check` | push 前チェック。未 push コミットが台帳に記録済みかを確認する |
 | `/harness-core:done` | 完了報告を定型テーブル形式で出力する |
+| `/harness-core:plugin-update` | プラグイン層（skills / agents / hooks）を最新版へ更新する。**再起動が要る** |
 | `/harness-core:harness-update` | テンプレート層を claude-dev-harness の最新へ追従させる |
 | `/harness-core:proofread-ja` | 日本語校正。AI が書いた文書の不自然な日本語を直す（文書を書き終えた区切りで） |
 

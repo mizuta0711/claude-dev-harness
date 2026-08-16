@@ -17,6 +17,29 @@ docs 影響: なし
 
 「あり」と書いたものは、その版を push する前に更新して**各文書冒頭の「対応ハーネス版」を上げる**。
 
+## harness-core 0.6.2 — `plugin-update` スキルを追加
+
+プラグイン層の更新を手順書から**スキル**に移した。
+
+### Added
+
+- **`/harness-core:plugin-update`**。導入済みのハーネスプラグインと**そのスコープ**を
+  `installed_plugins.json` から特定して更新し、**更新前後の版を表で報告**する。
+  ユーザーがやるのは**再起動だけ**になる。
+  - `scripts/plugin-versions.mjs` — 対象とスコープを確定させる。
+    Windows のドライブレター・区切り文字・末尾スラッシュを吸収して `projectPath` を照合する
+  - **`user` と `project` の重複登録を検出**して報告する（放置すると更新のたびに両方へ当てることになる）
+  - **テンプレート層は運ばない**ことと、**再起動してから `harness-update` を回す**ことを案内する
+    （再起動前に呼ぶと旧版の `harness-update` が動くため、スキルからは続けて呼ばない）
+
+**なぜスキルにしたか**: `claude plugin update` は**導入時と同じスコープ**を指定しないと
+`not installed at scope user` で失敗する。手で打つと `--scope project` を落とし、
+「更新したのに古いまま」になる。**実際にこの取りこぼしが起きた**ため、
+対象とスコープの特定を機械に寄せた。
+
+docs 影響: あり（guide/セットアップガイド.md §6-1・diagrams/06_改善還元フロー図.md 関門4・
+templates/base/CLAUDE.md のスキル一覧 — 本エントリで更新済み）
+
 ## harness-core 0.6.1 / harness-nextjs 0.3.1 — 節の特定を見出し名へ、フックの黙った fail-open を解消
 
 EngineerPotal の移行と3回の独立査読（棚卸しの査読1/査読2、移行本体の事後レビュー）からの還元。
