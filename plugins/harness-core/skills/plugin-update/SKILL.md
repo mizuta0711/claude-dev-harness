@@ -1,6 +1,6 @@
 ---
 name: plugin-update
-description: このプロジェクトに導入されているハーネスプラグイン（skills / agents / hooks）を最新版へ更新し、更新前後の版を表で報告する。テンプレート層（CLAUDE.md / rules / config）は対象外で、そちらは harness-update が扱う。
+description: このプロジェクトに導入されているハーネスプラグイン（skills / agents / hooks）を最新版へ更新し、更新前後の版を表で報告する。テンプレート層（CLAUDE.md / rules / config）は対象外で、そちらは harness-update が扱う。同梱の plugin-versions.mjs は --skill でスキルの SKILL.md のパスも引ける。
 allowed-tools: "Read, Glob, Bash, PowerShell"
 ---
 
@@ -83,6 +83,23 @@ Step 1 と同じコマンドをもう一度実行し、**更新後の版**を取
 ```
 
 **このスキルから `harness-update` を続けて呼ばないこと。** 再起動を挟まないと旧版が動く。
+
+## 付録: スキルの `SKILL.md` を引く（`--skill`）
+
+同梱スクリプトは**スキルの手順書のパスを引く**用途にも使える。
+**スラッシュコマンドが解決しないクライアント**（VS Code の Claude Code 拡張パネル等）で
+「スキルを実行して」と頼まれたときの経路である。
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/skills/plugin-update/scripts/plugin-versions.mjs" --skill harness-update
+# → C:\Users\...\.claude\plugins\cache\dev-harness\harness-core\0.6.2\skills\harness-update\SKILL.md
+```
+
+- 引くのは**導入済みの版**のキャッシュ。marketplace クローン（HEAD）とはずれうる
+- 環境プラグインのスキル（`browser-test` 等）も同じコマンドで引ける
+- 見つからない場合は探した場所を標準エラーに出して終了コード 1
+
+**使い方の規定は `CLAUDE.md`「スラッシュコマンドが解決しない環境での実行」にある。**
 
 ## やらないこと
 

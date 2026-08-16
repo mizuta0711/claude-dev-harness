@@ -7,8 +7,14 @@
  * このスクリプトが「何を・どのスコープで」更新すべきかを確定させる。
  *
  * 使い方:
- *   node <このファイル>            # 人間向けの表
- *   node <このファイル> --json     # JSON（スキルが読む用）
+ *   node <このファイル>                  # 人間向けの表
+ *   node <このファイル> --json           # JSON（スキルが読む用）
+ *   node <このファイル> --skill <名前>   # そのスキルの SKILL.md の絶対パスを出す
+ *
+ * `--skill` は、**スラッシュコマンドが解決しないクライアント**（VS Code の
+ * Claude Code 拡張パネル等）で「スキルを実行して」と頼まれたときに使う。
+ * スキルの実体は SKILL.md という手順書なので、パスさえ分かれば読んで従える。
+ * **導入済みの版**のキャッシュを引くので、marketplace クローン（HEAD）とずれない。
  *
  * 出力（--json）:
  *   {
@@ -23,7 +29,10 @@ import os from "node:os";
 import path from "node:path";
 
 const INSTALLED = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+const CACHE = path.join(os.homedir(), ".claude", "plugins", "cache");
 const asJson = process.argv.includes("--json");
+const skillIdx = process.argv.indexOf("--skill");
+const wantSkill = skillIdx >= 0 ? process.argv[skillIdx + 1] : null;
 
 /** Windows のドライブレター・区切り文字・末尾スラッシュを吸収して比較可能な形にする */
 function normalize(p) {
@@ -97,6 +106,24 @@ if (result.targets.length === 0) {
 emit();
 
 function emit() {
+  if (wantSkill) {
+    // 導入済みの版のキャッシュから SKILL.md を探す
+    // ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md
+    const tried = [];
+    for (const t of result.targets) {
+      const [pluginName, marketplace] = t.plugin.split("@");
+      const p = path.join(CACHE, marketplace, pluginName, t.version, "skills", wantSkill, "SKILL.md");
+      tried.push(p);
+      if (fs.existsSync(p)) {
+        console.log(p);
+        process.exit(0);
+      }
+    }
+    console.error(`スキル "${wantSkill}" が見つかりません。探した場所:`);
+    for (const p of tried) console.error(`  ${p}`);
+    if (tried.length === 0) console.error("  （このプロジェクトに導入されたプラグインがありません）");
+    process.exit(1);
+  }
   if (asJson) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     process.exit(0);

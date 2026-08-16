@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 対応ハーネス版 | harness-core 0.6.2 / harness-nextjs 0.3.1 / harness-unity 0.2.1 / harness-wpf 0.2.0 |
+| 対応ハーネス版 | harness-core 0.6.3 / harness-nextjs 0.3.1 / harness-unity 0.2.1 / harness-wpf 0.2.0 |
 | 最終更新 | 2026-08-16 |
 | 対象 | **標準以外の MCP を自分で足したい**とき |
 | 範囲外 | 環境プラグインが前提とする MCP（Playwright / Unity MCP）。→ [役割比較図 §MCP](../diagrams/03_役割比較図.md) と [セットアップガイド §4](セットアップガイド.md) |
