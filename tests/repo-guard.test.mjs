@@ -237,6 +237,70 @@ test("resolveTargetDir: 引用符の中の cd は採らない", () => {
 });
 
 // ---------------------------------------------------------------------------
+// R16: 版番号の上げ忘れ
+//
+// `claude plugin validate --strict` は marketplace と plugin.json の**一致しか見ない**。
+// 「中身を変えたのに版を据え置いた」は検出できず、第1便（9e240dc）が実際に通った。
+// ---------------------------------------------------------------------------
+test("pluginsTouched: plugins/<name>/ の変更からプラグイン名を拾う", () => {
+  assert.deepEqual(
+    guard.pluginsTouched([
+      "plugins/harness-core/hooks/scripts/a.js",
+      "plugins/harness-core/skills/x/SKILL.md",
+      "plugins/harness-nextjs/agents/b.md",
+      "docs/guide/c.md",
+      "templates/base/CLAUDE.md",
+      "CHANGELOG.md",
+    ]),
+    ["harness-core", "harness-nextjs"]
+  );
+  assert.deepEqual(guard.pluginsTouched([]), []);
+  assert.deepEqual(guard.pluginsTouched(["plugins/"]), [], "直下だけなら対象外");
+});
+
+test("pluginsTouched: Windows のパス区切りでも拾う", () => {
+  assert.deepEqual(
+    guard.pluginsTouched(["plugins\\harness-wpf\\agents\\x.md"]),
+    ["harness-wpf"]
+  );
+});
+
+test("pluginsMissingBump: 版が変わっていないものだけを返す", () => {
+  const touched = ["harness-core", "harness-nextjs"];
+  assert.deepEqual(
+    guard.pluginsMissingBump(
+      touched,
+      { "harness-core": "0.9.1", "harness-nextjs": "0.4.0" },
+      { "harness-core": "0.9.1", "harness-nextjs": "0.5.0" }
+    ),
+    ["harness-core"],
+    "据え置きだけを挙げる"
+  );
+  assert.deepEqual(
+    guard.pluginsMissingBump(
+      touched,
+      { "harness-core": "0.9.1", "harness-nextjs": "0.4.0" },
+      { "harness-core": "0.9.2", "harness-nextjs": "0.5.0" }
+    ),
+    [],
+    "両方上げていれば通す"
+  );
+});
+
+test("pluginsMissingBump: 新規プラグインと削除は対象外", () => {
+  assert.deepEqual(
+    guard.pluginsMissingBump(["new-plugin"], { "new-plugin": null }, { "new-plugin": "0.1.0" }),
+    [],
+    "送信先に無い＝新規なので問わない"
+  );
+  assert.deepEqual(
+    guard.pluginsMissingBump(["gone"], { gone: "0.1.0" }, { gone: null }),
+    [],
+    "削除されたなら版は問わない"
+  );
+});
+
+// ---------------------------------------------------------------------------
 // R5: 検査コマンドの有無を、ロケールに依存せず判定する
 // ---------------------------------------------------------------------------
 test("hasCommand: PATH を自前で走査する（メッセージ照合に頼らない）", () => {

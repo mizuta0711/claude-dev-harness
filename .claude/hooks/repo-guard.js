@@ -325,6 +325,51 @@ function isUnscopedCommit(command) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// 版番号の上げ忘れ（R16）
+// ---------------------------------------------------------------------------
+
+/**
+ * 変更されたパスから、触られたプラグイン名を拾う。
+ *
+ * @param {string[]} changedPaths リポジトリルートからの相対パス（`/` 区切り）
+ */
+function pluginsTouched(changedPaths) {
+  const out = new Set();
+  for (const p of changedPaths || []) {
+    const m = /^plugins\/([^/]+)\//.exec(String(p).replace(/\\/g, "/"));
+    if (m) out.add(m[1]);
+  }
+  return [...out];
+}
+
+/**
+ * **中身を変えたのに版を据え置いたプラグイン**を返す（R16）。
+ *
+ * `claude plugin validate --strict` は `marketplace.json` と `plugin.json` の
+ * **一致しか見ない**ため、「触ったのに上げていない」は検出できない。
+ * `CLAUDE.md` §2 は「プラグインを触ったら2ファイルとも版を上げる」と定めているのに、
+ * **検査の対象が規約を覆っていなかった**（H19 / R4 と同じ形）。
+ *
+ * > 実測: 第1便（`9e240dc`）は3本のプラグインファイルを変更して版を1つも上げず、
+ * > push ゲートを通った。後続の便が上げたため結果的に配信されたが、
+ * > **そこで止めていれば誰にも届いていない**。
+ *
+ * @param {string[]} touched 触られたプラグイン名
+ * @param {Record<string,string|null>} before 送信先が持っている版（未知なら null）
+ * @param {Record<string,string|null>} after これから送る版
+ * @returns {string[]} 版が変わっていないプラグイン名
+ */
+function pluginsMissingBump(touched, before, after) {
+  return (touched || []).filter((name) => {
+    const b = before?.[name] ?? null;
+    const a = after?.[name] ?? null;
+    if (b === null) return false; // 新規プラグインは対象外
+    if (a === null) return false; // 削除されたなら版は問わない
+    return b === a;
+  });
+}
+
 /** `git push` の出現位置（無ければ -1）。対象ディレクトリの解決に位置が要る */
 function findPush(command) {
   const g = gitInvocations(command).find((x) => x.sub === "push");
@@ -383,6 +428,79 @@ const WHY =
   "このリポジトリは**複数のセッションが同時に触る**ため、範囲をまるごと指定すると\n" +
   "**他のエージェント／セッションが未コミットで置いている変更を巻き込みます**。\n" +
   "`6c68d30` では別セッションの20ファイルを巻き込んだまま push まで到達しました。\n\n";
+
+/** 対象ディレクトリで git を叩く。失敗は空文字（判定材料が無いことは呼び出し側が扱う） */
+function gitIn(dir, args) {
+  try {
+    return execSync(`git ${args}`, {
+      cwd: dir,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10000,
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+/** `<ref>:plugins/<name>/.claude-plugin/plugin.json` の版（読めなければ null） */
+function versionAt(dir, ref, name) {
+  const raw = gitIn(dir, `show ${ref}:plugins/${name}/.claude-plugin/plugin.json`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw).version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * これから送るコミットに「中身を変えたのに版を上げていないプラグイン」が無いか（R16）。
+ *
+ * **判定できないときは黙って通さない**（H16 の教訓）。警告を出してから続行する。
+ */
+function checkVersionBump(dir) {
+  const base = gitIn(dir, "rev-parse --abbrev-ref @{upstream}") || gitIn(dir, "symbolic-ref --short refs/remotes/origin/HEAD");
+  if (!base) {
+    warn(
+      "[repo-guard] 送信先が特定できないため、**版番号の上げ忘れを検査していません**。\n" +
+        "`plugins/` を触ったなら `plugin.json` と `.claude-plugin/marketplace.json` の**両方**を上げたか自分で確かめてください。"
+    );
+    return;
+  }
+
+  const changed = gitIn(dir, `diff --name-only ${base}..HEAD`)
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!changed.length) return;
+
+  const touched = pluginsTouched(changed);
+  if (!touched.length) return;
+
+  const before = {};
+  const after = {};
+  for (const name of touched) {
+    before[name] = versionAt(dir, base, name);
+    after[name] = versionAt(dir, "HEAD", name);
+  }
+
+  const missing = pluginsMissingBump(touched, before, after);
+  if (!missing.length) return;
+
+  deny(
+    `版番号を上げずにプラグインを変更しています（${missing.join(" / ")}）`,
+    "**プラグインを触ったら版を上げる**（`CLAUDE.md` §2）。\n\n" +
+      missing.map((n) => `- \`${n}\` — 中身は変わっているのに \`${after[n]}\` のまま`).join("\n") +
+      "\n\n**中身だけ変えても利用側には届きません。** 上げるのは2ファイル:\n\n" +
+      missing
+        .map((n) => `  plugins/${n}/.claude-plugin/plugin.json\n  .claude-plugin/marketplace.json の plugins[].version`)
+        .join("\n") +
+      "\n\n> `claude plugin validate --strict` は**2ファイルの一致しか見ない**ため、\n" +
+      "> 「触ったのに上げていない」は検出できません。**第1便（`9e240dc`）が実際にこれで通りました。**\n" +
+      "> 意図的に据え置く場合（テンプレート層だけの変更など）は、その旨を伝えてください。"
+  );
+}
 
 function main() {
   const payload = readPayload();
@@ -453,6 +571,9 @@ function main() {
     const dir = resolveTargetDir(command, pushAt);
     if (!fs.existsSync(path.join(dir, ".claude-plugin", "marketplace.json"))) process.exit(0);
 
+    // --- 2-1. 版番号の上げ忘れ（R16） ---------------------------------------
+    checkVersionBump(dir);
+
     let output = "";
     let failure = null; // "validate" | "missing-claude"
 
@@ -519,6 +640,8 @@ module.exports = {
   isBlockedStash,
   isBlockedDiscard,
   isUnscopedCommit,
+  pluginsTouched,
+  pluginsMissingBump,
   findPush,
   resolveTargetDir,
   toNativePath,

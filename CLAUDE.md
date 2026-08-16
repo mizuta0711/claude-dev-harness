@@ -99,6 +99,15 @@ claude plugin validate . --strict
 **これは覚えておく規律ではない。`.claude/hooks/repo-guard.js` が `git push` を捕まえて実行し、
 失敗したら deny する**（→ §9）。
 
+> ⚠️ **`validate` だけでは §2 を守れない。** 見ているのは
+> **`marketplace.json` と `plugin.json` の一致**であって、
+> 「**中身を変えたのに版を据え置いた**」は検出できない。
+> 実際 `9e240dc` はプラグイン3本を変更して版を1つも上げずに通った。
+>
+> そのため `repo-guard` は**別の検査**を持つ:
+> 送信先と HEAD を比べ、`plugins/<name>/` に変更があるのに
+> その `plugin.json` の版が変わっていなければ **deny する**。
+
 ## 4. 判定ロジックは `tests/` で守る
 
 ```bash
@@ -175,6 +184,7 @@ Linux と Windows の両方で回す。
 | `git checkout -- .` / `git restore .` / パス指定なしの `git clean` | **deny**（`git clean -n` は通す） |
 | **パス指定なしの `git commit -m`** | **警告のみ。** 正当な使い方があるため止めない |
 | `git push` 前の `claude plugin validate . --strict` | **deny**（§2・§3）。`claude` が無い場合は**そう言う**（版番号のせいにしない） |
+| **`plugins/` を触ったのに版を上げていない push** | **deny**（§2）。`validate` は**2ファイルの一致しか見ない**ので、これは別に検査する |
 
 **同じ判定を2箇所が持つ。片方だけ直さないこと。**
 
