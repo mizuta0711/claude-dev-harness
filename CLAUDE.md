@@ -153,3 +153,23 @@ claude plugin validate . --strict
 
 > **フックは編集した瞬間には効かない。** セッション開始時に読み込まれるため、
 > `repo-guard.js` を直したら **Claude Code を再起動する**こと。
+
+### 置き場所は1箇所では足りない
+
+**読まれるのは「セッションのプロジェクトディレクトリ」の `.claude/settings.json` だけ**である。
+ハーネスは **ProjectTemplete のセッションから `cd` して編集される**ことが常態で、
+**事故（`6c68d30`）もその経路で起きた**。ここに置いただけでは**事故った経路を覆えない**。
+
+そのため `repo-guard.js` は**コマンドから対象ディレクトリを解決する**
+（`cd X && ...` / `git -C X`。MSYS の `/d/...` は `d:/...` へ正規化する）。
+
+| 置き場 | 効く範囲 |
+|--------|---------|
+| `claude-dev-harness/.claude/` | このリポジトリを直接開いたセッション |
+| `ProjectTemplete/.claude/` | **還元作業のセッション**（同一内容のコピー） |
+
+- `git add -A` の禁止は**どのリポジトリでも**効く
+- `validate --strict` は**対象に `.claude-plugin/marketplace.json` があるときだけ**走る
+  （ProjectTemplete 自身への push は素通りする）
+
+**両方を同時に直すこと。** 片方だけ直すと、直した側だけが守られる。
