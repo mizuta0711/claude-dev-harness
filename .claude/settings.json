@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/repo-guard.js\"",
+            "timeout": 150,
+            "statusMessage": "リポジトリ規約を確認中..."
+          }
+        ]
+      }
+    ]
+  }
+}
