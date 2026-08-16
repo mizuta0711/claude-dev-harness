@@ -35,6 +35,55 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [Unreleased] — Phase 0 持ち越し課題を完了・削除し、判断記録を `background/` へ退避
+
+`docs/Phase0持ち越し課題.md` の未了項目（⬜）を**現物と1件ずつ突き合わせ**、
+残っていた1件を片付けたうえで文書ごと削除した。**プラグインの版番号は変わらない**
+（配布物に変更が無いため）。
+
+### 突き合わせの結果
+
+| # | 表の状態 | 実物 |
+|---|---------|------|
+| F1② / F2 / F3 / F7 / R2 / R3 | ⬜ | `templates/base/.claude/settings.json` に実装済み。F2・F3・R3 は 2026-08-14 に実測済み |
+| F5 | ⬜ Phase 3 | `harness-unity/hooks/scripts/pre-commit-cs-check.js` が `envOptions.rootNamespace` から読む形で解消済み |
+| R5 | ⬜ Phase 2 | **解消先そのものが撤回されていた。** `.env*` は `.env.example` を巻き込むため列挙のまま（`permissionsベースライン.md` §5-2 に理由と残余リスク） |
+| F6 / R1② | ⬜ Phase 3 | 旧 nextjs テンプレートリポジトリ側の作業。**アーカイブ済みのため不要**（表の注記どおり） |
+| §3 チェックリスト最終行 | ☐ | **唯一の未了。** 下記で対応した |
+
+### Changed
+
+- **`templates/README.md` に `settings.json` / `settings.local.json` の使い分けを明記**
+  （Phase 0 §3 チェックリストの最終項目）。**deny は必ず共有される `settings.json` へ**、
+  手元だけの allow は `settings.local.json` へ。制限がきつい場合も deny を削らず local で緩める。
+  F1（WPF の deny が gitignore 対象にしか無く派生へ伝播しなかった）の再発防止にあたる
+- **`docs/permissionsベースライン.md` を「方針」だけに絞った。**
+  §1〜§4（層の分離 / deny・ask・allow のベースライン）は正典として残し、
+  **§5 の実機検証記録・発覚経緯（110 行）は ProjectTemplete
+  `docs/reviews/20260814_permissions実機検証と発覚事項.md` へ移した**。
+  跡地には「**単純化してはいけない4点**」の表を置いた（`Write(path)` は効かない /
+  `.env` は列挙する / `rm` はフラグの綴りごとに列挙する / `prisma migrate reset` は deny しない）。
+  **4点はいずれも「一度単純にして事故が起きた」もの**なので、結論だけは実装の隣に残す必要がある。
+  参照していた `diagrams/05` / セットアップガイド / 運用ガイドの節番号・説明も追随させた
+- **`templates/README.md` の「SessionStart は画面に表示されない」を撤回**。
+  harness-core 0.5.0 以降は `[harness] <env> / config OK` を1行出す。
+  `docs/` 側は改訂 1.2 で撤回済みだったが、**`templates/` は掃討の対象に入っていなかった**
+  （同じ記述が `tools/create-project.mjs:422-424` にも残っている。→ レビュー §1-2）
+
+### Removed
+
+- **`docs/Phase0持ち越し課題.md`** — F1〜F7 / R1〜R5 の全件が解消済み。README の構成図からも該当行を外した。
+  後半の**判断記録**（A・B 採用 / **C・D 不採用とその理由**）は捨てず、
+  **ProjectTemplete リポジトリ `docs/reviews/20260815_CommSim由来の還元候補の判断.md` へ退避**した
+
+> **本リポジトリは実装だけを持ち、「なぜそうしたか」は ProjectTemplete 側に残す**という分担による。
+> C・D を再提案する前に、退避先の不採用理由を読むこと。
+>
+> **教訓**: 撤回した記述の掃討にも「対象は思い出さず grep で出す」（本書冒頭）が要る。
+> 今回の2箇所はどちらも `docs/` の外にあり、grep の範囲に入っていなかった。
+
+docs 影響: あり（README.md — 構成図から `Phase0持ち越し課題.md` を削除 / templates/README.md — 上記2点）
+
 ## [Unreleased] — H19: ハーネス自身に `.claude/` を置き、規律をフックで強制する
 
 **「規約は書いても守られない。真因はハーネスが自分自身をハーネスで守っていないこと」**（H19）への対応。

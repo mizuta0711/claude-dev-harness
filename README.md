@@ -79,8 +79,7 @@ claude-dev-harness/
     ├── background/               # なぜそうしたか（意思決定記録。決定は不変・差異の記載は追従）
     ├── プラグイン開発手順.md      # プラグインの修正・反映手順（開発しながら直したいとき）
     ├── harness設定契約.md         # harness.config.json の設定契約
-    ├── permissionsベースライン.md # permissions の設計と実測記録
-    └── Phase0持ち越し課題.md      # Phase 0 で「発見のみ」とした項目の割り当て
+    └── permissionsベースライン.md # permissions の設計方針（単純化してはいけない点つき）
 ```
 
 ### 環境プラグイン
