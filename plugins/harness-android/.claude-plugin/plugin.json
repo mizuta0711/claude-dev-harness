@@ -1,0 +1,18 @@
+{
+  "name": "harness-android",
+  "version": "0.1.0",
+  "description": "Android (Kotlin + Jetpack Compose) 環境向けの開発ハーネス拡張。adb による実機・エミュレータのスクリーンショット撮影スキル、アンインストール事故を防ぐフック、企画レビューエージェントを提供する。harness-core と併用する",
+  "author": {
+    "name": "mizuta0711"
+  },
+  "homepage": "https://github.com/mizuta0711/claude-dev-harness",
+  "repository": "https://github.com/mizuta0711/claude-dev-harness",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "harness",
+    "android",
+    "kotlin",
+    "jetpack-compose"
+  ]
+}

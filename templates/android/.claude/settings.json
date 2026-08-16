@@ -1,0 +1,41 @@
+{
+  "enabledPlugins": {
+    "harness-android@dev-harness": true
+  },
+  "permissions": {
+    "deny": [
+      "Read(./keystore.properties)",
+      "Read(./signing.properties)",
+      "Edit(./keystore.properties)",
+      "Edit(./signing.properties)"
+    ],
+    "ask": [
+      "Bash(./gradlew installDebug:*)",
+      "Bash(./gradlew uninstallDebug:*)",
+      "Bash(./gradlew uninstallAll:*)",
+      "Bash(adb install:*)",
+      "Bash(adb uninstall:*)",
+      "PowerShell(.\\gradlew.bat installDebug:*)",
+      "PowerShell(.\\gradlew.bat uninstallDebug:*)",
+      "PowerShell(.\\gradlew.bat uninstallAll:*)",
+      "PowerShell(adb install:*)",
+      "PowerShell(adb uninstall:*)"
+    ],
+    "allow": [
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(./gradlew lintDebug:*)",
+      "Bash(./gradlew testDebugUnitTest:*)",
+      "PowerShell(.\\gradlew.bat assembleDebug:*)",
+      "PowerShell(.\\gradlew.bat lintDebug:*)",
+      "PowerShell(.\\gradlew.bat testDebugUnitTest:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb logcat:*)",
+      "Bash(adb exec-out screencap:*)",
+      "Bash(adb shell uiautomator dump:*)",
+      "PowerShell(adb devices:*)",
+      "PowerShell(adb logcat:*)",
+      "PowerShell(adb exec-out screencap:*)",
+      "PowerShell(adb shell uiautomator dump:*)"
+    ]
+  }
+}

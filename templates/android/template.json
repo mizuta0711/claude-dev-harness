@@ -1,0 +1,28 @@
+{
+  "environment": "android",
+  "description": "Android (Kotlin + Jetpack Compose / Material 3・Gradle Kotlin DSL + Version Catalog)",
+  "plugin": "harness-android@dev-harness",
+  "placeholders": [
+    {
+      "key": "PROJECT_NAME",
+      "prompt": "プロジェクト名（アプリ名。PascalCase 推奨）",
+      "example": "MyApp"
+    },
+    {
+      "key": "PROJECT_DESCRIPTION",
+      "prompt": "プロジェクトの概要（1行）",
+      "example": "買い物メモを共有するアプリ"
+    },
+    {
+      "key": "APPLICATION_ID",
+      "prompt": "アプリケーション ID（パッケージ名。全世界で一意）",
+      "example": "com.example.myapp"
+    },
+    {
+      "key": "MODULE_NAME",
+      "prompt": "アプリモジュール名（Gradle のモジュール名）",
+      "example": "app",
+      "default": "app"
+    }
+  ]
+}

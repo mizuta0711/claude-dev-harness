@@ -9,7 +9,7 @@
 ## create-project.mjs
 
 ```bash
-node tools/create-project.mjs --env <nextjs|unity|wpf> --dest <生成先パス> [オプション]
+node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest <生成先パス> [オプション]
 ```
 
 | オプション | 意味 |

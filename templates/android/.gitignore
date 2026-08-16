@@ -1,0 +1,26 @@
+# ---- Android / Gradle ----
+*.iml
+.gradle/
+/build/
+{{MODULE_NAME}}/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# ローカル環境依存（SDK のパス等。共有しない）
+local.properties
+
+# 署名鍵と署名情報（★絶対にコミットしない）
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# IDE
+.idea/
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
+
+# ---- 注意 ----
+# app/google-services.json（Firebase 等）は「秘密」ではないがプロジェクト固有の設定である。
+# 公開リポジトリで配布するかはプロジェクトごとに判断し、判断の理由を記録すること。

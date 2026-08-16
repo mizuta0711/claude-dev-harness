@@ -19,7 +19,7 @@ nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレー�
 ## クイックスタート（新規プロジェクトの生成）
 
 ```bash
-node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
+node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProject
 cd ../MyProject
 claude plugin install harness-core@dev-harness  --scope project   # ★必須
 claude plugin install harness-<env>@dev-harness --scope project   # ★必須
@@ -106,12 +106,14 @@ claude-dev-harness/
 │   │       └── scripts/               # 全 Node.js・config 駆動
 │   ├── harness-nextjs/                # 環境プラグイン（下表）
 │   ├── harness-unity/
-│   └── harness-wpf/
+│   ├── harness-wpf/
+│   └── harness-android/
 ├── templates/                         # 薄いテンプレート層
 │   ├── base/                          # 全環境共通（CLAUDE.md 共通部 / constitution.md / 設計方針層 README / docs 骨格）
 │   ├── nextjs/                        # 環境差分（CLAUDE.section.md / rules / config / 設計方針の骨格 / 設計書の枠）
 │   ├── unity/
-│   └── wpf/
+│   ├── wpf/
+│   └── android/
 ├── tools/create-project.mjs           # base + env を合成してプロジェクトを生成する
 └── docs/                              # ハーネス自体の仕様・運用文書
     ├── guide/                    # **使う人**向け（導入・運用・移行・オプション MCP）
@@ -134,6 +136,7 @@ claude-dev-harness/
 | `harness-nextjs` | `browser-test`（Playwright MCP） | `browser-tester` / `product-advisor` | `post-edit-lint` / `pre-migrate-backup` |
 | `harness-unity` | `unity-verify`（Unity MCP） | `game-designer` | `pre-commit-cs-check` |
 | `harness-wpf` | `capture-screenshots`（UIAutomation） | `product-advisor` | （なし） |
+| `harness-android` | `capture-screenshots`（adb） | `product-advisor` | `pre-adb-uninstall-guard` |
 
 環境プラグインの hook は **core の `harness-lib.js` を require しない**。
 `${CLAUDE_PLUGIN_ROOT}` はプラグインごとに異なりプラグイン間参照が保証されないため、

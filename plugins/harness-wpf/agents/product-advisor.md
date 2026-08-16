@@ -6,11 +6,11 @@ tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
 
 <!-- 重複について（意図的）:
-     このファイルは harness-nextjs と harness-wpf の両方に同一内容で置いている。
+     このファイルは harness-nextjs / harness-wpf / harness-android に同一内容で置いている。
      体験系スロット（`/harness-core:design-review feature` が並列起動する企画・UX 観点のレビュアー）は
      環境プラグインの責務であり、core には置かない — Phase 1 レビュー「要判断5」の決定。
      Unity 版は同じスロットを game-designer が埋めるため、こちらは置かない。
-     どちらか一方を変更したら、もう一方も必ず同じ内容へ揃えること。 -->
+     1つを変更したら、残りも必ず同じ内容へ揃えること（tests/duplicated-assets.test.mjs が乖離を検出する）。 -->
 
 # Product Advisor Agent
 

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-adb-uninstall-guard.js\"",
+            "timeout": 10,
+            "statusMessage": "アンインストール操作を検査中..."
+          }
+        ]
+      }
+    ]
+  }
+}

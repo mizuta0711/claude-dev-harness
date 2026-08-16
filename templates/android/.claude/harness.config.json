@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "environment": "android",
+  "commands": {
+    "build": "./gradlew assembleDebug",
+    "typecheck": null,
+    "lint": "./gradlew lintDebug",
+    "format": null,
+    "test": "./gradlew testDebugUnitTest",
+    "dev": "./gradlew installDebug"
+  },
+  "gates": { "preCommit": [] },
+  "envOptions": {
+    "applicationId": "{{APPLICATION_ID}}"
+  },
+  "paths": {
+    "source": ["{{MODULE_NAME}}/src/main/**"],
+    "docTriggers": [
+      { "pattern": "^{{MODULE_NAME}}/src/main/.*/ui/.*Screen\\.kt$", "docs": ["画面一覧.md"] },
+      { "pattern": "^{{MODULE_NAME}}/src/main/.*/ui/.*ViewModel\\.kt$", "docs": ["ViewModel一覧.md"] },
+      { "pattern": "^{{MODULE_NAME}}/src/main/.*/(navigation|nav)/", "docs": ["画面遷移一覧.md"] },
+      { "pattern": "^{{MODULE_NAME}}/src/main/.*/data/", "docs": ["データモデル・DAO一覧.md"] },
+      { "pattern": "AndroidManifest\\.xml$", "docs": ["権限一覧.md"] }
+    ]
+  },
+  "projectDocs": {
+    "requirements": [],
+    "policy": [".claude/01_development_docs"]
+  },
+  "designDocs": {
+    "dir": "docs/設計書",
+    "ledger": "docs/設計書/.doc-sync.md",
+    "docs": [
+      { "file": "画面一覧.md", "tracks": "画面（Composable 画面）の一覧", "sources": ["{{MODULE_NAME}}/src/main/**/ui/**"] },
+      { "file": "ViewModel一覧.md", "tracks": "ViewModel と UI 状態", "sources": ["{{MODULE_NAME}}/src/main/**/ui/**"] },
+      { "file": "画面遷移一覧.md", "tracks": "ナビゲーション経路と引数", "sources": ["{{MODULE_NAME}}/src/main/**/navigation/**"] },
+      { "file": "データモデル・DAO一覧.md", "tracks": "永続データ（Room エンティティ / DAO / DataStore キー）", "sources": ["{{MODULE_NAME}}/src/main/**/data/**"] },
+      { "file": "権限一覧.md", "tracks": "宣言している権限と要求タイミング", "sources": ["{{MODULE_NAME}}/src/main/AndroidManifest.xml"] }
+    ]
+  },
+  "verification": { "skill": "capture-screenshots", "manualGate": false }
+}

@@ -9,13 +9,14 @@ templates/
 ├── base/     # 全環境共通
 ├── nextjs/   # 環境差分
 ├── unity/
-└── wpf/
+├── wpf/
+└── android/
 ```
 
 生成は [`../tools/create-project.mjs`](../tools/create-project.mjs) が行う:
 
 ```bash
-node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
+node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProject
 ```
 
 > **生成後にプラグインの導入が要る。**
@@ -64,6 +65,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
 | nextjs | `PROJECT_NAME` / `PROJECT_DESCRIPTION` |
 | unity | `PROJECT_NAME`（C# の root namespace を兼ねる） / `PROJECT_DESCRIPTION` |
 | wpf | `PROJECT_NAME` / `PROJECT_DESCRIPTION` / `CORE_PROJECT` / `UI_PROJECT` |
+| android | `PROJECT_NAME` / `PROJECT_DESCRIPTION` / `APPLICATION_ID`（パッケージ名） / `MODULE_NAME`（既定 `app`） |
 
 `placeholders[].default` は既に決まった値を参照できる（例: wpf の `CORE_PROJECT` の既定値は
 `{{PROJECT_NAME}}.Core`）。
@@ -92,6 +94,43 @@ node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
 テンプレート既定の制限がきつすぎる場合も、`settings.json` の deny を削るのではなく
 `settings.local.json` の allow で手元だけ緩める。方針の正典は
 [../docs/reference/permissionsベースライン.md](../docs/reference/permissionsベースライン.md) §1。
+
+## 環境を追加する
+
+**「アダプタを用意した」は「環境を追加し終えた」ではない。** 環境名を列挙している場所が
+リポジトリ全体に散っており、**足し忘れても何のエラーも出ない**（新環境が生成テストを
+一度も通らない、利用者に存在が届かない、といった形で静かに失敗する）。
+
+### 1. 環境アダプタ（`templates/<env>/` と `plugins/harness-<env>/`）
+
+| # | 置くもの | 必須 |
+|---|---------|------|
+| 1 | `templates/<env>/template.json`（`environment` / `plugin` / `placeholders`） | ✅ |
+| 2 | `templates/<env>/CLAUDE.section.md`（技術スタック・構成・コマンド・rules 表・環境固有スキル） | ✅ |
+| 3 | `templates/<env>/.claude/harness.config.json`（`commands` / `gates` / `paths` / `designDocs` / `verification`） | ✅ |
+| 4 | `templates/<env>/.claude/rules/`（パス条件付きの規約） | ✅ |
+| 5 | `templates/<env>/docs/設計書/`（**ヘッダと表の枠だけ**。実データを入れない） | ✅ |
+| 6 | `templates/<env>/.claude/settings.json`（`enabledPlugins` と、その環境のコマンドの allow / ask） | ✅ |
+| 7 | `templates/<env>/.gitignore` / `.mcp.json`（要る場合だけ） | 任意 |
+| 8 | `templates/<env>/.claude/01_development_docs/01_*.md`（設計方針層の骨格） | 推奨 |
+| 9 | `plugins/harness-<env>/`（動作確認スキル・体験系エージェント・環境固有フック） | ✅ |
+
+### 2. リポジトリ側の波及（**ここが抜ける**）
+
+| # | 直す場所 | 抜けると |
+|---|---------|---------|
+| 1 | `.claude-plugin/marketplace.json` に登録（**版は `plugin.json` と2箇所**） | **プラグインを配れない** |
+| 2 | `tests/create-project.smoke.test.mjs` の `ENVS` に追加 | **生成テストを一度も通らない**（env リストはハードコード） |
+| 3 | 判定ロジックを持つフックを足したなら `tests/` にテストを足す（[../CLAUDE.md](../CLAUDE.md) §4） | 次に触る人が壊せる |
+| 4 | `../docs/reference/harness設定契約.md`（`environment` の値・「対応ハーネス版」行） | 契約が実装と食い違う |
+| 5 | `../docs/guide/`（セットアップ / 入門 / 運用 / 移行指示書の環境判定） | **利用者に存在が届かない** |
+| 6 | `../docs/diagrams/`（環境列を持つ図） | 図と実物が乖離する |
+| 7 | `../README.md` / 本ファイル / `../tools/README.md` の環境一覧 | 同上 |
+| 8 | `../CHANGELOG.md`（`docs 影響` の行を省略しない） | 追従漏れが検出できない |
+
+**完了条件**: `node --test "tests/*.test.mjs"` が通り、
+`claude plugin validate . --strict` が通り、生成したプロジェクトで
+`[harness] <env> / config OK` が出ること。
 
 ## 追加・変更するときの注意
 

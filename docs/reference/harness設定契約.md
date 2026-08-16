@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.9.1 / harness-nextjs 0.4.0 / harness-unity 0.3.0 / harness-wpf 0.3.0 |
+| 対応ハーネス版 | harness-core 0.9.2 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.1.0 |
 | 最終更新 | 2026-08-16 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
@@ -13,7 +13,7 @@
 ```jsonc
 {
   "schemaVersion": 1,
-  "environment": "nextjs",             // nextjs | unity | wpf | (将来追加)
+  "environment": "nextjs",             // nextjs | unity | wpf | android | (将来追加)
 
   "commands": {                        // null = この環境には無い
     "build":     "npm run build",

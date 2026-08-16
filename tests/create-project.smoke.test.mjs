@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = path.join(ROOT, "tools", "create-project.mjs");
 
-// 3環境とも生成が通り、**生成物に未置換のプレースホルダが 0 件**であることを見る。
+// 全環境で生成が通り、**生成物に未置換のプレースホルダが 0 件**であることを見る。
+// **環境を追加したら ENVS に足すこと**（足さないと新環境は生成テストを一度も通らない）。
 // 生成物の中身までは検査しない（それは harness-update の3点比較の仕事）。
 //
 // ⚠️ `--dry-run` の出力には「置換内容」の表があり `{{NAME}} -> 値` が並ぶ。
@@ -25,6 +26,15 @@ const ENVS = [
       PROJECT_DESCRIPTION: "スモークテスト用",
       CORE_PROJECT: "SmokeApp.Core",
       UI_PROJECT: "SmokeApp.UI",
+    },
+  },
+  {
+    env: "android",
+    set: {
+      PROJECT_NAME: "SmokeApp",
+      PROJECT_DESCRIPTION: "スモークテスト用",
+      APPLICATION_ID: "com.example.smokeapp",
+      MODULE_NAME: "app",
     },
   },
 ];

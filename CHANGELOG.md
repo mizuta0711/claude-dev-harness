@@ -52,6 +52,54 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [Unreleased] — android 環境を追加（4つ目の環境）
+
+Kotlin + Jetpack Compose の Android アプリ向けに、**テンプレート層と環境プラグインを新設**した。
+既存3環境（nextjs / unity / wpf）と違い、**移植元になる旧テンプレートが存在しない**ため、
+中身は実プロジェクトの知見から一般化して書き起こしている。
+
+### Added
+
+- **`templates/android/`** — `template.json`（`PROJECT_NAME` / `PROJECT_DESCRIPTION` /
+  `APPLICATION_ID` / `MODULE_NAME`）、`CLAUDE.section.md`、`harness.config.json`、
+  `settings.json`、`.gitignore`、`rules/`4本（`kotlin` / `compose-ui` / `android-data` / `docs`）、
+  設計方針層の骨格、`docs/設計書/`5本（画面 / ViewModel / 画面遷移 / データモデル・DAO / 権限）
+- **`plugins/harness-android` 0.1.0** —
+  - `capture-screenshots` スキル（**adb のみ**。MCP も外部ツールも要らない）
+  - `product-advisor` エージェント（nextjs / wpf と同一内容。体験系スロット）
+  - **`pre-adb-uninstall-guard` フック** — `adb uninstall` / `adb shell pm uninstall` /
+    `gradlew uninstall*` を捕まえ、**対象がこのアプリなら `deny`**。
+    Android のアンインストールは DataStore・SharedPreferences・Room を**全て消す**ため
+- **`templates/README.md` に「環境を追加する」節** — アダプタ9項目 ＋ **リポジトリ側の波及8項目**。
+  「アダプタを用意した」を「環境を追加し終えた」の証明に使うと、
+  **marketplace 未登録・スモークテスト未通過**のまま完了扱いになる（今回それを実際に洗い出した）
+- **`tests/adb-uninstall-guard.test.mjs`** — 判定の純関数を固定。
+  **引用符・コメント・ヒアドキュメントの中では反応しない**ことも含めて検査する（R3 の教訓）
+- **`tests/duplicated-assets.test.mjs`** — 意図的な複製（`product-advisor` 3本）の乖離検出
+
+### Changed
+
+- `harness-nextjs` **0.4.1 → 0.4.2** / `harness-wpf` **0.3.1 → 0.3.2** —
+  `product-advisor` の重複注記を「nextjs と wpf の両方」から「nextjs / wpf / android」へ（文言のみ）
+- `tests/create-project.smoke.test.mjs` に android を追加（**env リストはハードコード**のため）
+
+### 実測と、まだ実測していないこと
+
+| 項目 | 状態 |
+|------|------|
+| `create-project --env android` の生成 | ✅ 通る（未置換プレースホルダ 0 件・`node --test` 70件合格） |
+| 生成物の `harness.config.json` の実在チェック | ✅ `projectDocs` / `designDocs` / `docTriggers` の正規表現とも OK |
+| `pre-adb-uninstall-guard` の挙動 | ✅ 生成プロジェクトに対して6パターンを実行し、deny / 警告 / 無反応を確認 |
+| **`capture-screenshots` の手順** | ⚠️ **未実測**（作成時に接続端末が無かった）。**実機で1本通すまで信用しない** |
+| **Gradle コマンドの実行** | ⚠️ **未実測**。`commands` に書いた4本は実プロジェクトで確認する |
+
+docs 影響: あり（README.md / templates/README.md / tools/README.md /
+reference/harness設定契約.md / guide/セットアップガイド.md・運用ガイド.md・
+オプションMCP追加ガイド.md・既存プロジェクト移行指示書.md /
+diagrams/01・03・05 / background/01 に補足）。
+**挙動が変わっていない文書（入門ガイド / プラグイン開発手順 / diagrams 02・04・06）は
+「対応ハーネス版」を据え置いた。**
+
 ## [Unreleased] — `docs/reference/` を新設し、docs 直下の3本を読者別に整理
 
 **「`docs` 直下にこのファイル名であるけど、目的が良く分からない」**（ユーザー指摘）への対応。

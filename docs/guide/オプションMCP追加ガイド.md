@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 対応ハーネス版 | harness-core 0.9.1 / harness-nextjs 0.4.0 / harness-unity 0.3.0 / harness-wpf 0.3.0 |
+| 対応ハーネス版 | harness-core 0.9.2 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.1.0 |
 | 最終更新 | 2026-08-16 |
 | 対象 | **標準以外の MCP を自分で足したい**とき |
 | 範囲外 | 環境プラグインが前提とする MCP（Playwright / Unity MCP）。→ [役割比較図 §MCP](../diagrams/03_役割比較図.md) と [セットアップガイド §4](セットアップガイド.md) |
@@ -16,7 +16,7 @@
 ハーネスと MCP の関係（何が配られ、何が配られないか）は
 [役割比較図 §MCP — ハーネスは配らない（要求するだけ）](../diagrams/03_役割比較図.md) に整理してある。
 
-ここから先は**どの環境（nextjs / unity / wpf）でも共通**の話として読める。
+ここから先は**どの環境（nextjs / unity / wpf / android）でも共通**の話として読める。
 環境固有の注意がある箇所は **【nextjs】** のように明示する。
 
 ## 1. 追加前に確認すること
