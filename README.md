@@ -100,7 +100,7 @@ claude-dev-harness/
 │   │   ├── .claude-plugin/plugin.json
 │   │   ├── skills/                    # 12スキル（下表）
 │   │   ├── agents/                    # coding-specialist / code-reviewer / documentation-manager / japanese-proofreader
-│   │   │                              # （フックは6本。下表）
+│   │   │                              # （フックは7本。下表）
 │   │   └── hooks/
 │   │       ├── hooks.json
 │   │       └── scripts/               # 全 Node.js・config 駆動
@@ -164,6 +164,7 @@ claude-dev-harness/
 |---------|-----------|------|
 | SessionStart | `session-start-context.js` | 状況の注入＋`harness.config.json` の検証・警告 |
 | PreCompact | `pre-compact-save.js` | コンパクト前の文脈退避 |
+| PreToolUse | `pre-commit-scope.js` | 範囲まるごとの git 操作を検知。**既定は警告のみ**、`gates.commitScope: "paths"` でブロック |
 | PreToolUse | `pre-commit-check.js` | `gates.preCommit` のコマンドを実行し、失敗でコミットをブロック |
 | PostToolUse | `post-commit-doc-check.js` | `paths.docTriggers` に従い設計書更新を促す |
 | PostToolUse | `post-branch-notice.js` | ブランチ作成を検知して画面と文脈の両方へ通知する（**止めない**） |

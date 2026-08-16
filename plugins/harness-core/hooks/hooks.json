@@ -29,6 +29,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-commit-scope.js\"",
+            "timeout": 10,
+            "statusMessage": "コミット範囲を確認中..."
+          },
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-commit-check.js\"",
             "timeout": 600,
             "statusMessage": "コミット前チェックを実行中..."

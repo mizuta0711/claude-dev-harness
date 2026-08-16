@@ -3,10 +3,10 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.7.0 / harness-nextjs 0.3.1 / harness-unity 0.2.1 / harness-wpf 0.2.0 |
+| 対応ハーネス版 | harness-core 0.8.0 / harness-nextjs 0.3.1 / harness-unity 0.2.1 / harness-wpf 0.2.0 |
 | 最終更新 | 2026-08-16 |
-| 正典 | ProjectTemplete リポジトリ `docs/04_harness設定契約_仕様.md` |
-| 本書の役割 | 04仕様のうち **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
+| 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
+| 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
 
 ## 1. スキーマ（schemaVersion: 1）
 
@@ -24,7 +24,10 @@
     "dev":       "npm run dev"
   },
 
-  "gates": { "preCommit": ["typecheck"] },   // 空配列 = コミット前ゲート無し
+  "gates": {
+    "preCommit": ["typecheck"],              // 空配列 = コミット前ゲート無し
+    "commitScope": null                      // null/未設定 = 警告のみ / "paths" = ブロック / "off" = 無効
+  },
 
   "paths": {
     "source": ["src/**"],
@@ -61,6 +64,7 @@
 | `schemaVersion` | 全 hook（`harness-lib.loadConfig`） | 数値でなければ `invalid`。core の対応版（現在 1）より大きければ `newer` として**素通り**する |
 | `environment` | `session-start-context.js` | SessionStart の additionalContext に表示するのみ |
 | `commands.*` + `gates.preCommit` | `pre-commit-check.js` | `gates.preCommit` の各キーを `commands` から引き、非 null のものを順に実行。1つでも失敗したら `permissionDecision:"deny"` でブロック |
+| `gates.commitScope` | `pre-commit-scope.js` | 範囲まるごとの git 操作（`add -A` / `commit -a` / `stash` / 範囲指定なしの破棄）を検知したときの扱い。**未設定なら警告のみ**、`"paths"` で `deny`、`"off"` で無効 |
 | `commands.*` | `build-check` スキル | 非 null を `typecheck → build → lint → format → test` の順で実行。`dev` は実行しない |
 | `paths.docTriggers` | `post-commit-doc-check.js` | 直近コミットの変更ファイル（`/` 正規化済み）を `pattern` の正規表現で判定し、一致した `docs` を通知 |
 | `paths.source` | `pre-push-check` スキル | ソース変更を含まないコミットを台帳チェックから SKIP |
@@ -78,6 +82,7 @@
 | `schemaVersion` が core より新しい | 警告メッセージを出して素通り | 同左 |
 | `gates.preCommit` が空 / 対象 `commands` が null | 素通り（メッセージも出さない） | 「この環境に CLI チェックは無い」と報告 |
 | `gates.preCommit` のキーが `commands` に**存在しない**（typo 疑い） | 警告を出しつつ、そのキーはスキップして続行（ブロックしない） | — |
+| `gates.commitScope` 未設定 / config 不在 | **警告は出す**（素通りさせない）。ブロックはしない | 「止めたいなら `"paths"` を設定」と案内 |
 | `docTriggers[].pattern` が不正な正規表現 | そのトリガーだけ無視して継続 | — |
 | `git` が使えない / 初回コミットで `HEAD~1` が無い | 素通り | — |
 | `git reflog` が読めない | post-commit-doc-check は従来どおり判定に進む（通知が死ぬより誤通知を許容） | — |
@@ -180,7 +185,7 @@ hook は `CLAUDE_PROJECT_DIR` 環境変数があればそれを、無ければ `
 | 無い場合の挙動 | **その検査だけをスキップする（fail-open）**。ブロックしない |
 
 `commands` / `gates` のような「全環境共通の軸」に載らない環境固有の値をここへ逃がす。
-**ロジックは入れない**（ロジックは環境プラグインの実装として持つ — 04仕様 §1-3 の原則は変わらない）。
+**ロジックは入れない**（ロジックは環境プラグインの実装として持つ）。
 
 ### 現在の利用箇所
 

@@ -131,6 +131,58 @@ guide 2本 / diagrams 2本 — いずれもパス参照の追随。**文書の�
 
 docs 影響: あり（README.md — 構成図から `Phase0持ち越し課題.md` を削除 / templates/README.md — 上記2点）
 
+## [harness-core 0.8.0] — R8: コミット規律を利用側にも配る（第3便）
+
+`templates/base/CLAUDE.md` は利用側にも「**コミットは必ずパス指定**」と書いているのに、
+同じテンプレートが配る `settings.json` は `Bash(git add:*)` を **allow** していて、
+ガードも無かった。つまり生成先では **H19 以前の `claude-dev-harness` と同じ構図**
+（読ませる文書だけで担保）だった。
+
+H19 の判断「配布物のプラグインには置かない」の理由は
+**「自分が編集中のプラグインに自分の規律を依存させない」**であり、
+**利用側プロジェクトには当てはまらない**（利用側は harness-core を編集しない）。
+理由が及ばない範囲まで結論だけが及んでいた。
+
+### Added
+
+- **`pre-commit-scope.js`（PreToolUse・新規）**。範囲まるごとの git 操作を検知する
+  | `gates.commitScope` | 挙動 |
+  |---|---|
+  | **未設定（既定）** | **警告のみ** |
+  | `"paths"` | **deny** |
+  | `"off"` | 何もしない |
+  - **既定を警告にした**のは、既存プロジェクトが `harness-update` で追従した瞬間に
+    コミットが止まらないようにするため。**止めたいプロジェクトだけが `"paths"` を書く**
+  - 対象は `git add -A` / `.` / `--all` / `:/`、`git commit -a` / `-am` / `--all`、
+    `git stash`（退避する形）、範囲指定なしの `checkout -- .` / `restore .` / `clean`
+  - **パス指定なしの `git commit -m` は対象外**（正当な使い方があるため）
+  - **config が読めなくても警告は出す**（素通りさせない。H16 の教訓）
+- **`git-scope.js`（core hooks 共有・純関数のみ）**。第2便で作った
+  「コマンド位置に限定した走査」を配布物側へ出した
+- **`gates.commitScope`** を設定契約に追加（§1 スキーマ / §2 消費者一覧 / §3 fail-open）
+
+### Changed
+
+- `templates/base/CLAUDE.md` の運用ルールに、対象の広がり（`commit -a` / `stash` / 破棄系）と
+  `gates.commitScope` の設定方法を明記
+
+### Fixed
+
+- `docs/reference/harness設定契約.md` の「正典」が、**2026-08-16 に削除された
+  ProjectTemplete 側の `docs/04_harness設定契約_仕様.md`** を指したままだった
+
+### 意図的な重複（テストで守る）
+
+`git-scope.js` と `.claude/hooks/repo-guard.js` は**同じ判定を2箇所に持つ**。
+repo-guard は「**配布物のプラグインに自分の規律を依存させない**」方針のため独立している（H19）。
+`tests/git-scope.test.mjs` が**31ケースを両方に当てて、乖離した瞬間に落ちる**ようにした
+（`isGitCommit` の core / unity 複製と同じ形）。
+
+docs 影響: あり（`reference/harness設定契約.md` / `diagrams/01`・`05` / `guide/運用ガイド.md` /
+`README.md` — フックを列挙している文書を grep で洗い出して全部当てた。対応版を 0.8.0 へ）
+
+---
+
 ## [Unreleased] — R3・R4・R5・R13: ガードを作り直す（第2便）
 
 3件とも「**コマンド文字列をどう解釈するか**」という同じ関数の問題なので、まとめて直した。

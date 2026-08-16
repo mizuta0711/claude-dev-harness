@@ -84,6 +84,11 @@ node "$HOME/.claude/plugins/marketplaces/dev-harness/plugins/harness-core/skills
 - **コミットは必ずパス指定**: `git commit` はインデックス全体をコミットするため、
   他のエージェント／セッションがステージ済みの変更を巻き込む。`git commit -- <path...>` を使い、
   `git add -A` / `git add .` は使わない
+  - **`git commit -a` / `-am` も同じ**（追跡済みを全部巻き込む）。
+    `git stash` と、範囲指定なしの `git checkout -- .` / `git restore .` / `git clean` も避ける
+  - `pre-commit-scope` フックが検知して**知らせる**。**止めたいなら**
+    `.claude/harness.config.json` に `"gates": { "commitScope": "paths" }` を設定する
+    （既定は警告のみ。既存プロジェクトが追従した瞬間にコミットが止まらないようにしてある）
 - 一度に編集するファイルは最大5ファイル。段階的にビルド確認する
 - push はフェーズ完了時、またはユーザーから指示された時のみ。軽微な修正のたびに push しない
 - **ブランチを切ったら必ず報告する。** エージェントは既定ブランチ上でコミットするとき
