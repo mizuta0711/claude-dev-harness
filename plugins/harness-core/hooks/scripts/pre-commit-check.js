@@ -67,15 +67,27 @@ function restoreSubagentMarks() {
 }
 
 const { status, config, message } = lib.loadConfig();
-if (status === "missing" || status === "invalid") lib.passThrough();
+
+// ⚠️ **config が無い／壊れているときも、記録は既に消えている。**
+// 記録の読み消しは冒頭（`consumeSubagentMarker`）で起きるため、ここで黙って
+// `passThrough` すると**消したのに誰にも届かない**。
+// config 不在は契約上サポートされる状態（設定契約 §3）なので、
+// 「設定していないプロジェクトでは警告が出ない」は仕様ではなく欠陥だった（R1）。
+if (status === "missing" || status === "invalid") {
+  const note = subagentNote();
+  if (note) {
+    lib.notify("PreToolUse", `[pre-commit-check]${note}`);
+    process.exit(0);
+  }
+  lib.passThrough();
+}
 if (status === "newer") {
   lib.notify("PreToolUse", `[pre-commit-check] ${message}${subagentNote()}`);
   process.exit(0);
 }
 
-
-// サブエージェントの記録は**必ずここで1回だけ**読み消す。
-// 以降のどの分岐でも、出力にこの文言を添える（消したのに誰にも届かない、を作らない）
+// 冒頭で読み消した記録の文言。以降のどの分岐でも出力に添える
+// （消したのに誰にも届かない、を作らない）
 const subagent = subagentNote();
 
 const gates = Array.isArray(config?.gates?.preCommit) ? config.gates.preCommit : [];

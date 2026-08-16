@@ -79,7 +79,7 @@ code-reviewer を起動する。加えて、**有効なプラグインに体験�
 無ければ code-reviewer のみで実施し、その旨を結果に明記する。
 
 ```
-Agent(subagent_type: "code-reviewer", model: "sonnet", prompt:
+Agent(subagent_type: "code-reviewer", prompt:
   "Stage 1 設計レビュー。対象: {設計書パス} の「機能・画面設計」セクション。
    観点:
    【設計書整合性】他の設計書との矛盾 / 受け入れ基準がテスト可能な形か / 動作確認計画の記入状況
@@ -89,7 +89,7 @@ Agent(subagent_type: "code-reviewer", model: "sonnet", prompt:
      プロジェクトの rules / 環境プラグインが提供するものを参照すること。
    結果は『要修正』テーブル形式で返して。")
 
-Agent(subagent_type: "{体験系アドバイザーの agent 名}", model: "sonnet", prompt:
+Agent(subagent_type: "{体験系アドバイザーの agent 名}", prompt:
   "Stage 1 設計レビュー。対象: {設計書パス} の「機能・画面設計」セクション。
    観点: 課題-解決策フィット / ユーザーフローの自然さ・摩擦 / 代替案 / 優先度 / 既存機能との整合。
    結果は『課題・懸念』テーブル形式（優先度: 高/中/低）で返して。")
@@ -102,7 +102,7 @@ Agent(subagent_type: "{体験系アドバイザーの agent 名}", model: "sonne
 ### tech モード
 
 ```
-Agent(subagent_type: "code-reviewer", model: "sonnet", prompt:
+Agent(subagent_type: "code-reviewer", prompt:
   "Stage 2 設計レビュー。対象: {設計書パス} の「技術設計」セクション。
    観点:
    - インターフェース仕様の入出力例が全て記載されているか

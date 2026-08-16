@@ -62,7 +62,7 @@ mkdir -p tests/browser-evidence/YYYYMMDD_HHMMSS_テスト対象/screenshots
 
 ```
 # スポットテスト
-Agent(subagent_type: "browser-tester", model: "sonnet", prompt:
+Agent(subagent_type: "browser-tester", prompt:
   "スポットテスト。対象: {対象画面URL}。
    変更内容: {変更ファイルの概要}。
    確認観点: {評価計画の内容 or チェックリストの該当項目}。
@@ -70,7 +70,7 @@ Agent(subagent_type: "browser-tester", model: "sonnet", prompt:
    エビデンス保存先: tests/browser-evidence/{作成したフォルダ名}/")
 
 # フルテスト
-Agent(subagent_type: "browser-tester", model: "sonnet", prompt:
+Agent(subagent_type: "browser-tester", prompt:
   "フルテスト。主要画面を網羅的に確認する。
    チェックリスト: {${CLAUDE_SKILL_DIR}/checklist.md を解決した絶対パス}。
    エビデンス保存先: tests/browser-evidence/{作成したフォルダ名}/")

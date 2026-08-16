@@ -1,8 +1,17 @@
 {
   "name": "harness-core",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "環境非依存の開発ハーネス。規模判定（S/M/L）に基づく設計・実装・レビュー・設計書同期のフローを skills / agents / hooks で提供する",
   "author": {
     "name": "mizuta0711"
-  }
+  },
+  "homepage": "https://github.com/mizuta0711/claude-dev-harness",
+  "repository": "https://github.com/mizuta0711/claude-dev-harness",
+  "keywords": [
+    "claude-code",
+    "harness",
+    "workflow",
+    "design-docs",
+    "code-review"
+  ]
 }

@@ -419,9 +419,8 @@ async function main() {
        /plugin  … harness-core と ${templateJson.plugin || "環境プラグイン"} が enabled になっている
        /        … スキル一覧に harness-core:new-feature が出る
 
-     ※ SessionStart フックの '[harness] environment: ${opts.env}' は
-        additionalContext として Claude に渡されるもので、画面には表示されない。
-        表示の有無で判断しないこと。
+     ※ 起動時に '[harness] ${opts.env} / config OK' の1行が画面に出る。
+        出なければハーネスが載っていない。
   5. /harness-core:new-feature <機能名>   # 規模判定から開発を始める
 
   CLAUDE.md の <!-- TODO --> 箇所も忘れずに記入してください。${

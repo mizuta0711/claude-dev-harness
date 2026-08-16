@@ -1,6 +1,17 @@
 {
   "name": "harness-wpf",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "WPF (.NET 8) 環境向けの開発ハーネス拡張。UIAutomation による実機スクリーンショット撮影スキルと企画レビューエージェントを提供する。harness-core と併用する",
-  "author": { "name": "mizuta0711" }
+  "author": {
+    "name": "mizuta0711"
+  },
+  "homepage": "https://github.com/mizuta0711/claude-dev-harness",
+  "repository": "https://github.com/mizuta0711/claude-dev-harness",
+  "keywords": [
+    "claude-code",
+    "harness",
+    "wpf",
+    "dotnet",
+    "csharp"
+  ]
 }

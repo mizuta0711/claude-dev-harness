@@ -1,7 +1,7 @@
 /**
  * SessionStart フック: セッション開始時に現在の状況と config の健全性を注入する
  *
- * matcher: startup|resume|compact
+ * matcher: startup|resume|clear|compact（`hooks.json` と一致させること）
  *
  * 毎回ユーザーが「今どこまで進んでいるか」を説明しなくて済むように、
  * ブランチ・未プッシュ数・未コミット数・進行中の機能設計書を additionalContext に載せる。

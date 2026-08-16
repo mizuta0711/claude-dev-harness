@@ -8,25 +8,25 @@
     {
       "name": "harness-core",
       "source": "./plugins/harness-core",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "description": "環境非依存の開発ハーネス（skills / agents / hooks）。.claude/harness.config.json を契約として動作する"
     },
     {
       "name": "harness-nextjs",
       "source": "./plugins/harness-nextjs",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "description": "Next.js 環境向けの拡張。ブラウザテスト（Playwright MCP）・企画レビュー・編集後 lint・migrate 前バックアップ。harness-core と併用する"
     },
     {
       "name": "harness-unity",
       "source": "./plugins/harness-unity",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "description": "Unity 環境向けの拡張。Unity MCP による動作確認・ゲームデザインレビュー・コミット前 C# 静的検査。harness-core と併用する"
     },
     {
       "name": "harness-wpf",
       "source": "./plugins/harness-wpf",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "WPF (.NET 8) 環境向けの拡張。UIAutomation による実機スクリーンショット撮影・企画レビュー。harness-core と併用する"
     }
   ]
