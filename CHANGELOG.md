@@ -17,6 +17,33 @@ docs 影響: なし
 
 「あり」と書いたものは、その版を push する前に更新して**各文書冒頭の「対応ハーネス版」を上げる**。
 
+## [Unreleased] — 設計方針層 README の推奨軸を実測に合わせる（テンプレート層）
+
+### Changed
+
+- **`templates/base/.claude/01_development_docs/README.md` の推奨軸メニューが、
+  自身の警告と矛盾していた。** 「この6本すべてが実態スナップショットに退化し削除された」と
+  警告した**直後に、その6本を Next.js の推奨軸として並べていた**。
+  読み手は「気をつければ書いてよい」と読むが、**実測では2プロジェクトとも生き残らなかった**。
+  - 節を **「立ててはいけない軸（先に読む）」→「立ててよい軸」**の2つに分けた
+  - `designDocs` と重なる軸（`02_database_design` / `03_api_design` / `05_type_definitions` /
+    `06_service_repository_design` / `07_hooks_design` / `08_ai_prompt_design`）を**メニューから外した**
+  - `02_design_system/` は **`design_system_overview` の1本**に集約。
+    `color_system` / `typography` / `icon_system` は分けない（値は CSS が正本で、
+    写した瞬間に腐る。個々の規約は `.claude/rules/` の方が適している）
+  - **残した軸には「なぜ `docs/設計書/` では書けないか」を明記**した。
+    残るのは `04_error_handling_design`（方式の選択）/ `debugging_guidelines`（判断手順）/
+    wpf の `02_persistence_design`・`03_transport_protocol_design`・`scripting_design`
+  - 書きたくなったときの行き先（`docs/設計書/` か architecture へ1〜2行）を表で示した。
+    **「1〜2行で足りないなら、それは方針ではなく実態を書こうとしている」**を判定基準にした
+  - 実測を2プロジェクト分の表にした。**片方は「育てて腐った」、もう片方は
+    「テンプレ同梱のまま2年誰も書き換えなかった」**——死に方が違うが結果は同じ
+
+**版番号は上げない**（テンプレート層は semver を持たない）。
+既存プロジェクトへは `/harness-core:harness-update` で届く（README はテンプレ所有のため追従対象）。
+
+docs 影響: なし
+
 ## harness-core 0.6.2 — `plugin-update` スキルを追加
 
 プラグイン層の更新を手順書から**スキル**に移した。

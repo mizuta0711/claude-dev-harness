@@ -67,43 +67,76 @@ find src/app -name "page.tsx" | wc -l            # ページ数
 **最初から全部作らない。** 空のまま放置されたファイルは読まれず、あるだけ邪魔になる。
 実際に「毎回これを思い出す必要がある」と気づいた時に作る。
 
-以下は実プロジェクトの実績から抽出した**推奨軸**。この通りの名前・粒度である必要はない。
+### 立ててはいけない軸（先に読む）
 
-> ⚠️ **`designDocs` に同じ軸がある場合、ここに書けるのは「なぜそうするか」だけ。**
-> 例: `docs/設計書/API一覧.md` があるなら `03_api_design` に**エンドポイントを列挙してはいけない**。
-> 書けるのは「なぜカーソルページネーションなのか」「なぜこの粒度で分けるのか」といった判断だけ。
-> **一覧・件数・個別定義を書き始めたら、それは `docs/設計書/` の職掌**である。
->
-> 実測では、この境界を守らなかったプロジェクトで
-> **`02_database_design` / `03_api_design` / `05_type_definitions` / `06_service_repository_design` /
-> `07_hooks_design` / `08_ai_prompt_design` の6本すべてが実態スナップショットに退化し、削除された**。
-> **軸を立てる前に「これは `docs/設計書/` 側では書けないことか」を自問すること。**
+> ⚠️ **`designDocs` と同じ軸をここに立てない。**
 
-### 共通（`00_project/`）
+`harness.config.json` の `designDocs` が持つ軸（API一覧・テーブル定義書・サービス一覧・
+フック一覧・ER図・対応表など）は、`docTriggers` によって**実装と自動で同期される**。
+同じ軸をここに立てると、**同期されない側が必ず腐る。**
+
+**実測: 2プロジェクトで同じ結末になった。**
+
+| プロジェクト | 経緯 | 結果 |
+|---|---|---|
+| A | 育てたが実装に追従しなかった | `02_database_design` / `03_api_design` / `05_type_definitions` / `06_service_repository_design` / `07_hooks_design` / `08_ai_prompt_design` の**6本すべて削除** |
+| B | テンプレート同梱のまま**誰も書き換えなかった**（2年） | 同じ6本 + `color_system` / `typography` / `icon_system`（1,837行）を**削除** |
+
+**死に方は違うが、どちらも生き残っていない。**
+B のケースは中身が別アプリの設計書のままで、**実装と真逆のことが書かれた文書が配られ続けていた**。
+
+**書きたくなったら、そのファイルを作らずに次のどちらかへ:**
+
+| 書きたいこと | 行き先 |
+|------------|-------|
+| 一覧・件数・個別定義（今こうなっている） | **`docs/設計書/`**。`designDocs` の軸に足す |
+| 「なぜその方式を選んだか」 | **`01_architecture_design.md`** か `02_design_system/design_system_overview.md` に**1〜2行**で足す |
+
+> **1〜2行で足りないなら、それは方針ではなく実態を書こうとしている。**
+
+### 立ててよい軸
+
+以下は実プロジェクトで**生き残った**もの。この通りの名前・粒度である必要はない。
+**最初から作らず、「毎回これを思い出す必要がある」と気づいた時に作る。**
+
+#### 共通（`00_project/`）
 
 | ファイル | 中身 |
 |---|---|
 | `app_requirements.md` | プロダクト概要・コアコンセプト・主要機能・成功指標 |
 | `domain_rules.md` | ドメイン固有の用語・制約・「この機能を扱う時だけ知っていればよい」ルール |
 
-### Next.js（`01_development_docs/`）
+#### Next.js（`01_development_docs/`）
 
 `01_architecture_design.md`（同梱）に加えて:
-`02_database_design` / `03_api_design` / `04_error_handling_design` / `05_type_definitions` /
-`06_service_repository_design` / `07_hooks_design` / `08_ai_prompt_design` / `debugging_guidelines`
 
-`02_design_system/`: `design_system_overview` / `component_library` / `color_system` / `typography` / `icon_system`
+| 軸 | なぜ `docs/設計書/` では書けないか |
+|----|--------------------------------|
+| `04_error_handling_design` | **どの層で何を投げ、どこで捕まえるか**という方式の選択。`designDocs` に対応する軸が無い |
+| `debugging_guidelines` | **判断手順**（どう切り分けるか）。実装の一覧ではない |
 
-### WPF（`01_development_docs/`）
+`02_design_system/`: **`design_system_overview` の1本**にまとめる。
+
+> **`color_system` / `typography` / `icon_system` を分けない。** 色値・フォント値は
+> `globals.css`（や同等の設定）が正本で、**文書に写した瞬間に腐る**。
+> overview には「**数値は書かない。トークンで参照する**」という方針だけを置く。
+> 個々の規約（アイコンのサイズ・クラス順など）は **`.claude/rules/` の方が適している**
+> （該当ファイルを触ったときに自動でロードされるため）。
+
+#### WPF（`01_development_docs/`）
 
 `01_architecture_design.md`（同梱）に加えて:
-`02_persistence_design`（永続化フォーマットとバージョン移行）/ `03_transport_protocol_design`（通信・状態遷移）/
-`04_error_handling_design` / `05_type_definitions` / `06_services_design` / `07_viewmodel_binding_design` /
-`scripting_design`（動的コード実行を持つ場合）
 
-`02_design_system/`: `design_system_overview` / `component_library`
+| 軸 | なぜ `docs/設計書/` では書けないか |
+|----|--------------------------------|
+| `02_persistence_design` | **保存フォーマットのバージョン移行方針**。「今のフォーマット」ではなく「変えるときの規約」 |
+| `03_transport_protocol_design` | **状態遷移の設計**。取りうる状態と遷移条件は実装の列挙ではない |
+| `04_error_handling_design` | Next.js と同じ |
+| `scripting_design` | 動的コード実行を持つ場合の**セキュリティ方針**（既定無効・トラストの扱い・実行時ガード） |
 
-### Unity（`01_development_docs/`）
+`02_design_system/`: **`design_system_overview` の1本**。
+
+#### Unity（`01_development_docs/`）
 
 `01_app_architecture.md`（同梱）**1本で足りることが多い**。
 レイヤー構造・依存の原則・当たり判定の方針・ScriptableObject 設計方針・命名規則・
