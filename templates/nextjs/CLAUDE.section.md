@@ -72,6 +72,7 @@ globalIgnores([
 |--------|-------------------|
 | `typescript.md` | `src/**/*.{ts,tsx}` |
 | `react-nextjs.md` | `src/features/**/*.tsx`, `src/components/**/*.tsx`, `src/app/**/*.tsx` |
+| `state-management.md` | `src/features/**/stores/**`, `src/stores/**`, `src/lib/stores/**` |
 | `api.md` | `src/app/api/**`, `src/features/**/hooks/**`, `src/lib/services/**` |
 | `prisma.md` | `prisma/schema.prisma`, `tools/export-to-sql.ts`, `tools/scripts/generate-table-docs.ts` |
 | `tools-scripts.md` | `tools/**` |
