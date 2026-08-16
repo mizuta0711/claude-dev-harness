@@ -48,7 +48,7 @@ claude plugin install harness-<env>@dev-harness --scope project   # ★必須
 | [既存プロジェクト移行指示書](docs/guide/既存プロジェクト移行指示書.md) | **旧テンプレートからの移行**。エージェントにそのまま渡す手順書 |
 | [オプションMCP追加ガイド](docs/guide/オプションMCP追加ガイド.md) | 標準以外の MCP を足すとき |
 | [図（diagrams/）](docs/diagrams/) | 全体構造 / 開発フロー / 役割比較 / スキル実行 / フック発火 / 改善還元 の6本 |
-| [背景（background/）](docs/background/) | **なぜこの設計なのか**（意思決定記録・追従しない） |
+| [背景（background/）](docs/background/) | **なぜこの設計なのか**（意思決定記録。**決定は書き換えず、差異の記載は現行版へ追従する**） |
 
 ## 構成
 
@@ -58,7 +58,7 @@ claude-dev-harness/
 ├── plugins/
 │   ├── harness-core/                  # 共通コア（全環境で同一）
 │   │   ├── .claude-plugin/plugin.json
-│   │   ├── skills/                    # 11スキル（下表）
+│   │   ├── skills/                    # 12スキル（下表）
 │   │   ├── agents/                    # coding-specialist / code-reviewer / documentation-manager / japanese-proofreader
 │   │   └── hooks/
 │   │       ├── hooks.json
@@ -73,12 +73,13 @@ claude-dev-harness/
 │   └── wpf/
 ├── tools/create-project.mjs           # base + env を合成してプロジェクトを生成する
 └── docs/                              # ハーネス自体の仕様・運用文書
-    ├── guide/                         # 使い方（セットアップ / オプション MCP）
-    ├── diagrams/                      # 構造・フロー・フックの図（mermaid）
-    ├── background/                    # なぜそうしたか（意思決定記録・追従しない）
-    ├── plugin-development.md          # プラグインの修正・反映手順（開発しながら直したいとき）
-    ├── harness-config-contract.md     # harness.config.json の設定契約
-    └── permissions-baseline.md        # permissions の設計と実測記録
+    ├── guide/                    # 使い方（セットアップ / オプション MCP）
+    ├── diagrams/                 # 構造・フロー・フックの図（mermaid）
+    ├── background/               # なぜそうしたか（意思決定記録。決定は不変・差異の記載は追従）
+    ├── プラグイン開発手順.md      # プラグインの修正・反映手順（開発しながら直したいとき）
+    ├── harness設定契約.md         # harness.config.json の設定契約
+    ├── permissionsベースライン.md # permissions の設計と実測記録
+    └── Phase0持ち越し課題.md      # Phase 0 で「発見のみ」とした項目の割り当て
 ```
 
 ### 環境プラグイン
@@ -112,6 +113,7 @@ claude-dev-harness/
 | `complete-feature` | 完了処理（受け入れ基準ゲート → `completed/` へ移動） |
 | `pre-push-check` | push 前の台帳同期チェック |
 | `done` | 完了報告 |
+| `plugin-update` | プラグイン層の更新（導入済みプラグインとスコープを自動特定し、更新前後の版を報告） |
 | `harness-update` | テンプレート層の追従（3点比較で差分を分類し、承認したものだけ適用） |
 | `proofread-ja` | 日本語校正（AI が書いた文章の品質ゲート）。`japanese-proofreader` へ委譲する |
 
@@ -135,7 +137,7 @@ claude-dev-harness/
 ## 設定契約 `.claude/harness.config.json`
 
 core の hooks / skills は**すべてこのファイルを読んで動く**。仕様は
-[docs/harness-config-contract.md](docs/harness-config-contract.md) を参照。
+[docs/harness設定契約.md](docs/harness設定契約.md) を参照。
 
 ## プロジェクトからの利用（marketplace 経由）
 
@@ -200,7 +202,7 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 
 1. 改善に気づいたら、**その場では直さずメモに残して開発を続ける**（区切りでまとめて対応する）
 2. 区切りでこのリポジトリを直す。手元での試し方は
-   **[docs/plugin-development.md](docs/plugin-development.md)** に手順がある
+   **[docs/プラグイン開発手順.md](docs/プラグイン開発手順.md)** に手順がある
 3. 影響範囲に応じてバージョンを上げる（semver）。`CHANGELOG.md` に記録する
 4. push する
 5. 各プロジェクトで `claude plugin marketplace update dev-harness` →

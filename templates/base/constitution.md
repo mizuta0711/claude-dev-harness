@@ -85,7 +85,7 @@ hooks / skills は **fail-open** で実装する。
 - **気づいた時点では直さない。** メモに1行残して開発を続け、区切りでまとめて対応する
   （開発の流れを止めない。まとめて見た方が根本的な直し方を選べる）
 - **プラグイン**（skills / agents / hooks）の修正・反映手順:
-  [docs/plugin-development.md](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/plugin-development.md)
+  [docs/プラグイン開発手順.md](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E9%96%8B%E7%99%BA%E6%89%8B%E9%A0%86.md)
   - 反映のトリガーは**版番号の変化**。中身だけ変えても利用側には届かない
   - 手元で試すだけなら `claude plugin uninstall` → `install` → 再起動
   - プラグインの導入・更新・削除は**すべて `--scope project` を付ける**。

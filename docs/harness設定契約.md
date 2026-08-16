@@ -3,6 +3,8 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
+| 対応ハーネス版 | harness-core 0.6.4 / harness-nextjs 0.3.1 / harness-unity 0.2.1 / harness-wpf 0.2.0 |
+| 最終更新 | 2026-08-16 |
 | 正典 | ProjectTemplete リポジトリ `docs/04_harness設定契約_仕様.md` |
 | 本書の役割 | 04仕様のうち **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
 
@@ -161,7 +163,7 @@ hook は `CLAUDE_PROJECT_DIR` 環境変数があればそれを、無ければ `
 > `git commit ... || true` のように**成功終了しつつコミットを作らない**ケースは実在するため、
 > 段1・段2 の確認は必要。
 
-### 6-3. SessionStart の matcher
+### 6-5. SessionStart の matcher
 
 `startup|resume|clear|compact` を対象にする。
 `fork` は**意図的に含めない** — fork 元セッションの文脈を引き継ぐため、状況の再注入は冗長になる。

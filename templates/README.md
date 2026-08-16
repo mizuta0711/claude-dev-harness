@@ -79,5 +79,5 @@ node tools/create-project.mjs --env <nextjs|unity|wpf> --dest ../MyProject
 
 - **業務固有名・実プロジェクト由来の固有値を入れない**（本リポジトリは public）
 - `docs/設計書/` に置くのは**ヘッダと表の枠だけ**。サンプルの実データを残さない
-- permissions の方針は [../docs/permissions-baseline.md](../docs/permissions-baseline.md) が正典
+- permissions の方針は [../docs/permissionsベースライン.md](../docs/permissionsベースライン.md) が正典
   （実機検証済みのパターンが記録されている）

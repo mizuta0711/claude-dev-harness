@@ -45,6 +45,12 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-commit-doc-check.js\"",
             "timeout": 10,
             "statusMessage": "設計書同期を確認中..."
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-branch-notice.js\"",
+            "timeout": 10,
+            "statusMessage": "ブランチ操作を確認中..."
           }
         ]
       }

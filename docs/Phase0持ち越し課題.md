@@ -10,7 +10,7 @@
 
 | # | 内容 | 解消先 | 状態 |
 |---|------|--------|------|
-| F1 | WPF の deny が `settings.local.json`（gitignore 対象）にのみ存在し派生へ伝播しない | ① 既存 WPF リポジトリ: Phase 0 追補として適用済み（branch `phase0-f1`）<br>② 恒久: Phase 2 の `templates/*/settings.json` 雛形（[permissions-baseline.md](permissions-baseline.md) §1） | ✅ 既存反映済み / ⬜ 雛形は Phase 2 |
+| F1 | WPF の deny が `settings.local.json`（gitignore 対象）にのみ存在し派生へ伝播しない | ① 既存 WPF リポジトリ: Phase 0 追補として適用済み（branch `phase0-f1`）<br>② 恒久: Phase 2 の `templates/*/settings.json` 雛形（[permissionsベースライン.md](permissionsベースライン.md) §1） | ✅ 既存反映済み / ⬜ 雛形は Phase 2 |
 | F2 | PowerShell の破壊的コマンド deny が引数順序に依存 | Phase 2 雛形（同 §2。`Remove-Item*-Recurse*` 形式） | ⬜ Phase 2（実機確認つき） |
 | F3 | refspec 形式の force push（`git push origin +main`）を塞げない | Phase 2 雛形（同 §2） | ⬜ Phase 2（実機確認つき） |
 | F4 | hooks が `if` 非依存でなく、全 Bash 呼び出しで起動する | **Phase 1 で解消済み**。matcher は `Bash\|PowerShell`、発火判定は stdin JSON を各スクリプトで実施（`harness-lib.isGitCommit`） | ✅ 完了 |
@@ -34,7 +34,7 @@
 
 ## 3. Phase 2 着手時のチェックリスト
 
-- [ ] `templates/base/.claude/settings.json` に [permissions-baseline.md](permissions-baseline.md) の deny / ask を実装する
+- [ ] `templates/base/.claude/settings.json` に [permissionsベースライン.md](permissionsベースライン.md) の deny / ask を実装する
 - [ ] 同 §5 の未検証3項目を実機で確認し、効かないパターンは書き直す
 - [ ] `templates/<env>/.claude/settings.json` の allow を、その環境の `harness.config.json` の `commands` と一致させる
 - [ ] `settings.local.json` は「手元だけの allow」用途であることをテンプレートの README に明記する
@@ -88,5 +88,5 @@ C1 の実績。実際に却下されたタスク（`prisma migrate reset` の実
 ### D — 不採用（理由）
 
 ハーネス自身は `CHANGELOG.md` を持ち、semver 運用も回っている（版番号の運用は
-`docs/plugin-development.md` に集約済み）。**利用側プロジェクトにリリースノートが要るかは
+`docs/プラグイン開発手順.md` に集約済み）。**利用側プロジェクトにリリースノートが要るかは
 プロダクトの性質に依存**し、環境非依存の共通課題ではない。core の責務から外れる。

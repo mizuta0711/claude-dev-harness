@@ -71,15 +71,46 @@ if (cfg.status === "ok") {
 }
 
 // --- git の状況 ---
+//
+// ⚠️ **upstream が無いブランチで黙らないこと。**
+// かつては `@{upstream}..HEAD` だけを見ていたが、これは upstream が設定されている
+// ブランチでしか値を返さない。**エージェントが自動で切ったブランチには upstream が無い**ため、
+// 「ユーザーが知らないブランチに未プッシュのコミットが積み上がっている」という
+// **最も知らせるべき状況でだけ、未プッシュ数の行ごと消えていた**（2026-08-16 実測。
+// skillup_mock で 4 コミットが約 20 時間気づかれずに残った）。
+// upstream が無い場合はリモートの既定ブランチを基準にして数え、**その旨を明示する**。
 const branch = lib.git("branch --show-current", 3000);
-const ahead = lib.git("rev-list --count @{upstream}..HEAD", 3000);
 const dirty = lib.git("status --porcelain", 3000);
 
+const upstream = lib.git("rev-parse --abbrev-ref @{upstream}", 3000);
+const defaultRef = lib.git("symbolic-ref --short refs/remotes/origin/HEAD", 3000);
+
+let ahead = "";
+let aheadLabel = "未プッシュ";
+let orphanBranch = false;
+
+if (upstream) {
+  ahead = lib.git("rev-list --count @{upstream}..HEAD", 3000);
+} else if (defaultRef) {
+  // upstream 未設定。既定ブランチに無いコミットを数える
+  ahead = lib.git(`rev-list --count ${defaultRef}..HEAD`, 3000);
+  aheadLabel = `${defaultRef} に無い`;
+  orphanBranch = Boolean(ahead && ahead !== "0");
+}
+
 const head = [];
-if (branch) head.push(`branch: ${branch}`);
-if (ahead && ahead !== "0") head.push(`未プッシュ: ${ahead} commits`);
+if (branch) head.push(`branch: ${branch}${upstream ? "" : "（upstream 無し）"}`);
+if (ahead && ahead !== "0") head.push(`${aheadLabel}: ${ahead} commits`);
 if (dirty) head.push(`未コミット: ${dirty.split("\n").length} ファイル`);
 if (head.length) lines.push(`[状況] ${head.join(" / ")}`);
+
+if (orphanBranch) {
+  lines.push(
+    `  → **このブランチは push されていない。** ${defaultRef} に無いコミットが ${ahead} 件ある。` +
+      `ユーザーが把握していない可能性があるため、作業を始める前に扱い` +
+      `（push / 既定ブランチへマージ / ローカル維持）を確認すること。`
+  );
+}
 
 const docs = activeFeatureDocs();
 if (docs.length) {
@@ -116,9 +147,13 @@ if (!lines.length) process.exit(0);
  * これで「導入できたのか分からない」（C1 のつまずき）が起動時に解消する。
  * 設定不在の警告は**見逃されると全機能が黙って素通りする**ため、画面にも出す。
  */
+// **例外がひとつある。** 「push されていないブランチの上にいる」ことだけは画面にも出す。
+// 気づかないまま作業を重ねると、コミットが増えるほど始末が難しくなる種類の問題であり、
+// Claude の文脈にだけ入れても人には届かない。
 const screen =
   cfg.status === "ok"
-    ? `[harness] ${cfg.config?.environment || "environment 未設定"} / config OK`
+    ? `[harness] ${cfg.config?.environment || "environment 未設定"} / config OK` +
+      (orphanBranch ? ` ⚠️ ブランチ \`${branch}\` は未 push（${defaultRef} に無いコミット ${ahead} 件）` : "")
     : `[harness] ⚠️ ${cfg.message}`;
 
 lib.emit({
