@@ -52,6 +52,53 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.11.0] — サブエージェントのモデル固定を旧テンプレートどおりに戻す（全プラグイン）
+
+**ユーザー判断（2026-08-17）**: 「サブエージェントの sonnet は明記すること。元のテンプレートに従うこと」。
+**0.9.0 で撤回したモデル固定を戻す。**
+
+### なぜ戻せるのか — 撤回の根拠が当たらなかった
+
+0.9.0 の撤回理由は「**モデル名は将来変わるため、ハーネスが特定の名前を持つと
+名前が変わった時点で全プロジェクトが壊れる**」だった。
+
+**`sonnet` / `opus` / `fable` は「最新のその系列」を指すエイリアス**であり、
+特定のモデル名を固定しない。**名前が変わってもエイリアスは追従する。**
+
+### なぜ戻すのか — 固定しないと委譲の目的が担保されない
+
+利用実績の監査（ProjectTemplete `docs/reviews/20260817_仕組み自体の要否監査.md`）で、
+サブエージェントへ委譲する理由が3つあることが確認された:
+**コンテキスト衛生 / 思い込みの排除 / コスト**。
+
+**`model` が無いとメインのモデルを継承する**ため、3つ目（コスト）が発生しない。
+プロジェクトの `CLAUDE.md` に「原則 Sonnet」と散文で書いても効かない
+（**「書いても守られない」の一例**）。
+
+### Changed
+
+- **全プラグインのエージェント9本に `model` を明記**（旧テンプレートの指定に合わせた）
+  - `sonnet`: `code-reviewer` / `coding-specialist` / `documentation-manager` /
+    `browser-tester` / `product-advisor`（nextjs / wpf / android）/ `game-designer`
+  - **`fable`: `japanese-proofreader` のみ**（文章の自然さを判断する作業のため。旧 CommSim の指定に一致）
+- 各エージェントの「モデルについて」節を書き直し、**エイリアスなので版に依存しない**ことと、
+  **変えたい場合はプロジェクトの `.claude/agents/` に同名で置く**ことを明記
+- `design-review` / `update-docs` / `proofread-ja` の「モデルはプロジェクトの裁量」という
+  記述を削除（**裁量と書いた結果、誰も指定せずコストの理由が空振りしていた**）
+
+### Added — その場限りの依頼にも適用する
+
+定義済みエージェントを使わず、**メインが一時的にサブエージェントへ投げる場合**
+（調査・探索・一括置換など）も `model` へ `sonnet` を明示する規律を追加した。
+
+- `templates/base/CLAUDE.md` — サブエージェント節に追記。**上位モデルを使うなら理由を報告に書く**
+- `templates/base/constitution.md` — §6 に**不変原則**として追記
+
+docs 影響: あり（background/01_統合前後の差異.md — 0.9.0 の撤回記録に「0.11.0 で戻した」経緯を追記 /
+templates/base/CLAUDE.md / templates/base/constitution.md — テンプレート層のため対応ハーネス版は据え置き）
+
+> `docs/guide/` と `docs/diagrams/` は更新不要。skills / agents の顔ぶれもフローも変わっていない。
+
 ## [0.10.0] — `sync-check` を実際に走る場所へ繋ぐ（harness-core）
 
 **利用実績の監査（ProjectTemplete `docs/reviews/20260817_仕組み自体の要否監査.md`）で、
