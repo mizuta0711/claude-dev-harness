@@ -9,6 +9,7 @@
     "test": null,
     "dev": "npm run dev"
   },
+  "audit": { "intervalDays": 30 },
   "gates": { "preCommit": ["typecheck"] },
   "paths": {
     "source": ["src/**", "prisma/**"],

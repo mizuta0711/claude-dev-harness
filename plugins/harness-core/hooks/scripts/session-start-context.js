@@ -112,6 +112,50 @@ if (orphanBranch) {
   );
 }
 
+/**
+ * 前回の利用実績監査（`/harness-core:usage-audit`）からの経過日数
+ *
+ * **知らせるだけ。止めない。** 監査は「配ったのに動いていない仕組み」を見つける工程で、
+ * 実測するまで誰も気づかない種類の欠陥を扱う（**動かなくても何も起きない**ため）。
+ * 思い出して叩く運用にすると回らないので、**経過を画面に出す**。
+ *
+ * - マーカーがあれば `lastRunAt` から数える
+ * - **マーカーが無い場合は `harness-baseline.json` の `appliedAt` から数える**
+ *   （導入直後のプロジェクトに「監査していません」と出しても意味が無いため、
+ *    間隔を過ぎるまでは黙る）
+ * - 判定に必要なものが無ければ **null（何も言わない）**
+ */
+function auditOverdueDays(intervalDays) {
+  const read = (rel) => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(lib.projectDir(), rel), "utf-8"));
+    } catch {
+      return null;
+    }
+  };
+  const marker = read(path.join(".claude", ".harness-audit.json"));
+  const base = marker?.lastRunAt || read(path.join(".claude", "harness-baseline.json"))?.appliedAt;
+  if (!base) return null;
+  const since = Date.parse(base);
+  if (Number.isNaN(since)) return null;
+  const days = Math.floor((Date.now() - since) / 86400000);
+  return days > intervalDays ? { days, everRun: Boolean(marker?.lastRunAt) } : null;
+}
+
+const AUDIT_INTERVAL_DEFAULT = 30;
+// ⚠️ `Number(x) || 既定` と書くと **`0` が既定に化けて無効化できない**（実測で踏んだ）。
+//    `0` は「通知しない」という**意味のある値**なので、有限数かどうかで分岐する。
+const auditIntervalRaw = Number(cfg.config?.audit?.intervalDays);
+const auditInterval = Number.isFinite(auditIntervalRaw) ? auditIntervalRaw : AUDIT_INTERVAL_DEFAULT;
+const overdue = cfg.status === "ok" && auditInterval > 0 ? auditOverdueDays(auditInterval) : null;
+if (overdue) {
+  lines.push(
+    `[利用実績の監査] 前回から ${overdue.days} 日` +
+      (overdue.everRun ? "" : "（まだ一度も実施していない）") +
+      `。\`/harness-core:usage-audit\` で、配ったのに動いていない仕組みと規律の遵守を実測できる。`
+  );
+}
+
 const docs = activeFeatureDocs();
 if (docs.length) {
   lines.push("[進行中の機能設計書]");
@@ -153,7 +197,9 @@ if (!lines.length) process.exit(0);
 const screen =
   cfg.status === "ok"
     ? `[harness] ${cfg.config?.environment || "environment 未設定"} / config OK` +
-      (orphanBranch ? ` ⚠️ ブランチ \`${branch}\` は未 push（${defaultRef} に無いコミット ${ahead} 件）` : "")
+      (orphanBranch ? ` ⚠️ ブランチ \`${branch}\` は未 push（${defaultRef} に無いコミット ${ahead} 件）` : "") +
+      // 監査は**人が起動を決める**ものなので、Claude の文脈だけでなく画面にも出す
+      (overdue ? ` 💡 利用実績の監査から ${overdue.days} 日（/harness-core:usage-audit）` : "")
     : `[harness] ⚠️ ${cfg.message}`;
 
 lib.emit({

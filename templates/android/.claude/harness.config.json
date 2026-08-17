@@ -9,6 +9,7 @@
     "test": "./gradlew testDebugUnitTest",
     "dev": "./gradlew installDebug"
   },
+  "audit": { "intervalDays": 30 },
   "gates": { "preCommit": [] },
   "envOptions": {
     "applicationId": "{{APPLICATION_ID}}"

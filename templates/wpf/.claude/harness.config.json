@@ -9,6 +9,7 @@
     "test": null,
     "dev": "dotnet run"
   },
+  "audit": { "intervalDays": 30 },
   "gates": { "preCommit": ["build"] },
   "paths": {
     "source": ["{{CORE_PROJECT}}/**", "{{UI_PROJECT}}/**"],

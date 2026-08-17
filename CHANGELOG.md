@@ -52,6 +52,44 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.12.0] — 利用実績の監査を仕組みにする（`usage-audit` ＋ 起動時の通知）
+
+**規約は `CLAUDE.md` と `constitution.md` に書いてあるが、守られたかを見る手段が無かった。**
+配ったものが実際に動いているかも同じで、**実測するまで4ヶ月気づかなかった**（H24 / H25）。
+
+### Added
+
+- **`skills/usage-audit`** — transcript を集計し、スキル・エージェントの起動回数と
+  **規律の遵守**（範囲まるごとの git 操作 / `model` 未指定の委譲 / `pre-push-check` の無い push）を実測する
+  - **判定は自作しない。** `git add -A` 等の検出はフックと同じ `hooks/scripts/git-scope.js` を読む
+    （素の正規表現だと **`grep "git add -A"` のような自分の調査コマンドまで数えて 113件という嘘の数字が出た**）
+  - `--known=` に配布物のスキル名を渡すと、**transcript に混ざった引用テキストを隔離**する
+    （実測: 会話中に説明として書いた名前が「2回起動」として数えられた）
+  - **要否を判断しない。** ゼロ起動の**原因**（未配線 / 宣言と実装のずれ / 明示呼び出し設計 / 本当に不要）を
+    特定するところまでが SKILL.md の手順
+- **`audit.intervalDays`**（`harness.config.json`・任意） — 既定 30 日、`0` で通知しない
+- **起動時の通知** — `session-start-context.js` が、前回の監査から間隔を過ぎていたら**画面に出す**。
+  前回日は `.claude/.harness-audit.json`、無ければ `harness-baseline.json` の `appliedAt` から数える。
+  **判定材料が無ければ何も言わない**（導入直後のプロジェクトを催促しない）
+- **`tests/audit-notice.test.mjs`** — 通知の8ケース
+
+### `intervalDays: 0` が効かないバグを、手で試して見つけた
+
+`Number(x) || 既定` と書いたため、**`0`（通知しない）が既定の 30 に化けて無効化できなかった**。
+
+> **「通った」ではなく「鳴ることと黙ることの両方」を確かめる**まで分からなかった。
+> 失敗したケースはテストに残してある。
+
+### Changed
+
+- `templates/base/.gitignore` に `.claude/.harness-audit.json` を追加
+- 各環境の `harness.config.json` に `audit` の既定値を明記
+
+docs 影響: あり（reference/harness設定契約.md — `audit.intervalDays` をスキーマ・消費者一覧・fail-open 表へ /
+templates/base/CLAUDE.md — スキル表に1行）
+
+> `docs/diagrams/` は据え置き。**フックは1本も増えていない**（既存の SessionStart に相乗りした）。
+
 ## [Unreleased] — 配布物の内部整合を CI で検査する（`tests/wiring.test.mjs`）
 
 **利用実績の監査で見つかった H24 / H25 は、どちらも静的に検出できる型だった。**

@@ -9,6 +9,7 @@
     "test": null,
     "dev": null
   },
+  "audit": { "intervalDays": 30 },
   "gates": { "preCommit": [] },
   "envOptions": {
     "rootNamespace": "{{PROJECT_NAME}}"
