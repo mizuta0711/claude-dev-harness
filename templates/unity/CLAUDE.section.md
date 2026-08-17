@@ -32,6 +32,7 @@ Assets/
 
 C# の規約は [.claude/rules/csharp-unity.md](.claude/rules/csharp-unity.md) に置いてある
 （`Assets/Scripts/**` を読んだ時点で自動ロードされるため、手動で読む必要はない）。
+設計ドキュメントの規約は [.claude/rules/docs.md](.claude/rules/docs.md)（`docs/features/**` `docs/設計書/**` で発火）。
 
 要点だけ再掲する:
 
