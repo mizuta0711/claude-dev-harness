@@ -40,7 +40,7 @@
 | `/harness-core:usage-audit` | 利用実績の監査。**配ったのに動いていない仕組み**と規律の遵守を transcript から実測する（前回から日数が空くと起動時に知らせる） |
 | `/harness-core:plugin-update` | プラグイン層（skills / agents / hooks）を最新版へ更新する。**再起動が要る** |
 | `/harness-core:harness-update` | テンプレート層を claude-dev-harness の最新へ追従させる |
-| `/harness-core:proofread-ja` | 日本語校正。AI が書いた文書の不自然な日本語を直す（文書を書き終えた区切りで） |
+| `/harness-core:proofread-ja` | 日本語校正。AI が書いた文書の不自然な日本語を直す。**`update-docs` / `complete-feature` が「利用者が読む日本語を書いた」ときに案内する**ので、その案内が出たら実行を検討する |
 
 > **ハーネスの使い方**（導入・確認・つまずいたとき）は
 > [セットアップガイド](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/guide/セットアップガイド.md)、
