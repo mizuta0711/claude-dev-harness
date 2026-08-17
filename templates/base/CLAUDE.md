@@ -33,9 +33,9 @@
 | `/harness-core:code-review` | 実装レビュー。設計書との突き合わせ・エラー処理・セキュリティを確認し修正まで行う |
 | `/harness-core:build-check` | `harness.config.json` の `commands` を一括実行し結果を表で報告する |
 | `/harness-core:update-docs` | 実装変更に基づいて `docs/設計書/` を更新し、台帳に記録する |
-| `/harness-core:sync-check` | 設計書と実装の網羅的な突き合わせ（変更駆動では拾えない乖離の発見） |
+| `/harness-core:sync-check` | 設計書と実装の網羅的な突き合わせ（変更駆動では拾えない乖離の発見）。**`pre-push-check` が push 前に自動で呼ぶ**ので、通常は直接叩かない |
 | `/harness-core:complete-feature` | 機能設計書の完了処理。受け入れ基準を確認して `completed/` へ移動する |
-| `/harness-core:pre-push-check` | push 前チェック。未 push コミットが台帳に記録済みかを確認する |
+| `/harness-core:pre-push-check` | push 前チェック。未 push コミットが台帳に記録済みかを確認し、**ソース変更を含む場合は設計書と実装の全量照合も行う** |
 | `/harness-core:done` | 完了報告を定型テーブル形式で出力する |
 | `/harness-core:plugin-update` | プラグイン層（skills / agents / hooks）を最新版へ更新する。**再起動が要る** |
 | `/harness-core:harness-update` | テンプレート層を claude-dev-harness の最新へ追従させる |
@@ -98,6 +98,14 @@ node "$HOME/.claude/plugins/marketplaces/dev-harness/plugins/harness-core/skills
   報告しないと、**ユーザーが知らないブランチにコミットが積み上がる**
   （実測: 4コミットが約20時間気づかれずに残った）
 - サブエージェントの結果は**必ずメインで差分確認**してからコミットする。**ビルド成功 ≠ 正しい実装**
+- **重い読み込みを伴う作業はサブエージェントへ委譲する。** 実装は `coding-specialist`、
+  設計書の更新は `documentation-manager`。理由は3つあり、**いちばん効くのはコンテキスト衛生**:
+  - **その作業でしか読まない文書**（設計方針・ライブラリ規約・設計書一式）をメインの文脈に持ち込まない
+  - 直前の文脈のまま作業すると、**成果物ではなく自分の理解に合わせて**書いてしまう
+  - 上位モデルを要さない作業が多い
+  - ⚠️ **下位モデルで回したいなら、起動時に明示的にモデルを指定すること。**
+    エージェント定義は `model` を持たない（モデル名が変わると全プロジェクトが壊れるため）ので、
+    **ここに「原則 Sonnet」と書くだけでは効かない**
 - **CLAUDE.md の肥大化防止**: 追記前に「これは方針か実態か」を自問する。実態は `docs/設計書/`、
   汎用の規約は `.claude/rules/`、**このプロジェクトの設計方針は `.claude/01_development_docs/`**、
   不変原則は constitution.md へ。全体で 300 行を超えたら整理対象

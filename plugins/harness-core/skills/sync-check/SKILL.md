@@ -9,7 +9,12 @@ allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Write, Edit
 `/harness-core:update-docs` が「変更駆動」で差分を反映するのに対し、
 このスキルは「全量照合」で設計書と実装の乖離を検出する。
 
-**実行タイミング**: フェーズ完了時、push 前、大規模リファクタリング後
+**実行タイミング**: **`/harness-core:pre-push-check` が push 前に自動で呼ぶ**（Step 3.5。
+未プッシュコミットにソース変更が含まれる場合のみ）。ほかに手動で、フェーズ完了時・大規模リファクタリング後。
+
+> ⚠️ **呼び出し側が範囲を絞ってはいけない。** 変更範囲に絞った照合は `/harness-core:update-docs` が
+> 実装変更のたびに行っている。**絞った時点でこのスキルの存在理由（変更駆動では拾えない乖離の発見）が
+> 消える。** 例外は `/harness-core:complete-feature` で、あれは機能単位の完了ゲートなので絞ってよい。
 
 ## Step 0: 設定の読み込み
 

@@ -52,6 +52,70 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.10.0] — `sync-check` を実際に走る場所へ繋ぐ（harness-core）
+
+**利用実績の監査（ProjectTemplete `docs/reviews/20260817_仕組み自体の要否監査.md`）で、
+`sync-check` が 2026-04-11 の追加以来ずっと0回だったことが分かった。**
+3プロジェクト・20セッション・約149MB の transcript を、`Skill` / slash /
+`SlashCommand` / `subagent_type` の4経路すべてで集計した結果。
+
+**原因は「不要」ではなく「呼び出し側が全量照合を否定していた」こと。**
+
+| 呼び出し側 | それまでの記述 |
+|---|---|
+| `update-docs` Step 3.5 | 「`sync-check` **相当の照合**を行う（**全量照合はしない**）」 |
+| `complete-feature` | 「**変更範囲に関係する対象だけに絞って**実行する」 |
+
+`sync-check` の存在理由は「**変更駆動では検出できない乖離の発見**」なので、
+**変更範囲に絞った時点でその仕事は定義上できない。** さらに
+「`/update-docs` の全タスク完了時に**自動実行**」と書いていたが、**自動実行する実装は無かった。**
+
+**実害**: 利用側プロジェクトで、設計書が**2ヶ月前に削除されたクラスを「✅ 実装済」と記載し続けていた**。
+`docTriggers` は該当層をパターンに含まず変更駆動では拾えず、台帳チェックはハッシュしか見ないので素通りした。
+
+### Changed
+
+- **`pre-push-check`** — Step 3.5「全量照合」を新設。**未プッシュコミットにソース変更が
+  含まれる場合のみ** `sync-check` を**対象を絞らずに**実行する。全コミットが SKIP なら飛ばす。
+  「このスキルは台帳と中身の2つの別々の検査を行う」ことを冒頭に明記した
+  （**台帳が合っていても中身は腐る**）
+- **`update-docs`** — Step 3.5 の「`sync-check` 相当の照合」を**削除**。
+  全量照合は `pre-push-check` の職掌であることを明記した。二重に持たない
+- **`sync-check`** — 実行タイミングを実態へ。**呼び出し側が範囲を絞ってはいけない**理由を明記
+  （絞ると存在理由が消える。`complete-feature` だけは機能単位の完了ゲートなので例外）
+- **`new-feature/開発フローと規模判定.md`** — 「`update-docs` の完了時に自動実行」という
+  **実装の無い記述を削除**し、実際の実行点（`pre-push-check`）へ差し替えた
+
+### Added — 配ったエージェントに呼び出し導線を用意する
+
+同じ監査で、**`coding-specialist` が 2026-04-04 の追加以来0回**、
+`documentation-manager` も**スキルからの導線が無い**ことが分かった。
+`code-reviewer`（45回）だけが `design-review` から呼ばれていた。
+**起動回数は有用性ではなく配線を反映していた。**
+
+- **`design-review` Step 7** — `tech` 承認時に、実装を `coding-specialist` へ委譲できる旨と
+  **委譲する理由・渡すもの**を案内する節を追加
+- **`new-feature` Step 4** — 次アクションに実装フェーズの委譲先を追記
+- **`new-feature/TEMPLATE.md`** — Stage 2 確定後の導線を**コメント外の本文**に追加
+  （従来は「作成後、このセクションは削除してよい」と書かれた運用ガイドのコメント内にしか無く、
+  設計書を作った時点で消えていた）
+- **`update-docs` Step 2.5** — 設計書の更新を `documentation-manager` へ委譲する節を新設
+- **`agents/coding-specialist.md` / `agents/documentation-manager.md`** —
+  「なぜメインではなく、このエージェントに任せるのか」を追記。
+  **コンテキスト衛生・思い込みの排除・コスト**の3点。**呼ぶ理由が分からないと呼ばれない**
+- **`templates/base/CLAUDE.md`** — サブエージェントへの委譲方針を追記
+
+> ⚠️ **モデル指定は依然としてプロジェクトの裁量**（エージェント定義は `model` を持たない）。
+> **`CLAUDE.md` に「原則 Sonnet」と書くだけでは効かない**ことを各所に明記した。
+> 下位モデルで回したいなら**起動時に明示的に指定する**必要がある。
+
+docs 影響: あり（reference/harness設定契約.md — `designDocs.*` の消費者に `pre-push-check` を追加 /
+guide/運用ガイド.md — `sync-check` の実行タイミング2箇所 / templates/base/CLAUDE.md — スキル表2行）
+
+> `docs/background/` は更新不要。「変更駆動と全量照合の二層」という**設計そのものは変わっておらず**、
+> 変わったのは全量照合を**いつ誰が呼ぶか**だけ。`docs/diagrams/` も skills / agents の
+> 顔ぶれが変わらないため据え置き。
+
 ## [Unreleased] — android 環境を追加（4つ目の環境）
 
 Kotlin + Jetpack Compose の Android アプリ向けに、**テンプレート層と環境プラグインを新設**した。

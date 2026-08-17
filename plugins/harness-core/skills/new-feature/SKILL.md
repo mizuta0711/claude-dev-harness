@@ -172,5 +172,8 @@ S 規模のため設計書は不要です。
   - **L 規模**: Stage 1（機能・画面設計＋受け入れ基準チェックリスト）を記入 → `/harness-core:design-review feature`
   - **M 規模（UX変更なし）**: Stage 2（技術設計）を記入 → `/harness-core:design-review tech`
   - **バグ修正（M/L）**: 「1. 概要 > 背景」に症状、「1. 概要 > 方針」に根本原因を記入
+  - **S 規模**: 設計は不要。そのまま実装 → `/harness-core:build-check` → コミット → `/harness-core:done`
+- **実装フェーズに入ったら `coding-specialist` サブエージェントへ委譲できる**旨を添える
+  （委譲する理由と渡すものは `/harness-core:design-review` の Step 7 にある）
 - 💡 UI・挙動の変更を含む場合は「5. 動作確認計画」も記入する旨を案内する
   （確認手段は `.claude/harness.config.json` の `verification` を参照）
