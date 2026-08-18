@@ -32,7 +32,7 @@
     {
       "name": "harness-android",
       "source": "./plugins/harness-android",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "description": "Android (Kotlin + Jetpack Compose) 環境向けの拡張。adb によるスクリーンショット撮影・アンインストール事故の防止・企画レビュー。harness-core と併用する"
     }
   ]

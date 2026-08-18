@@ -14,10 +14,23 @@
  * |---------|------|
  * | `adb uninstall <このアプリ>` | **deny** |
  * | `adb shell pm uninstall <このアプリ>` / `adb shell cmd package uninstall <このアプリ>` | **deny** |
- * | `./gradlew uninstallDebug` / `uninstallAll` 等 | **deny**（対象は必ずこのプロジェクトのアプリ） |
+ * | `adb shell pm clear <このアプリ>` / `adb shell cmd package clear <このアプリ>` | **deny**（アプリは残るが**データは全部消える**） |
+ * | `./gradlew uninstallDebug` / `:app:uninstallDebug` / `uninstallAll` 等 | **deny**（対象は必ずこのプロジェクトのアプリ） |
  * | `adb uninstall -k <このアプリ>` | **警告のみ**（`-k` はデータとキャッシュを残す） |
  * | 別パッケージの `adb uninstall` | **警告のみ**（このプロジェクトの資産ではない） |
  * | `envOptions.applicationId` が無い | **警告のみ**（判定できないので止めない = fail-open） |
+ *
+ * ## 取りこぼしやすい書き方（H28・2026-08-19 の遡及査読で実測）
+ *
+ * **4件とも「テストが84件通っている状態」で素通りしていた。** テストのケースが
+ * 実装が想定した形しか持っていなかったため、実装の穴がそのままテストの穴になっていた。
+ *
+ * | 書き方 | 直したこと |
+ * |--------|-----------|
+ * | `./gradlew :app:uninstallDebug` | タスク名は**最後の `:` 以降**で判定する（マルチモジュールの標準形。Android Studio の Gradle パネルが出す形でもある） |
+ * | `adb shell "pm uninstall <pkg>"` | トークンから**引用符を剥がす**（複数語を渡すときの常套形） |
+ * | `adb shell pm clear <pkg>` | このフックの目的は「**ローカルデータの全消去を止める**」であり、`pm clear` はまさにそれ。アプリが残るぶん**実行者が実害に気づきにくい** |
+ * | `adb uninstall <pkg>.debug` | `applicationIdSuffix` は applicationId の**末尾に足される**ので、`<applicationId>.` で始まるものは自分のアプリとして扱う |
  *
  * ## 判定は「コマンド位置」に限る（R3 の教訓）
  *
@@ -31,6 +44,15 @@ const lib = require("./plugin-lib.js");
 /** 先頭の環境変数代入（`FOO=bar adb ...`）を落とす */
 const stripEnvAssignments = (text) =>
   text.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
+
+/**
+ * トークンから引用符を剥がす。
+ *
+ * `scanCommands` は**引用符の内側を切らない**（`echo "adb uninstall x"` を拾わないため。R3）が、
+ * その結果 `adb shell "pm uninstall x"` は `"pm` / `uninstall` / `x"` に割れる。
+ * ここはすでに「コマンドである」と判定された断片の中なので、剥がしてよい。
+ */
+const unquote = (t) => String(t || "").replace(/^["']+/, "").replace(/["']+$/, "");
 
 /** 実行ファイル名を取り出す（パス付き・拡張子付きを吸収する） */
 function executableName(token) {
@@ -56,15 +78,19 @@ function uninstallIntents(command) {
 
   for (const seg of lib.scanCommands(command)) {
     const text = stripEnvAssignments(seg.text);
-    const tokens = text.split(/\s+/).filter(Boolean);
+    const tokens = text.split(/\s+/).map(unquote).filter(Boolean);
     if (tokens.length === 0) continue;
 
     const exe = executableName(tokens[0]);
 
     // ---- Gradle のアンインストールタスク ----
     if (exe === "gradlew" || exe === "gradle") {
-      const task = tokens.slice(1).find((t) => /^uninstall/i.test(t));
-      if (task) found.push({ kind: "gradle", pkg: "", task, keepData: false, text });
+      // `:app:uninstallDebug` / `app:uninstallDebug` のようなモジュール修飾を剥がしてから見る。
+      // **前方一致で書くと `:app:` 形を丸ごと見逃す**（H28）。
+      const task = tokens
+        .slice(1)
+        .find((t) => !t.startsWith("-") && /^uninstall/i.test(t.split(":").pop()));
+      if (task) found.push({ kind: "gradle", action: "uninstall", pkg: "", task, keepData: false, text });
       continue;
     }
 
@@ -79,14 +105,19 @@ function uninstallIntents(command) {
     if (rest.length === 0) continue;
 
     let args = null;
+    let action = "uninstall";
     if (rest[0] === "uninstall") {
       args = rest.slice(1);
     } else if (rest[0] === "shell") {
       // `adb shell pm uninstall ...` / `adb shell cmd package uninstall ...`
+      // `pm clear` はアプリを残すが**データは全部消える**。このフックの目的そのもの（H28）
       const shell = rest.slice(1);
-      if (shell[0] === "pm" && shell[1] === "uninstall") args = shell.slice(2);
-      else if (shell[0] === "cmd" && shell[1] === "package" && shell[2] === "uninstall")
-        args = shell.slice(3);
+      const verb = shell[0] === "pm" ? shell[1] : shell[0] === "cmd" && shell[1] === "package" ? shell[2] : null;
+      const skip = shell[0] === "pm" ? 2 : 3;
+      if (verb === "uninstall" || verb === "clear") {
+        action = verb;
+        args = shell.slice(skip);
+      }
     }
     if (!args) continue;
 
@@ -105,14 +136,40 @@ function uninstallIntents(command) {
     }
     found.push({
       kind: "adb",
+      action,
       pkg: operands.length ? operands[operands.length - 1] : "",
       task: "",
-      keepData,
+      // `pm clear` に `-k` は無い。データは必ず消える
+      keepData: action === "clear" ? false : keepData,
       text,
     });
   }
 
   return found;
+}
+
+/**
+ * そのパッケージがこのプロジェクトのアプリか。
+ *
+ * **完全一致では足りない**（H28）。`applicationIdSuffix = ".debug"` は applicationId の
+ * **末尾に足される**ので、端末に入るのは `<applicationId>.debug` になる。
+ * 開発中に消したくなるのはまさにその debug ビルドで、完全一致だと素通りする。
+ * 完全一致だけで判定していた頃は「**このプロジェクトのアプリではありません**」という
+ * **積極的に誤った断定**を返していた。
+ */
+const isOurApp = (pkg, applicationId) =>
+  !!applicationId && !!pkg && (pkg === applicationId || pkg.startsWith(`${applicationId}.`));
+
+/** `pm clear` の理由本文（アプリは残るのでアンインストールとは案内が違う） */
+function clearReason(target) {
+  return [
+    `${target} はアプリのローカルデータを全て消します`,
+    "（DataStore / SharedPreferences / Room。**アプリ自体は残るので気づきにくい**）。",
+    "",
+    "アンインストールと実害は同じです。設定・下書き・キャッシュが初期化されます。",
+    "",
+    "本当に初期状態から試したい場合は、**ユーザーに確認を取ってから**実行してください。",
+  ].join("\n");
 }
 
 /** deny する理由の本文（コマンドの形に応じて言い分けない — 実害は同じ） */
@@ -151,12 +208,13 @@ function main() {
   }
 
   const ours = intents.find(
-    (i) => i.kind === "adb" && !i.keepData && applicationId && i.pkg === applicationId
+    (i) => i.kind === "adb" && !i.keepData && isOurApp(i.pkg, applicationId)
   );
   if (ours) {
+    const label = ours.action === "clear" ? `adb shell pm clear ${ours.pkg}` : `adb uninstall ${ours.pkg}`;
     lib.deny(
-      `adb uninstall ${ours.pkg} を止めました（アプリのデータが消えます）`,
-      denyReason(`adb uninstall ${ours.pkg}`)
+      `${label} を止めました（アプリのデータが消えます）`,
+      ours.action === "clear" ? clearReason(label) : denyReason(label)
     );
     process.exit(0);
   }
@@ -167,7 +225,7 @@ function main() {
     if (!applicationId)
       return `${i.pkg || "(パッケージ不明)"}: envOptions.applicationId が未設定のため、このアプリかどうか判定できません`;
     if (!i.pkg) return "パッケージ名を特定できませんでした（変数展開など）";
-    return `${i.pkg}: このプロジェクトのアプリ（${applicationId}）ではありません`;
+    return `${i.pkg}: このプロジェクトのアプリ（${applicationId}）でも、その派生（${applicationId}.*）でもありません`;
   });
   lib.notify(
     "PreToolUse",
@@ -177,4 +235,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { uninstallIntents, executableName };
+module.exports = { uninstallIntents, executableName, isOurApp };

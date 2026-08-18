@@ -52,6 +52,29 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [harness-android 0.2.1] — アンインストール防止フックの抜け穴を4つ塞ぐ
+
+**テストが84件通っている状態で、安全弁が4つの書き方を素通りさせていた**（H28）。
+`941b257` は指示書 §11-2 が必須ゲートと定める別セッションの査読を通しておらず、
+2026-08-19 に遡って掛けて初めて出た。
+
+| 書き方 | それまでの挙動 | 直したこと |
+|--------|--------------|-----------|
+| `./gradlew :app:uninstallDebug` | **無反応**（deny も警告も無し） | タスク名は**最後の `:` 以降**で判定する。前方一致 `/^uninstall/i` がモジュール修飾に当たらなかった。**マルチモジュールの標準形で、Android Studio の Gradle パネルが出す形** |
+| `adb shell "pm uninstall <pkg>"` | **無反応** | トークンから**引用符を剥がす**。`scanCommands` が引用符の内側を切らない（R3 の誤検知対策）ため `"pm` に割れていた |
+| `adb shell pm clear <pkg>` | **無反応** | `pm clear` も deny する。**このフックの目的は「ローカルデータの全消去を止める」**であり `pm clear` はまさにそれ。アプリが残るぶん実行者が実害に気づきにくい |
+| `adb uninstall <pkg>.debug` | 警告のみ。しかも**「このプロジェクトのアプリではありません」と誤った断定** | `applicationIdSuffix` は applicationId の末尾に足されるので、`<applicationId>.` で始まるものは自分のアプリとして扱う |
+
+**テストも同じ穴を持っていた。** `tests/adb-uninstall-guard.test.mjs` は冒頭で
+「見逃し（データが消える）は不可」と宣言しながら、Gradle ケース4件がすべて非修飾形だった。
+**実装を書いた人がテストも書くと、テストは実装が想定した入力しか試さない。**
+上記4つの形と、巻き込んではいけない `:app:installDebug` / `pm path` / `pm list packages` を追加した（84 → 86件）。
+
+検証: `node --test "tests/*.test.mjs"` 86件成功 / `claude plugin validate . --strict` 通過 /
+実フックへ payload を流して4形すべてが `deny` を返し、別パッケージと `-k` 付きが警告のみに留まることを確認。
+
+docs 影響: あり（diagrams/05 — 挙動の表に `pm clear` とモジュール修飾形・suffix を追加／guide/運用ガイド — 原則を「アンインストールしない」から「ローカルデータを消さない」へ）
+
 ## [0.14.0] — 「前提知識が無くても読めるか」を校正の最優先基準にし、用語集に門番を置く
 
 **実測で、校正が最大の欠陥を素通りした。** ある文書が `measurement window` を「**窓**」と

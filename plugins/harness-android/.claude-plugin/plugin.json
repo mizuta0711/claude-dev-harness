@@ -1,6 +1,6 @@
 {
   "name": "harness-android",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Android (Kotlin + Jetpack Compose) 環境向けの開発ハーネス拡張。adb による実機・エミュレータのスクリーンショット撮影スキル、アンインストール事故を防ぐフック、企画レビューエージェントを提供する。harness-core と併用する",
   "author": {
     "name": "mizuta0711"
