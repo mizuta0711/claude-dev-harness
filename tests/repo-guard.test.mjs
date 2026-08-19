@@ -192,7 +192,14 @@ test("R4: パス指定なしの commit は deny せず警告の対象にする",
   assert.equal(guard.isBlockedCommitAll("git commit -m x"), false, "deny 側に入れない");
 
   assert.equal(guard.isUnscopedCommit("git commit -- src/a.ts"), false, "パス指定あり");
-  assert.equal(guard.isUnscopedCommit("git commit --amend"), false, "amend は対象外");
+  assert.equal(guard.isUnscopedCommit("git commit --amend"), false, "amend は isAmendCommit が扱う");
+  // `args.includes("--")` で区切りを見ていたころは、`--no-verify` の中の `--` に
+  // 誤ヒットして**警告が鳴らなかった**（H32 と同根）
+  assert.equal(
+    guard.isUnscopedCommit("git commit --no-verify -m x"),
+    true,
+    "長いオプション名の中の -- を区切りと誤認しない"
+  );
   assert.equal(guard.isUnscopedCommit("git commit -am x"), false, "-a は deny 側で扱う");
 });
 
@@ -316,4 +323,35 @@ test("toNativePath: MSYS の /d/foo を d:/foo に直す", () => {
   assert.equal(guard.toNativePath('"/c/tmp"'), "c:/tmp");
   assert.equal(guard.toNativePath("D:/already/native"), "D:/already/native");
   assert.equal(guard.toNativePath("relative/path"), "relative/path");
+});
+
+// ---------------------------------------------------------------------------
+// H32: `git commit --amend` もインデックス全体を取り込む
+// ---------------------------------------------------------------------------
+test("isAmendCommit: パス指定なしの --amend を拾い、パス指定ありは通す", () => {
+  // **実測で事故った形**（2026-08-20）。パス指定で正しく2ファイルだけコミットした直後、
+  // メッセージの誤字を直す `--amend` が、その数秒の間に別セッションが `git mv` で
+  // ステージしたリネーム2件を巻き込んだ。`add -A` / `commit -a` は deny しているのに、
+  // `--amend` は**警告すら出ていなかった**。
+  for (const cmd of [
+    "git commit --amend",
+    "git commit --amend --no-edit",
+    "git commit --amend -m x",
+    "git commit --amend -F msg.txt",
+    "git -C /repo commit --amend",
+  ]) {
+    assert.equal(guard.isAmendCommit(cmd), true, `見逃し: ${cmd}`);
+  }
+
+  // **鳴りすぎないこと**（R3）。パス指定があれば巻き込まないので通す
+  for (const cmd of [
+    "git commit --amend -- src/a.ts",
+    "git commit --amend --dry-run",
+    "git commit -m x",
+    'echo "git commit --amend"',
+    "# git commit --amend",
+    "git log --amend",
+  ]) {
+    assert.equal(guard.isAmendCommit(cmd), false, `誤検知: ${cmd}`);
+  }
 });

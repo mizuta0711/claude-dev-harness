@@ -51,6 +51,7 @@
  * | `git checkout -- .` / `git restore .` | **deny** | 範囲指定なしの破棄 |
  * | `git clean`（パス指定なし） | **deny** | 同上 |
  * | パス指定なしの `git commit -m` | **警告のみ** | `git add <path>` の直後など**正当な使い方がある** |
+ * | パス指定なしの `git commit --amend` | **警告のみ** | **インデックス全体を取り込む**（H32・実測で事故）。自分の直前のコミットを直すのは正当 |
  * | `git push`（validate 不通過時） | **deny** | 版番号の不一致など機械で判定できる欠陥を公開前に止める |
  *
  * ### push ゲートの実害の正確な範囲（2026-08-16 実測）
@@ -260,6 +261,16 @@ function gitInvocations(cmd) {
 // ---------------------------------------------------------------------------
 
 const hasFlag = (args, re) => re.test(args);
+
+/**
+ * パス指定の区切り `--` があるか。
+ *
+ * **`args.includes("--")` ではいけない。** `--amend` / `--no-verify` のような
+ * **長いオプション名の中の `--` に誤ヒットする**（実測: `git commit --amend` が
+ * 「パス指定あり」と判定され、H32 の警告が一度も鳴らなかった）。
+ * 区切りは**単独のトークン**なので、前後が空白か端であることまで見る。
+ */
+const hasPathspecSep = (args) => /(^|\s)--(\s|$)/.test(args);
 /** 短縮オプションの束（`-am` など）に指定の文字が含まれるか。`--amend` には当たらない */
 const inBundle = (args, ch) =>
   new RegExp(`(^|\\s)-[A-Za-z]*${ch}[A-Za-z]*(\\s|$)`).test(args);
@@ -313,15 +324,54 @@ function isBlockedDiscard(command) {
 /**
  * パス指定なしの `git commit`。**deny しない**（`git add <path>` の直後など正当な使い方がある）。
  * 警告に留めるのは R4 の明示的な指示。
+ *
+ * `--amend` はここでは扱わない（文面が違うため `isAmendCommit` が別に見る）。
  */
 function isUnscopedCommit(command) {
   return gitInvocations(command).some(
     (g) =>
       g.sub === "commit" &&
-      !g.args.includes("--") &&
+      !hasPathspecSep(g.args) &&
       !inBundle(g.args, "a") &&
       !hasFlag(g.args, /(^|\s)--all(\s|$)/) &&
       !hasFlag(g.args, /(^|\s)(--amend|--dry-run)(\s|$)/)
+  );
+}
+
+/**
+ * パス指定なしの `git commit --amend`（H32）。
+ *
+ * **`--amend` もインデックス全体を取り込む。** `add -A` / `commit -a` は deny しているのに、
+ * `--amend` は素通りしていた。自分の直前のコミットを直すのは正当な操作なので deny はしないが、
+ * **`add -A` と同じ実害が出うる**ことは伝える。
+ *
+ * > **実測（2026-08-20）**: パス指定で正しく2ファイルだけコミットした直後、
+ * > メッセージの誤字を直すために `--amend` したところ、**その数秒の間に別セッションが
+ * > `git mv` でステージしていたリネーム2件を巻き込んだ**。
+ * > 復旧の過程で、`git add` でステージし直すと `.gitattributes` により **CRLF が LF へ正規化され、
+ * > 他セッションがステージした blob と変わる**ことも分かった（`git update-index --cacheinfo` が要る）。
+ */
+/** いまステージされているものの一覧（取れなければ空文字） */
+function stagedSummary() {
+  try {
+    const out = execSync("git diff --cached --name-only", {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5000,
+    }).trim();
+    return out ? `現在ステージされているもの:\n${out}\n` : "";
+  } catch {
+    return "";
+  }
+}
+
+function isAmendCommit(command) {
+  return gitInvocations(command).some(
+    (g) =>
+      g.sub === "commit" &&
+      hasFlag(g.args, /(^|\s)--amend(\s|$)/) &&
+      !hasPathspecSep(g.args) &&
+      !hasFlag(g.args, /(^|\s)--dry-run(\s|$)/)
   );
 }
 
@@ -562,6 +612,17 @@ function main() {
     );
   }
 
+  // 警告のみ（deny しない）。自分の直前のコミットを直すのは正当な操作
+  if (isAmendCommit(command)) {
+    warn(
+      "パス指定なしの `git commit --amend` です。**インデックスにある変更が全部入ります。**\n" +
+        `${stagedSummary()}\n` +
+        "**直前のコミットを書き換えるので、巻き込んでも差分に現れず気づきにくい。**\n" +
+        "他セッションが `git add` / `git mv` した直後だと、その分まで取り込みます（H32・実測で事故）。\n\n" +
+        "メッセージだけ直すなら、先に `git status --short` で確認してください。"
+    );
+  }
+
   // --- 2. push 前に marketplace の整合を検査する -----------------------------
   //
   // 対象ディレクトリが marketplace を持つリポジトリのときだけ走る。
@@ -640,6 +701,7 @@ module.exports = {
   isBlockedStash,
   isBlockedDiscard,
   isUnscopedCommit,
+  isAmendCommit,
   pluginsTouched,
   pluginsMissingBump,
   findPush,
