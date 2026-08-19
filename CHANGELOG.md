@@ -52,6 +52,30 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [docs] — `.gitignore` に足しても追跡済みファイルは外れないことを手順に入れる（H30）
+
+移行指示書 §7 は `.gitignore` への追記だけを指示していたが、
+**すでに追跡されているファイルは `.gitignore` では外れない**。
+
+**実測**: android プロジェクトで「`settings.local.json` を追跡対象から外した」と
+コミットメッセージに書きながら、実際に行われたのは**中身の剪定だけ**だった。
+結果として **`settings.json` の deny をツール層でまたぐ個人 allowlist が push された** —
+`Bash(powershell -Command:*)`（deny は `PowerShell(...)` 側のコマンド文字列照合なので
+`Bash` 経由の起動で外せる）／`Read(//d/**)`（D ドライブ全域）／`Bash(tee:*)` /
+`Bash(python3:*)` / `Bash(chmod:*)`。
+
+**旧テンプレート由来のプロジェクトでは `settings.local.json` が元から未追跡だったため、
+3プロジェクトを移行するまでこの穴は露出しなかった。**
+
+3箇所に入れた:
+
+- **§7**: `git check-ignore -v` / `git ls-tree HEAD` で追跡状態を確かめ、追跡済みなら `git rm --cached`
+- **§10-2**: 機械チェックに ⑥ を追加。**`git ls-files --cached --ignored --exclude-standard` 1本で
+  この種類の欠陥は全部出る**（実測で2プロジェクトに対して走らせ、0件を確認）
+- **§11-2**: 査読の観点に「`.gitignore` に足したものが本当に追跡から外れているか」を追加
+
+docs 影響: あり（guide/既存プロジェクト移行指示書 §7・§10-2・§11-2 と改訂履歴 1.12）
+
 ## [templates] — `verification.skill` が叩くコマンドを allow に載せ、機械で検査する（H31）
 
 テンプレートが `verification.skill` を宣言していても、**そのスキルが実際に叩くコマンドが
