@@ -125,8 +125,10 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 | 4 | `../docs/reference/harness設定契約.md`（`environment` の値・「対応ハーネス版」行） | 契約が実装と食い違う |
 | 5 | `../docs/guide/`（セットアップ / 入門 / 運用 / 移行指示書の環境判定） | **利用者に存在が届かない** |
 | 6 | `../docs/diagrams/`（環境列を持つ図） | 図と実物が乖離する |
+| 6b | `../docs/background/`（**両書とも「差異の記載は現行版に追従する」と自ら定めている**） | **実際に漏れた**（`941b257` は `docs 影響` 行で自ら挙げていたのに、この表に無かった） |
 | 7 | `../README.md` / 本ファイル / `../tools/README.md` の環境一覧 | 同上 |
 | 8 | `../CHANGELOG.md`（`docs 影響` の行を省略しない） | 追従漏れが検出できない |
+| 9 | **要素の「数え上げ」を書いている箇所**（`skills N / agents N / hooks N` の形）。`grep -rn "agents [0-9]" docs/ README.md` | **固有名の grep では当たらない**（H29）。実際に `agents 4`（実数5）・`skills 12`（実数13）・`hooks 6`（実数7）が4箇所で腐っていた |
 
 **完了条件**: `node --test "tests/*.test.mjs"` が通り、
 `claude plugin validate . --strict` が通り、生成したプロジェクトで
