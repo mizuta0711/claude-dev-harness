@@ -32,10 +32,22 @@
       "Bash(adb logcat:*)",
       "Bash(adb exec-out screencap:*)",
       "Bash(adb shell uiautomator dump:*)",
+      "Bash(adb pull:*)",
+      "Bash(adb shell am start:*)",
+      "Bash(adb shell input:*)",
+      "Bash(adb shell screencap:*)",
+      "Bash(adb shell screenrecord:*)",
+      "Bash(adb shell rm /sdcard/screen.png)",
       "PowerShell(adb devices:*)",
       "PowerShell(adb logcat:*)",
       "PowerShell(adb exec-out screencap:*)",
-      "PowerShell(adb shell uiautomator dump:*)"
+      "PowerShell(adb shell uiautomator dump:*)",
+      "PowerShell(adb pull:*)",
+      "PowerShell(adb shell am start:*)",
+      "PowerShell(adb shell input:*)",
+      "PowerShell(adb shell screencap:*)",
+      "PowerShell(adb shell screenrecord:*)",
+      "PowerShell(adb shell rm /sdcard/screen.png)"
     ]
   }
 }

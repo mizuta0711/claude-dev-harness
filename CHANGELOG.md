@@ -52,6 +52,37 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [templates] — `verification.skill` が叩くコマンドを allow に載せ、機械で検査する（H31）
+
+テンプレートが `verification.skill` を宣言していても、**そのスキルが実際に叩くコマンドが
+allow / ask のどこにも無い**ことがあった。実測（android）では `capture-screenshots` が使う
+11コマンドのうち **allow にあったのは3つだけ**（`adb devices` / `adb exec-out screencap` /
+`adb shell uiautomator dump`）。
+
+**症状は「動作確認のたびに確認プロンプトが出る」で、壊れてはいないので気づきにくい。**
+しかも適用先のプロジェクトが `settings.local.json` に広い allow（`Bash(adb:*)`）を持っていると
+**それが覆い隠す**。実測では、そのローカル設定を正しく外した瞬間に露出した。
+
+移行指示書 §10-2 の機械チェックは「`verification` の**前提 MCP**」は見ていたが、
+**必要コマンドが allow にあるか**は見ていなかった（H11 で MCP 側だけを足したため）。
+
+`templates/android/.claude/settings.json` の allow に `adb pull` / `adb shell am start` /
+`adb shell input` / `adb shell screencap` / `adb shell screenrecord` を追加（Bash・PowerShell 両形）。
+**`adb shell rm` は `rm:*` にせず、スキルが実際に使う `/sdcard/screen.png` だけを完全一致で許可した**
+（`rm:*` だと `adb shell rm -rf /sdcard/` まで通る。permissions ベースライン §5-3 と同じ考え方）。
+
+**根治は機械検査。** `tests/verification-commands.test.mjs` を新設し、
+`verification.skill` の SKILL.md から**コードブロック内のコマンド行**を拾って
+allow / ask が覆っているかを見る。鳴りすぎないよう（R3）、**そのテンプレートが permissions で
+言及している実行ファイルで始まる行だけ**を対象にする。§10-2 のスクリプトにも ⑤ として足した。
+
+> **「テストが通った」は担保にならない**（H28）。**欠陥を再現した状態で落ちること**を確認した —
+> 修正前の `settings.json` に戻すと **8件を検出して落ちる**。
+
+プラグインの挙動は変わらないので**版は据え置き**（テンプレート層とテストのみ）。
+
+docs 影響: あり（guide/既存プロジェクト移行指示書 §10-2 と改訂履歴 1.11）
+
 ## [0.15.0] — 引き継ぎの受け取りをスキルにする（`receive-handoff`）
 
 直前の版で「`docs/handoff/` は受け渡し専用。受け取ったら移してから着手する」を
