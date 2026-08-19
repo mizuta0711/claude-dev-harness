@@ -98,7 +98,7 @@ claude-dev-harness/
 ├── plugins/
 │   ├── harness-core/                  # 共通コア（全環境で同一）
 │   │   ├── .claude-plugin/plugin.json
-│   │   ├── skills/                    # 13スキル（下表）
+│   │   ├── skills/                    # 14スキル（下表）
 │   │   ├── agents/                    # coding-specialist / code-reviewer / documentation-manager / japanese-proofreader / glossary-keeper
 │   │   │                              # （フックは7本。下表）
 │   │   └── hooks/
@@ -161,6 +161,7 @@ claude-dev-harness/
 | `harness-update` | テンプレート層の追従（3点比較で差分を分類し、承認したものだけ適用） |
 | `proofread-ja` | 日本語校正（AI が書いた文章の品質ゲート）。`japanese-proofreader` へ委譲する |
 | `usage-audit` | 利用実績の監査（transcript からスキル・エージェントの発火回数を数え、ゼロ発火の原因を分類する） |
+| `receive-handoff` | `docs/handoff/` の引き継ぎの受け取り（実物で裏取り → ユーザー確認 → すぐ着手／保留に分けて格納 → handoff を空に） |
 
 ### フック
 

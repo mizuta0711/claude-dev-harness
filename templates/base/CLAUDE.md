@@ -40,6 +40,7 @@
 | `/harness-core:usage-audit` | 利用実績の監査。**配ったのに動いていない仕組み**と規律の遵守を transcript から実測する（前回から日数が空くと起動時に知らせる） |
 | `/harness-core:plugin-update` | プラグイン層（skills / agents / hooks）を最新版へ更新する。**再起動が要る** |
 | `/harness-core:harness-update` | テンプレート層を claude-dev-harness の最新へ追従させる |
+| `/harness-core:receive-handoff` | `docs/handoff/` の引き継ぎを受け取る。**書いてあることを実物で裏取りし**、判断が要るものはユーザーに確認したうえで、すぐ着手するものと保留するものに分けて格納する |
 | `/harness-core:proofread-ja` | 日本語校正。AI が書いた文書の不自然な日本語を直す。**`update-docs` / `complete-feature` が「利用者が読む日本語を書いた」ときに案内する**ので、その案内が出たら実行を検討する |
 
 > **ハーネスの使い方**（導入・確認・つまずいたとき）は
@@ -140,10 +141,12 @@ node "$HOME/.claude/plugins/marketplaces/dev-harness/plugins/harness-core/skills
 
 ```
 渡す側: docs/handoff/ に置く
-  → 受け取る側: まず適切なフォルダへ移す（docs/features/ 直下 / pending/ / reviews/ …）
+  → 受け取る側: /harness-core:receive-handoff
+     （裏取り → ユーザー確認 → 仕分け → 所定のフォルダへ移動 → handoff を空に）
   → 移してから着手する
-  → handoff 側は残さない
 ```
+
+**受け取りは `/harness-core:receive-handoff` を通す。** 手順を覚えている必要はない。
 
 - **`docs/handoff/` で作業を進めない。** 受け取ったら**着手前に**行き先を決めて移す
 - **対応中のものを `docs/handoff/` に置いたままにしない。** 「受け渡し中」と「作業中」が混ざると、

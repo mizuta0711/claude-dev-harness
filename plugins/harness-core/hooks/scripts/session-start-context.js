@@ -21,6 +21,24 @@ const lib = require("./harness-lib");
 const SAVE_FILE = path.join(lib.projectDir(), ".claude", ".session-context.json");
 
 /** docs/features/ 直下の進行中設計書を、メタ情報の全体ステータス付きで列挙する */
+/**
+ * `docs/handoff/` に受け取り待ちの引き継ぎがあるか。
+ *
+ * **備忘のための通知であって、これが拘束力の本体ではない**（本体は `receive-handoff` スキル）。
+ * handoff へ入れるのはユーザーの指示なので、呼ぶ契機はユーザー自身が持っている。
+ */
+function pendingHandoffs() {
+  const dir = path.join(lib.projectDir(), "docs", "handoff");
+  try {
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith(".md"))
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
 function activeFeatureDocs() {
   const dir = path.join(lib.projectDir(), "docs", "features");
   let entries;
@@ -153,6 +171,15 @@ if (overdue) {
     `[利用実績の監査] 前回から ${overdue.days} 日` +
       (overdue.everRun ? "" : "（まだ一度も実施していない）") +
       `。\`/harness-core:usage-audit\` で、配ったのに動いていない仕組みと規律の遵守を実測できる。`
+  );
+}
+
+const handoffs = pendingHandoffs();
+if (handoffs.length) {
+  lines.push(
+    `[引き継ぎ] docs/handoff/ に ${handoffs.length}件: ${handoffs.join(", ")}` +
+      `。\`/harness-core:receive-handoff\` で裏取り・仕分けして所定のフォルダへ移せる` +
+      `（handoff は受け渡し専用で、作業場所ではない）。`
   );
 }
 
