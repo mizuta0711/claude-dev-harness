@@ -1,18 +1,31 @@
 ---
 name: harness-update
-description: テンプレート層（CLAUDE.md / constitution.md / .claude/rules/ / harness.config.json / docs 骨格）を claude-dev-harness の最新へ追従させる。差分を3分類で提示し、ユーザー承認を得たものだけを適用する。
-allowed-tools: "Bash(node:*), Read, Glob, Grep"
+description: ハーネスを最新へ更新する（プラグイン層とテンプレート層の両方）。「ハーネス更新して」の入口。プラグインを更新したうえで CLAUDE.md / constitution.md / .claude/rules/ / harness.config.json / docs 骨格の差分を3点比較で分類し、判断が要るものは別エージェントの査読を通してから推奨つきでユーザーに確認する。
+allowed-tools: "Bash(node:*), Bash(claude plugin update:*), Bash(git log:*), Bash(git blame:*), Read, Glob, Grep, Edit, Task"
 ---
 
-# テンプレート層の追従（harness-update）
+# ハーネスの更新（harness-update）
 
-プラグイン（skills / agents / hooks）は marketplace 経由で自動更新されるが、
-**CLAUDE.md / `constitution.md` / `.claude/rules/` / `.claude/harness.config.json` / `docs/` 骨格は
-プロジェクト生成時のコピー**であり、そのままでは改善が伝播しない。
-その差分を検出し、**ユーザー承認のうえで**適用するのがこのスキル。
+**「ハーネス更新して」の入口。** 配信経路が違う2層をまとめて扱う。
+
+| 層 | 中身 | 運び方 |
+|---|---|---|
+| **プラグイン層** | skills / agents / hooks | marketplace（`claude plugin update`）。**再起動で有効になる** |
+| **テンプレート層** | `CLAUDE.md` / `constitution.md` / `.claude/rules/` / `harness.config.json` / `docs/` 骨格 | **プロジェクト生成時のコピー**。追従しない限り改善が伝播しない |
 
 差分の判定は同梱の `scripts/harness-diff.mjs` が機械的に行う。
 **目視で差分を分類しないこと** — 3点比較はスクリプトの仕事。
+
+> **`disable-model-invocation` は付けない。** 一度付いていたが外した（0.16.0）。
+> 掲げていた理由は「破壊的・不可逆な操作を含むため、**人の明示的な指示を要件にする**」だったが、
+> **「ハーネス更新して」は人の明示的な指示そのもの**である。
+> あのフラグは「明示的な指示」と「スラッシュコマンド」を取り違えていた。
+>
+> **破壊的な部分はこのスキルの中でゲートされている**（下記の大原則）。
+> `analyze` は一時クローンして比較するだけの**読み取り専用**で、フラグは**その読み取りすら塞いでいた**。
+> 同じ危険度の `plugin-update` には付いていない非対称でもあった。
+>
+> **スラッシュコマンドで打っても自然文で頼まれても、手順はこの1本で同じ。**
 
 > **`disable-model-invocation` は付けない。** 一度付いていたが外した（0.16.0）。
 > 掲げていた理由は「破壊的・不可逆な操作を含むため、**人の明示的な指示を要件にする**」だったが、
@@ -26,13 +39,62 @@ allowed-tools: "Bash(node:*), Read, Glob, Grep"
 ## 大原則
 
 - **プロジェクト側のローカル改変を無断で上書きしない**
-- 適用はファイル単位でユーザーの承認を取る。競合はハンク単位で提示する
+- **判断が要るものだけ人に聞く。** 人が答えられない問いに承認を求めない（→ 下記）
+- **人に聞く前に、別エージェントの査読を通して判断材料を作る**（→ Step 3）
 - ネットワーク不通などで取得できない場合は**中断して報告**する。作業自体は止めない
+
+### なぜ「全ファイル承認」をやめたのか（0.17.0）
+
+以前は `template-improvement` にも承認を求めていた。**それは形骸化する。**
+
+**`template-improvement` は定義上「プロジェクトが一切触っていないファイル」**（A≠B かつ A=C）である。
+守るべきローカルの意図が存在しないので、残る問いは「**ハーネスの変更は正しいか**」だけ。
+それは**ハーネス側で査読・テスト・`validate` を通した話**で、プロジェクト側に判断材料は無い。
+
+> **アプリ側の利用者はハーネスの変更内容を知らないし、`.claude/` の中身も AI に書かせている。**
+> 判断できない問いに承認を求めると、**推奨をそのまま通す儀式**になる。
+> そして「読まずに承認する」習慣は、**本当に判断が要る `conflict` にも波及する**。
+> 人の注意力に依存する仕組みは人が次に破る（H19 / H23 / H33 と同じ形）。
+
+**本当の安全網は承認ではなく git。** 適用は差分として現れ、`git checkout -- <path>` で丸ごと戻せる。
+1行の要約に「はい／いいえ」を答えるより情報量も回復力も上である。
+
+| 分類 | 人は何を判断できるか | 扱い |
+|---|---|---|
+| `template-improvement` | **何もできない**（ローカル改変が無い） | **自動適用**。一覧で報告し、戻し方を示す |
+| `conflict` | **できる** —「このプロジェクトは意図的にこうしている。戻す／残す／統合する」 | **査読 → 推奨 → 人が決める** |
+| `template-removed` | **できる** —「今も使っているか」 | 同上。**既定は残す** |
+| `schemaVersion` の引き上げ | **できる** — 実際のマイグレーション | 同上 |
+
+## Step 0: プラグイン層を先に更新する
+
+**`/harness-core:plugin-update` の Step 1〜4 をそのまま実施する**（同スキルの手順書が正）。
+スコープの特定を誤ると「更新したのに古いまま」になるため、**手で `claude plugin update` を打たない**。
+
+更新結果（更新前後の版）を控える。Step 5 の報告で両層まとめて出す。
+
+### ⚠️ このあと使うスクリプトは「更新後の版」から引く
+
+**`${CLAUDE_SKILL_DIR}` は使えない。** プラグインのキャッシュは**版ごとに別ディレクトリ**
+（`.../harness-core/0.16.0/skills/...`）で、`${CLAUDE_SKILL_DIR}` は
+**このセッションが起動時に読み込んだ旧版**を指したままになる。
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/skills/plugin-update/scripts/plugin-versions.mjs" --skill harness-update
+```
+
+返ったパスの隣にある `scripts/harness-diff.mjs` を、**以降 `${DIFF}` として使う**。
+引けなかった場合は `${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs` にフォールバックし、
+**旧版で実行している旨を報告に明記する**。
+
+> **手順文（この SKILL.md）だけは1回遅れる。** いま読まれているのは起動時の版である。
+> **3点比較と分類の実体はスクリプト側**なので実処理は新版で走るが、
+> 手順そのものの改訂は次回の起動から効く。**判断が要るものの承認は残る**ので、適用前に人が決める。
 
 ## Step 1: 解析
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze
+node "${DIFF}" analyze
 ```
 
 スクリプトは次を行う:
@@ -50,7 +112,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze
 ローカルクローンを使うとネットワークを使わない:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze --repo /path/to/claude-dev-harness
+node "${DIFF}" analyze --repo /path/to/claude-dev-harness
 ```
 
 ### baseline が無いプロジェクト（Phase 2 以前の生成物）
@@ -59,7 +121,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze --repo /path/to/clau
 スクリプトが警告を出すので、`CLAUDE.md` 等から実際の値を読み取って渡し直すこと:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze \
+node "${DIFF}" analyze \
   --set PROJECT_NAME=MyApp --set PROJECT_DESCRIPTION="..." \
   --set CORE_PROJECT=MyApp.Core --set UI_PROJECT=MyApp.UI
 ```
@@ -72,11 +134,11 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze \
 
 | 分類 | 意味 | 既定の扱い |
 |------|------|-----------|
-| `template-improvement` | テンプレート側だけが変わった（A≠B かつ A=C） | **適用を提案** |
+| `template-improvement` | テンプレート側だけが変わった（A≠B かつ A=C） | **自動適用**（→ Step 4） |
 | `project-local` | プロジェクト側だけが変わった（A=B かつ A≠C） | **保持**（触らない） |
 | `already-applied` | 同じ変更が既に入っている（B=C） | 対応不要 |
-| `conflict` | 両方が同じファイルを変更した | **ユーザー判断が必須** |
-| `template-removed` | テンプレートから消えたファイル | 判断（削除するか残すか）。**既定は残す** |
+| `conflict` | 両方が同じファイルを変更した | **査読 → 推奨 → ユーザー判断**（→ Step 3） |
+| `template-removed` | テンプレートから消えたファイル | **査読 → 推奨 → ユーザー判断**。**既定は残す**（→ Step 3） |
 
 > **`template-removed` は「消せ」という指示ではない。**
 > ハーネスが配るのをやめただけで、**プロジェクトがそれを使い続ける理由は残っている**ことが多い。
@@ -87,27 +149,97 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" analyze \
 > **現に devcontainer で開発しているプロジェクトは残すのが正しい。**
 
 各ファイルについて、**何が変わるのかを1行で説明する**こと。
-ファイル名の羅列だけでは承認の judgement ができない。差分の中身は
+ファイル名の羅列では何が起きたのか分からない。差分の中身は
 `{workDir}/latest/<path>`（B）と現物を Read して要約する。
 
-## Step 3: 承認と適用
+**この時点ではまだ何も適用しない。** 判断が要るもの（`conflict` / `template-removed` /
+`schemaVersion`）があれば Step 3 へ、無ければ Step 4 へ進む。
 
-### template-improvement
+## Step 3: 判断が要るものを別エージェントの査読に通す
 
-まとめて提示し、**ユーザーが承認したものだけ**を適用する:
+**対象は `conflict` / `template-removed` / `schemaVersion` の引き上げだけ。**
+**0件なら査読を起動しない**（判断材料が無いものに査読を回しても言うことが無い）。
+
+### 3-1. メインが材料を集める
+
+査読者は**このプロジェクトを知らない**。判断材料はメインが作る。1件ごとに:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" apply CLAUDE.md .claude/rules/typescript.md
+git log --oneline -5 -- <path>          # ローカルがなぜこうなったか
+git log -1 --format=%B -- <path>        # 直近の理由
+grep -rn "<そのファイルが持つ固有の語>" --include=*.md .claude/ docs/   # 参照元
 ```
 
-### conflict
+- **A**: `{baselineDir}/<path>` — 前回適用時のテンプレート
+- **B**: `{idealDir}/<path>` — 最新のテンプレート
+- **C**: プロジェクトの現物
 
-`apply` を使わない。A / B / C の3つを Read して**ハンク単位で提示**し、
-どちらを採るか（あるいは統合するか）をユーザーに決めてもらってから Edit で書く。
+### 3-2. 査読に出す
 
-- A: `{baselineDir}/<path>` — 前回適用時のテンプレート
-- B: `{idealDir}/<path>` — 最新のテンプレート
-- C: プロジェクトの現物
+**その場限りのサブエージェントに投げる。`model: sonnet` を明示する**
+（`constitution.md` の不変原則。専用エージェントは作らない）。
+
+渡すもの: A / B / C の中身、`git log` の結果、参照元の grep 結果、そのファイルの役割。
+
+> 🔴 **査読者に結論を渡さない**（§3-6 / H26 と同じ規律）。
+> 「統合すべきだと思う」ではなく「**この3つの版があり、ローカルはこの経緯で変わった。どうすべきか**」。
+> **判断材料は厚くするほど質が上がるが、判断そのものを書くと追認しか返ってこない。**
+
+聞くこと: ①ローカルの改変は**いまも必要か**（実装・設計書と照らして）②テンプレートの変更が
+**ローカルの意図を壊さないか** ③推奨（戻す／残す／統合。統合ならどう統合するか）④**判断の根拠**
+
+### 3-3. メインが裏取りする
+
+**査読も間違える**（§4「査読結果自体も誤りうる。実物で裏を取ってから受け入れる」）。
+査読が挙げた事実（行番号・参照の有無・実装の有無）を**現物で確かめる**。
+確かめられなかったものは「**未確認**」と明示する。
+
+### 3-4. ユーザーへ提示する
+
+```markdown
+#### <path>（conflict）
+
+| | 内容 |
+|---|---|
+| ローカルの改変 | {何を・なぜ（コミット/設計書の根拠）} |
+| テンプレートの変更 | {何が変わったか} |
+| 査読の判定 | {推奨と根拠} |
+| メインの判定 | {推奨と根拠} |
+| **一致／相違** | {一致 or **相違（← ここが人の判断が要る箇所）**} |
+| 何が変われば答えが変わるか | {条件} |
+
+**推奨: {統合／テンプレート採用／ローカル維持}**
+```
+
+> 🔴 **査読とメインが食い違ったら、必ずそう言う。揃えて見せない。**
+> **食い違いこそが「人が判断すべき」という信号**である。
+> 揃えて1つの推奨だけ出すと、**承認が新しい判子になる**（形骸化を一段上へ移しただけになる）。
+
+**ユーザーが決めてから** Edit で書く。`apply` は使わない（統合が正解のことが多いため）。
+
+## Step 4: 適用
+
+### template-improvement — **自動適用する**
+
+**承認を求めない**（→ 大原則「なぜ全ファイル承認をやめたのか」）。
+
+```bash
+node "${DIFF}" apply <path...>
+```
+
+適用後、**一覧と戻し方を報告に載せる**:
+
+```
+以下は自動で適用しました（プロジェクト側が触っていないファイルのみ）。
+`git diff` で全て確認できます。戻すなら `git checkout -- <path>`。
+```
+
+> **ローカル改変を無断で上書きしてはいない。** `template-improvement` は
+> **定義上ローカル改変が無いファイル**（A=C）だけが該当する。
+
+### conflict / template-removed / schemaVersion
+
+**Step 3 でユーザーが決めたとおりに**書く。決まっていないものには手を触れない。
 
 ### harness.config.json
 
@@ -131,12 +263,12 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" apply CLAUDE.md .claude/rule
 
 > `01_development_docs/README.md` だけは**テンプレ所有**（運用ルールと推奨軸メニュー）なので追従する。
 
-## Step 4: 記録
+## Step 5: 記録
 
 適用が終わったら baseline を更新する:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" finalize
+node "${DIFF}" finalize
 ```
 
 `templatesCommit` が最新コミットへ更新され、作業ディレクトリ（`.claude/.harness-update/`）が削除される。
@@ -170,19 +302,28 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" finalize
 `--force` を使うのは、**ユーザーが「この競合は見送る」と明示的に判断した場合だけ**。
 勝手に付けないこと。
 
-## Step 5: 報告
+## Step 6: 報告
 
 ```markdown
-### ハーネス追従（harness-update）結果
+### ハーネス更新の結果
+
+#### プラグイン層
+
+| プラグイン | スコープ | 更新前 | 更新後 | 結果 |
+|-----------|---------|-------|-------|------|
+| harness-core@dev-harness | project | 0.16.0 | 0.17.0 | ✅ 更新 |
+
+#### テンプレート層
 
 | 項目 | 内容 |
 |------|------|
 | 取得元 | {URL または --repo のパス} |
 | baseline | {前回のコミット} → {最新のコミット} |
-| 適用 | N 件 |
+| 自動適用 | N 件（ローカル改変が無いもの） |
 | 保持（プロジェクト固有） | N 件 |
 | 競合 | N 件（対応済み / 未対応の内訳） |
 | config スキーマ変更 | {あれば内容。無ければ「なし」} |
+| 査読 | {実施した／対象0件のため実施せず} |
 
 #### 適用した変更
 - `<path>` — {何が変わったか}
@@ -194,5 +335,17 @@ node "${CLAUDE_SKILL_DIR}/scripts/harness-diff.mjs" finalize
 - `<path>` — {理由。baseline は更新していない旨も書く}
 ```
 
-最後に、**適用した差分をユーザーが確認してからコミットするよう促す**こと
-（このスキルはコミットしない）。
+#### 査読の記録（実施した場合）
+
+判断が要ったものについて、**査読の判定・メインの判定・一致／相違・最終的にどうしたか**を残す。
+**相違があった箇所は必ず書く**（次に同じ競合が出たときの材料になる）。
+
+---
+
+最後に次の2つを伝える:
+
+1. **適用した差分を確認してからコミットする**（このスキルはコミットしない）。
+   `git diff` で全て見え、`git checkout -- <path>` で戻せる
+2. **プラグイン層に更新があった場合のみ**、`⚠️ Claude Code の再起動が必要です`。
+   プラグインはセッション起動時に読み込まれるため、このセッションではまだ旧版が動いている
+   （**テンプレート層の適用は再起動を待たずに有効**）

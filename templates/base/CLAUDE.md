@@ -38,8 +38,8 @@
 | `/harness-core:pre-push-check` | push 前チェック。未 push コミットが台帳に記録済みかを確認し、**ソース変更を含む場合は設計書と実装の全量照合も行う** |
 | `/harness-core:done` | 完了報告を定型テーブル形式で出力する |
 | `/harness-core:usage-audit` | 利用実績の監査。**配ったのに動いていない仕組み**と規律の遵守を transcript から実測する（前回から日数が空くと起動時に知らせる） |
-| `/harness-core:plugin-update` | プラグイン層（skills / agents / hooks）を最新版へ更新する。**再起動が要る** |
-| `/harness-core:harness-update` | テンプレート層を claude-dev-harness の最新へ追従させる |
+| `/harness-core:plugin-update` | プラグイン層（skills / agents / hooks）**だけ**を更新する。**再起動が要る**。両方まとめてやるなら `harness-update` |
+| `/harness-core:harness-update` | **ハーネスの更新（「ハーネス更新して」の入口）。** プラグイン層とテンプレート層の両方を更新する。判断が要る差分は**別エージェントの査読を通して推奨つきで確認**する |
 | `/harness-core:receive-handoff` | `docs/handoff/` の引き継ぎを受け取る。**書いてあることを実物で裏取りし**、判断が要るものはユーザーに確認したうえで、すぐ着手するものと保留するものに分けて格納する |
 | `/harness-core:proofread-ja` | 日本語校正。AI が書いた文書の不自然な日本語を直す。**`update-docs` / `complete-feature` が「利用者が読む日本語を書いた」ときに案内する**ので、その案内が出たら実行を検討する |
 

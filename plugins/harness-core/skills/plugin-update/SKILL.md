@@ -10,6 +10,10 @@ allowed-tools: "Read, Glob, Bash, PowerShell"
 `CLAUDE.md` / `constitution.md` / `.claude/rules/` / `harness.config.json` は**配信経路が別**で、
 `/harness-core:harness-update` が扱う（→ Step 5）。
 
+> **「ハーネス更新して」の入口は `/harness-core:harness-update` である**（0.17.0）。
+> あちらが Step 0 でこのスキルの手順を通し、**続けてテンプレート層まで面倒を見て、再起動は1回で済む**。
+> **このスキルを直接呼ぶのは、プラグイン層だけを更新したいと分かっているとき。**
+
 > **なぜスキルにしているか**: `claude plugin update` は**導入時と同じスコープ**を指定しないと
 > `not installed at scope user` で失敗する。手で打つと `--scope project` を落として
 > 「更新したのに古いまま」になる（実測）。**対象とスコープの特定を機械にやらせる。**
@@ -77,12 +81,17 @@ Step 1 と同じコマンドをもう一度実行し、**更新後の版**を取
 
 ```
 > このスキルが更新したのは **skills / agents / hooks** です。
-> `CLAUDE.md` / `constitution.md` / `.claude/rules/` / `harness.config.json` は配信経路が別で、
-> **再起動してから** `/harness-core:harness-update` を実行すると追従できます。
-> （再起動前に実行すると、旧版の harness-update が動きます）
+> `CLAUDE.md` / `constitution.md` / `.claude/rules/` / `harness.config.json` は配信経路が別です。
+> 両方まとめてやるなら `/harness-core:harness-update`（「ハーネス更新して」でも起動します）。
+> あちらはプラグイン層の更新も含むので、**このスキルを先に叩く必要はありません**。
 ```
 
-**このスキルから `harness-update` を続けて呼ばないこと。** 再起動を挟まないと旧版が動く。
+> **`harness-update` は「更新後の版」のスクリプトを `plugin-versions.mjs --skill` で引く**設計になった（0.17.0）。
+> そのため**再起動を挟まずに続けても、3点比較は新版で走る**。
+> ただし**手順文（SKILL.md）だけは1回遅れる** — 実処理はスクリプト側なので許容している。
+>
+> **このスキルから `harness-update` を自動で呼ばないこと。** 呼ぶ順序を決めるのは
+> `harness-update` 側（Step 0）であって、逆向きに繋ぐと二重に走る。
 
 ## 付録: スキルの `SKILL.md` を引く（`--skill`）
 

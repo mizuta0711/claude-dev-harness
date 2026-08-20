@@ -157,8 +157,8 @@ claude-dev-harness/
 | `complete-feature` | 完了処理（受け入れ基準ゲート → `completed/` へ移動） |
 | `pre-push-check` | push 前の台帳同期チェック |
 | `done` | 完了報告 |
-| `plugin-update` | プラグイン層の更新（導入済みプラグインとスコープを自動特定し、更新前後の版を報告） |
-| `harness-update` | テンプレート層の追従（3点比較で差分を分類し、承認したものだけ適用） |
+| `plugin-update` | プラグイン層**だけ**の更新（導入済みプラグインとスコープを自動特定し、更新前後の版を報告） |
+| `harness-update` | **ハーネスの更新**（プラグイン層＋テンプレート層）。3点比較で分類し、**判断が要るものは別エージェントの査読を通して推奨つきで確認**する |
 | `proofread-ja` | 日本語校正（AI が書いた文章の品質ゲート）。`japanese-proofreader` へ委譲する |
 | `usage-audit` | 利用実績の監査（transcript からスキル・エージェントの発火回数を数え、ゼロ発火の原因を分類する） |
 | `receive-handoff` | `docs/handoff/` の引き継ぎの受け取り（実物で裏取り → ユーザー確認 → すぐ着手／保留に分けて格納 → handoff を空に） |
