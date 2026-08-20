@@ -1,7 +1,6 @@
 ---
 name: harness-update
 description: テンプレート層（CLAUDE.md / constitution.md / .claude/rules/ / harness.config.json / docs 骨格）を claude-dev-harness の最新へ追従させる。差分を3分類で提示し、ユーザー承認を得たものだけを適用する。
-disable-model-invocation: true
 allowed-tools: "Bash(node:*), Read, Glob, Grep"
 ---
 
@@ -14,6 +13,15 @@ allowed-tools: "Bash(node:*), Read, Glob, Grep"
 
 差分の判定は同梱の `scripts/harness-diff.mjs` が機械的に行う。
 **目視で差分を分類しないこと** — 3点比較はスクリプトの仕事。
+
+> **`disable-model-invocation` は付けない。** 一度付いていたが外した（0.16.0）。
+> 掲げていた理由は「破壊的・不可逆な操作を含むため、**人の明示的な指示を要件にする**」だったが、
+> **「ハーネス更新して」は人の明示的な指示そのもの**である。
+> あのフラグは「明示的な指示」と「スラッシュコマンド」を取り違えていた。
+>
+> **破壊的な部分はこのスキルの中で既にゲートされている**（下記の大原則。適用はファイル単位で承認を取る）。
+> Step 1 の `analyze` は一時クローンして比較するだけの**読み取り専用**で、
+> フラグは**その読み取りすら塞いでいた**。同じ危険度の `plugin-update` には付いていない非対称でもあった。
 
 ## 大原則
 

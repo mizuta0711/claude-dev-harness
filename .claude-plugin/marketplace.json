@@ -8,7 +8,7 @@
     {
       "name": "harness-core",
       "source": "./plugins/harness-core",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "description": "環境非依存の開発ハーネス（skills / agents / hooks）。.claude/harness.config.json を契約として動作する"
     },
     {

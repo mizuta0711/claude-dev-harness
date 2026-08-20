@@ -160,6 +160,32 @@ function auditOverdueDays(intervalDays) {
   return days > intervalDays ? { days, everRun: Boolean(marker?.lastRunAt) } : null;
 }
 
+/**
+ * 前回のテンプレート層の追従（`/harness-core:harness-update`）からの経過日数
+ *
+ * **知らせるだけ。止めない。** プラグイン層は marketplace が運ぶが、
+ * **テンプレート層（CLAUDE.md / rules / config / docs 骨格）は生成時のコピー**なので、
+ * 追従を叩かない限り改善が届かない。**届いていないことに症状が出ない**ので気づけない。
+ *
+ * 前回日は `harness-baseline.json` の `appliedAt`。`harness-diff.mjs` の `finalize` が
+ * 追従のたびに更新するため、**専用のマーカーは要らない**（生成直後は生成日が入る）。
+ */
+function templateFollowOverdueDays(intervalDays) {
+  let base;
+  try {
+    base = JSON.parse(
+      fs.readFileSync(path.join(lib.projectDir(), ".claude", "harness-baseline.json"), "utf-8")
+    )?.appliedAt;
+  } catch {
+    return null;
+  }
+  if (!base) return null;
+  const since = Date.parse(base);
+  if (Number.isNaN(since)) return null;
+  const days = Math.floor((Date.now() - since) / 86400000);
+  return days > intervalDays ? days : null;
+}
+
 const AUDIT_INTERVAL_DEFAULT = 30;
 // ⚠️ `Number(x) || 既定` と書くと **`0` が既定に化けて無効化できない**（実測で踏んだ）。
 //    `0` は「通知しない」という**意味のある値**なので、有限数かどうかで分岐する。
@@ -171,6 +197,23 @@ if (overdue) {
     `[利用実績の監査] 前回から ${overdue.days} 日` +
       (overdue.everRun ? "" : "（まだ一度も実施していない）") +
       `。\`/harness-core:usage-audit\` で、配ったのに動いていない仕組みと規律の遵守を実測できる。`
+  );
+}
+
+const UPDATE_INTERVAL_DEFAULT = 30;
+// `audit.intervalDays` と同じ扱い。`0` は「通知しない」という意味のある値なので有限数で分岐する
+const updateIntervalRaw = Number(cfg.config?.update?.intervalDays);
+const updateInterval = Number.isFinite(updateIntervalRaw)
+  ? updateIntervalRaw
+  : UPDATE_INTERVAL_DEFAULT;
+const followOverdue =
+  cfg.status === "ok" && updateInterval > 0 ? templateFollowOverdueDays(updateInterval) : null;
+if (followOverdue) {
+  lines.push(
+    `[テンプレート層の追従] 前回から ${followOverdue} 日` +
+      `。\`/harness-core:harness-update\` で CLAUDE.md / rules / config / docs 骨格を最新へ追従できる` +
+      `（差分はファイル単位で承認を取る）。**プラグイン層とは経路が別**で、` +
+      `\`/plugin\` の更新では新しくならない。`
   );
 }
 
