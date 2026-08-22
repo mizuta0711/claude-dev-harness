@@ -93,8 +93,7 @@ if (result.targets.length === 0) {
   }
   if (result.targets.length > 0) {
     result.warnings.push(
-      "project スコープの登録が見つかりませんでした。user スコープを対象にします。" +
-        "（推奨は project スコープ。導入し直す場合は --scope project を付けること）"
+      "project スコープの登録は見つからず、user スコープの登録を対象にします。"
     );
   }
 }

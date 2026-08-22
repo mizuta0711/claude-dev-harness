@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "harness-wpf@dev-harness": true
-  },
   "permissions": {
     "allow": [
       "Bash(dotnet build:*)",

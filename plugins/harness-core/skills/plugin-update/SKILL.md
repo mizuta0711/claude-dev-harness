@@ -15,7 +15,7 @@ allowed-tools: "Read, Glob, Bash, PowerShell"
 > **このスキルを直接呼ぶのは、プラグイン層だけを更新したいと分かっているとき。**
 
 > **なぜスキルにしているか**: `claude plugin update` は**導入時と同じスコープ**を指定しないと
-> `not installed at scope user` で失敗する。手で打つと `--scope project` を落として
+> `not installed at scope user` で失敗する。手で打つとスコープを取り違えて
 > 「更新したのに古いまま」になる（実測）。**対象とスコープの特定を機械にやらせる。**
 
 ## Step 1: 対象とスコープを確定する
@@ -27,7 +27,7 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/plugin-update/scripts/plugin-versions.mjs" --
 出力の `targets` が更新対象（`plugin` と `scope` のペア）。**この値をそのまま次で使う。**
 
 - `targets` が空 → 次の1行で報告して終了:
-  `このプロジェクトにハーネスプラグインが導入されていません。導入は claude plugin install <名前>@dev-harness --scope project です。`
+  `このプロジェクトにハーネスプラグインが導入されていません。導入は claude plugin install <名前>@dev-harness --scope <user か project、選んだ方> です（うまくいかない場合は先に claude plugin marketplace add mizuta0711/claude-dev-harness を試す）。`
 - `warnings` があれば、報告にそのまま載せる
 - **`userScopeDuplicates` が空でない** → Step 4 で必ず報告する（放置すると更新のたびに両方へ当てることになる）
 
@@ -72,7 +72,7 @@ Step 1 と同じコマンドをもう一度実行し、**更新後の版**を取
 
 - **1件も更新が無ければ再起動の案内は出さない**（不要な手間をかけさせない）
 - `userScopeDuplicates` があれば添える:
-  `⚠️ {plugin} は user スコープにも登録があります。更新のたびに両方へ当てる必要が出るため、user 側を削除することを推奨します（claude plugin uninstall {plugin}）。`
+  `⚠️ {plugin} は user / project 両方のスコープに登録があります。更新のたびに両方へ当てる必要が出るため、使わない方を削除することを検討してください（claude plugin uninstall {plugin} --scope <user か project>）。`
 - 失敗した対象があれば、コマンドの出力をそのまま載せる
 
 ## Step 5: テンプレート層の案内

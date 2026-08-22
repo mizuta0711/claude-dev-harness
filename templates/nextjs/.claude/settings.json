@@ -2,9 +2,6 @@
   "enabledMcpjsonServers": [
     "playwright"
   ],
-  "enabledPlugins": {
-    "harness-nextjs@dev-harness": true
-  },
   "permissions": {
     "allow": [
       "Bash(npm run build)",

@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "harness-android@dev-harness": true
-  },
   "permissions": {
     "deny": [
       "Read(./keystore.properties)",

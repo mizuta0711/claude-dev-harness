@@ -15,12 +15,12 @@ claude
 プロジェクトで一度だけ次を実行する:
 
 ```bash
-claude plugin install harness-core@dev-harness  --scope project
-claude plugin install harness-unity@dev-harness --scope project
+claude plugin install harness-core@dev-harness  --scope <user か project、選んだ方>
+claude plugin install harness-unity@dev-harness --scope <同じ方>
 ```
 
-**`--scope project` を省略しない。** 既定の `user` に入れると `enabledPlugins` が作る
-`project` 側の登録と二重になり、更新のたびに両方へ当てることになる。
+**スコープは`user`/`project`どちらでもよい（選ぶのは導入する側）。`--scope`は省略しない**
+（詳細は[セットアップガイド§2-1](../../docs/guide/セットアップガイド.md#2-1-スコープの選び方)）。
 
 読み込めたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧に `harness-core:new-feature`）**
 で確認する。

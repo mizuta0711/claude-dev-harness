@@ -52,6 +52,42 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.18.0] — プラグインスコープの「`project`のみ」統一を撤回し、導入する側が選べるようにする
+
+**発端（H34）**: Windows + VSCode拡張で、`project`スコープに登録したプラグインが
+`Unknown skill`になる不具合が見つかった。原因はプロジェクトパスのドライブレターの
+大文字小文字をClaude Code拡張側が吸収しないためで、Claude Code本体の既知の不具合
+（[anthropics/claude-code#74912](https://github.com/anthropics/claude-code/issues/74912)・
+未修正）。`user`スコープでは`projectPath`の照合自体が発生しないため、原理的に起きない。
+
+**旧方針（1.1版・還元#25）は`user`を避けていた**。理由は`.claude/settings.json`の
+`enabledPlugins`が`project`スコープへの導入をセッション起動時に自動生成するため、
+`user`だけにしても`project`側が復活し、二重登録の更新漏れが3回連続で起きたため。
+
+**この前提を取り除いた**: テンプレート5本（`base`/`nextjs`/`wpf`/`unity`/`android`）の
+`.claude/settings.json`から`enabledPlugins`を削除した（`extraKnownMarketplaces`は残す）。
+これにより`project`スコープの自動生成が起きなくなり、`user`スコープを選んでも
+Windowsの不具合を確実に回避できるようになった。実機検証・独立した査読2回の記録はProjectTemplete側にある（このリポジトリの慣例どおり、
+調査・査読記録は非公開のProjectTempleteが持ち、本リポジトリは実装のみを持つ）。
+
+**変えたこと**:
+
+- `templates/*/.claude/settings.json`（5本）から`enabledPlugins`を削除
+- 導入・更新・取り外しの手順を、全ドキュメント・スキル・スクリプトで
+  「`--scope project`必須」から「`user`/`project`、選んだ方を明示する」へ書き換え
+- `plugin-update`スキルの警告文言・案内文言を、特定スコープを推奨しない中立な表現へ
+- 新規プロジェクト生成後の案内（`create-project.mjs`）とREADMEのクイックスタートに、
+  marketplace未登録時のトラブルシュート（`marketplace add`）を追加
+
+**0.17.0以前に生成したプロジェクト**は`.claude/settings.json`に`enabledPlugins`が
+残っているため、`project`スコープの自動生成は引き続き起きる。`user`へ寄せたい場合は
+[セットアップガイド§8-2](docs/guide/セットアップガイド.md#8-2-完全に外す)の手順で
+`enabledPlugins`の記述ごと消すこと。
+
+docs 影響: あり（guide/セットアップガイド・guide/既存プロジェクト移行指示書・
+reference/プラグイン開発手順・background/01・diagrams/06・README.md・
+templates/README.md・templates/base/constitution.md・templates/unity/SETUP.md）
+
 ## [0.17.0] — `harness-update` を「ハーネス更新」の唯一の入口にし、承認を査読つきの推奨に変える
 
 **利用者からの指摘**: 「アプリ側はハーネスの変更内容を知らないし、`.claude/` の中身も AI に書かせている。

@@ -21,16 +21,16 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 
 > **生成後にプラグインの導入が要る。**
 > テンプレートが書き込む `.claude/settings.json` の `extraKnownMarketplaces` は
-> marketplace の登録・クローンを初回起動で自動で行うが、
-> **初回起動ではプラグインが導入されない**（実測・2026-08-14）。生成先で一度だけ実行する:
+> marketplace の登録を行うが、**プラグインの導入自体は自動で行われない**。
+> 生成先で一度だけ実行する:
 >
 > ```bash
-> claude plugin install harness-core@dev-harness  --scope project
-> claude plugin install harness-<env>@dev-harness --scope project
+> claude plugin install harness-core@dev-harness  --scope <user か project、選んだ方>
+> claude plugin install harness-<env>@dev-harness --scope <同じ方>
 > ```
 >
-> **`--scope project` を省略しない。** 既定の `user` に入れると、`enabledPlugins` が作る
-> `project` 側の登録と二重になり、更新のたびに両方へ当てることになる。
+> **スコープは`user`/`project`どちらでもよい（選ぶのは導入する側）。`--scope`は省略しない。**
+> 詳細は[セットアップガイド§2-1](../docs/guide/セットアップガイド.md#2-1-スコープの選び方)。
 >
 > 導入できたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧）** で確認する。
 > SessionStart フックは harness-core 0.5.0 以降 `[harness] <env> / config OK` を**画面に1行出す**ので、

@@ -29,32 +29,36 @@ nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレー�
 セッションが吸収しないこと。ハーネス側の設定・導入は正しくても発生し、
 **ハーネス側では直せない**（Claude Code本体側の不具合。
 [anthropics/claude-code#74912](https://github.com/anthropics/claude-code/issues/74912)・未修正）。
-CLI（ターミナルの `claude`）では発生しない。
-
-**回避策**: `--scope project` の代わりに `--scope user` でインストールする。
-プロジェクトパスの照合が発生しないため、この不具合を回避できる。ただし
-`--scope user` はマシン上の全プロジェクトで同一バージョンを共有する（後述の
-クイックスタートは現状 `--scope project` の手順のままなので、Windows +
-VSCode拡張で使う場合は読み替えること）。
+CLI（ターミナルの `claude`）では発生しない。Windows + VSCode拡張で使うなら、
+下記クイックスタートで `--scope user` を選ぶこと。
 
 ## クイックスタート（新規プロジェクトの生成）
 
 ```bash
 node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProject
 cd ../MyProject
-claude plugin install harness-core@dev-harness  --scope project   # ★必須
-claude plugin install harness-<env>@dev-harness --scope project   # ★必須
+claude plugin install harness-core@dev-harness  --scope <user か project、選んだ方>   # ★必須
+claude plugin install harness-<env>@dev-harness --scope <同じ方>                      # ★必須
 ```
+
+**スコープは `user`（このマシンの全プロジェクト共通で1つ）と `project`（このプロジェクト
+だけ）のどちらでもよい。選ぶのは導入する側。** 上記の制約事項（Windows + VSCode拡張）に
+該当するなら `user` を選ぶ。**迷ったら `user` の方が更新の手間が少ない**
+（`claude plugin update` を1回打てば全プロジェクトに届く）。プロジェクトごとに
+バージョンを個別に固定したい場合は `project` を選ぶ。
 
 プレースホルダ（プロジェクト名など）は対話で尋ねられる（`--set KEY=VALUE` でも指定可）。
 `--dry-run` を付けると、生成予定のファイル一覧と置換内容を表示するだけで何も書き込まない。
 
-> ⚠️ **`claude plugin install` を飛ばすとスキルも hooks も動かない。**
-> `.claude/settings.json` の `enabledPlugins` は初回起動でプラグインを導入しない（実測）。
+> ⚠️ **`claude plugin install` を飛ばすとスキルも hooks も動かない。** プラグインの
+> 導入は自動では行われず、上記の手動 install が必須。
 >
-> ⚠️ **`--scope project` も省略しない。** 既定は `user` だが、`project` 側の登録は
-> `enabledPlugins` がどのみち自動生成するため、省略すると二重登録になり
-> **更新のたびに両方へ当てる**ことになる（実測）。
+> ⚠️ **`--scope` を省略しない。** 省略すると既定の `user` になるが、意図せず
+> 選んだことにならないよう、常に明示すること。
+>
+> ⚠️ **install が `not found in marketplace` で失敗したら**、先に
+> `claude plugin marketplace add mizuta0711/claude-dev-harness` を実行してから
+> もう一度 install する。
 
 **手順の詳細・環境ごとの追加セットアップ・よくある失敗は
 [docs/guide/セットアップガイド.md](docs/guide/セットアップガイド.md) を参照。**
@@ -275,7 +279,7 @@ SessionStart で config が検証され、スキルは `/harness-core:<name>` /
 3. 影響範囲に応じてバージョンを上げる（semver）。`CHANGELOG.md` に記録する
 4. push する
 5. 各プロジェクトで `claude plugin marketplace update dev-harness` →
-   `claude plugin update harness-<name>@dev-harness --scope project` → **再起動**して取り込む
+   `claude plugin update harness-<name>@dev-harness --scope <導入時に選んだ方>` → **再起動**して取り込む
 6. テンプレート層の変更は、各プロジェクトで `/harness-core:harness-update` を実行して取り込む
 
 > ⚠️ **バージョンを上げないと届かない。** `claude plugin update` は版番号の変化で更新を判断するため、

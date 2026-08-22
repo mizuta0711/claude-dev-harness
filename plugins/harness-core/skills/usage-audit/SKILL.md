@@ -59,7 +59,10 @@ ls -d ~/.claude/projects 2>/dev/null            # いま動いている環境
 ls -d "${CLAUDE_PLUGIN_ROOT}"/../*/skills/*/ 2>/dev/null | sed 's|.*/skills/||;s|/$||' | sort -u | paste -sd,
 ```
 
-導入済みプラグインが分からない場合は `.claude/settings.json` の `enabledPlugins` を見る。
+導入済みプラグインが分からない場合は、`.claude/settings.json` の `enabledPlugins`
+（あれば）、または `~/.claude/plugins/installed_plugins.json` の `scope: "user"` の
+登録を見る（`user` スコープのみで導入している場合、プロジェクト側に `enabledPlugins`
+は無い）。
 
 ## Step 3: 集計する
 

@@ -16,9 +16,6 @@
       }
     }
   },
-  "enabledPlugins": {
-    "harness-core@dev-harness": true
-  },
   "permissions": {
     "deny": [
       "Read(./.env)",
