@@ -6,6 +6,10 @@
 nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレートを統合したもの。
 設計の経緯は ProjectTemplete リポジトリの `docs/02_統合テンプレート提案.md` を参照。
 
+**このリポジトリは、ハーネスを自分のプロジェクトへ導入して使う人向け。**
+「なぜこの設計か」「次に何を変えるか」を決める側の検討・査読・作業指示は、
+別リポジトリ（ProjectTemplete。非公開）が持つ。
+
 ## 現在の状態
 
 | フェーズ | 内容 | 状態 |
