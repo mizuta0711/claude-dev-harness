@@ -52,6 +52,28 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.19.0] — `complete-feature` の `disable-model-invocation` を外す
+
+利用側（SimplePhone 移行作業中）で、エージェントが `/harness-core:complete-feature` を
+起動しようとして「モデル側から起動できない設定になっている」と報告し、ユーザーに
+直接コマンドを打つよう求める場面が実際に発生した。
+
+`harness-update`（0.16.0）を外したときと同じ取り違えだった。「フロー末尾のゲートで
+`completed/` への不可逆な移動を伴うから、人の明示的な指示を要件にする」という理由で
+`complete-feature` だけは残していたが、**ユーザーが自然文で「この機能を完了処理して」と
+頼めば、それはスラッシュコマンドの直接入力と同じ「人の明示的な指示」**である。
+フラグは「明示的な指示」と「スラッシュコマンドの直接入力」を取り違えていた。
+
+**破壊的な部分（`completed/` への移動）は元々スキル内でゲートされている** — Step 2 の
+ゲート3種（タスク一覧・受け入れ基準・設計方針への書き戻し）を全通過しない限り
+Step 4 の移動処理へ進まない。フラグはこのゲートより手前、**スキルの起動そのもの**を
+塞いでいた。
+
+`disable-model-invocation: true` を削除し、SKILL.md に外した理由を残した
+（`harness-update` と同様、戻ってこないように）。
+
+docs 影響: あり（diagrams/03 — 「`disable-model-invocation` が付くスキルは無い」に更新）
+
 ## [0.18.0] — プラグインスコープの「`project`のみ」統一を撤回し、導入する側が選べるようにする
 
 **発端（H34）**: Windows + VSCode拡張で、`project`スコープに登録したプラグインが

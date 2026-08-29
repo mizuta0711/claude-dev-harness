@@ -2,7 +2,6 @@
 name: complete-feature
 description: "機能設計書の完了処理。受け入れ基準と全タスクの完了を確認し、設計書の整合性チェックの後 completed/ へ移動する。"
 argument-hint: "[設計書ファイル名（省略時は一覧から選択）]"
-disable-model-invocation: true
 allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Edit, Write, Bash(mv:*)"
 ---
 
@@ -10,6 +9,13 @@ allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Edit, Write
 
 M/L フローの最後に実行する。設計書の全タスクが完了した後、
 設計書と実装の整合性を確認してから `completed/` に移動する。
+
+> **`disable-model-invocation` は付けない**（0.19.0 で外した）。一度「フロー末尾のゲートで
+> 不可逆な移動を伴うから」という理由で `harness-update` と区別して残していたが、
+> **破壊的な部分（`completed/` への移動）は Step 2 のゲート3種で既にスキル内から
+> ゲートされている**——ユーザーが「この機能を完了処理して」と自然文で頼めば、
+> それはスラッシュコマンドの直接入力と同じ「人の明示的な指示」である。
+> `harness-update`（0.16.0）で外したときと同じ理由で、こちらも取り違えを解消した。
 
 ## Step 1: 対象の設計書を特定
 
