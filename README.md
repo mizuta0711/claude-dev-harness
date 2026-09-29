@@ -41,6 +41,10 @@ claude plugin install harness-core@dev-harness  --scope <user か project、選�
 claude plugin install harness-<env>@dev-harness --scope <同じ方>                      # ★必須
 ```
 
+プラグインを `user` スコープで導入済みなら、2つ目以降は Claude Code で
+**`/harness-core:create-project`**（「Next.js の新規プロジェクト作って」でも可）と頼めば、
+取得から生成・次の手順の案内まで行う。
+
 **スコープは `user`（このマシンの全プロジェクト共通で1つ）と `project`（このプロジェクト
 だけ）のどちらでもよい。選ぶのは導入する側。** 上記の制約事項（Windows + VSCode拡張）に
 該当するなら `user` を選ぶ。**迷ったら `user` の方が更新の手間が少ない**
@@ -186,6 +190,7 @@ claude-dev-harness/
 | `harness-update` | **ハーネスの更新**（プラグイン層＋テンプレート層）。3点比較で分類し、**判断が要るものは別エージェントの査読を通して推奨つきで確認**する |
 | `proofread-ja` | 日本語校正（AI が書いた文章の品質ゲート）。`japanese-proofreader` へ委譲する |
 | `usage-audit` | 利用実績の監査（transcript からスキル・エージェントの発火回数を数え、ゼロ発火の原因を分類する） |
+| `create-project` | 新規プロジェクトの生成（「〇〇の新規プロジェクト作って」の入口。GitHub から取得した `tools/create-project.mjs` を実行し、次の手順を案内する） |
 | `receive-handoff` | `docs/handoff/` の引き継ぎの受け取り（実物で裏取り → ユーザー確認 → すぐ着手／保留に分けて格納 → handoff を空に） |
 
 ### フック

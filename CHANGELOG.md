@@ -52,6 +52,29 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.20.0] — 新規プロジェクトの生成を `create-project` スキルで頼めるようにする
+
+**harness-core に `create-project` スキルを追加した。** これまで新規プロジェクトは
+「ハーネスをクローンして `node tools/create-project.mjs ...` を打つ」しかなく、
+プラグインを `user` スコープで入れていても**毎回その手順を調べ直す**ことになっていた。
+
+スキルは生成ロジックを持たない。同梱の `scripts/create.mjs` が
+**GitHub から `--depth 1` で取得した `tools/create-project.mjs` をそのまま実行する**
+（`harness-update` の取得方式と同じ。`--repo` でローカルクローンも使える）。
+
+- `describe` で環境ごとのプレースホルダ宣言を引いてから尋ねる（**覚えている値で埋めない**）
+- `--dry-run` の要約を見せてから生成する
+- 環境プラグインの導入有無を見て、要る手順だけを案内する
+- `create-next-app` 等の**フレームワーク初期化はしない**（new-feature の Step 0 が Phase 0 として扱う）
+
+**プラグインキャッシュ（`marketplaces/dev-harness`）の `tools/` は使わない。** 読み取り専用の配信キャッシュで、
+どの版かの保証が無い。取得したクローンの HEAD が `harness-baseline.json` の `templatesCommit` になるので、
+以後の `harness-update` の3点比較の起点も正しく残る。
+
+テスト: `tests/create-project.smoke.test.mjs` にラッパーの3件（describe・生成と baseline・値不足で非ゼロ終了）を追加。
+
+docs 影響: あり（guide/セットアップガイド.md §1-3 を追加・README.md のクイックスタートとスキル一覧・templates/base/CLAUDE.md のスキル表・background/01 のスキル一覧）
+
 ## [0.19.0] — `complete-feature` の `disable-model-invocation` を外す
 
 利用側（SimplePhone 移行作業中）で、エージェントが `/harness-core:complete-feature` を

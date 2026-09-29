@@ -115,3 +115,57 @@ test("未知の環境はエラーになる", () => {
     fs.rmSync(dest, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// create-project スキルのラッパー（plugins/harness-core/skills/create-project/scripts/create.mjs）
+//
+// ラッパーは「取得して create-project.mjs を呼ぶ」だけだが、**引数の受け渡しと終了コードの伝播**を
+// 誤ると、生成に失敗しても成功と報告する。`--repo` でこのリポジトリを渡してネットワークを使わない。
+// ---------------------------------------------------------------------------
+
+const WRAPPER = path.join(ROOT, "plugins", "harness-core", "skills", "create-project", "scripts", "create.mjs");
+
+test("ラッパー: describe は環境ごとのプレースホルダ宣言を返す", () => {
+  const out = execFileSync(process.execPath, [WRAPPER, "describe", "--repo", ROOT], {
+    encoding: "utf-8",
+    stdio: "pipe",
+    timeout: 60000,
+  });
+  const json = JSON.parse(out);
+  for (const { env, set } of ENVS) {
+    assert.ok(json[env], `describe に ${env} が無い`);
+    const keys = json[env].placeholders.map((p) => p.key);
+    // ENVS の --set はプレースホルダを全部埋めている前提なので、宣言と一致するはず
+    for (const k of keys) assert.ok(k in set || json[env].placeholders.find((p) => p.key === k).default, `${env}: ${k}`);
+  }
+});
+
+test("ラッパー: run は生成し、baseline を残す", () => {
+  const { env, set } = ENVS[0];
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), "harness-smoke-wrap-"));
+  try {
+    const args = [WRAPPER, "run", "--repo", ROOT, "--env", env, "--dest", dest];
+    for (const [k, v] of Object.entries(set)) args.push("--set", `${k}=${v}`);
+    execFileSync(process.execPath, args, { encoding: "utf-8", stdio: "pipe", timeout: 60000 });
+    const baseline = JSON.parse(fs.readFileSync(path.join(dest, ".claude", "harness-baseline.json"), "utf-8"));
+    assert.equal(baseline.environment, env);
+    assert.match(baseline.templatesCommit ?? "", /^[0-9a-f]{40}$/);
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("ラッパー: プレースホルダが足りなければ非ゼロで終わる", () => {
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), "harness-smoke-wrap-bad-"));
+  try {
+    assert.throws(() =>
+      execFileSync(
+        process.execPath,
+        [WRAPPER, "run", "--repo", ROOT, "--env", "nextjs", "--dest", dest, "--set", "PROJECT_NAME=x"],
+        { encoding: "utf-8", stdio: "pipe", timeout: 60000 }
+      )
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
