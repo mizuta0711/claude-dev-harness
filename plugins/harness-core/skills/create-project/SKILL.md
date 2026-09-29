@@ -17,8 +17,12 @@ allowed-tools: "Bash(node:*), Bash(claude plugin list:*), Read"
 > （new-feature の Step 0）。ここで `create-next-app` 等を先に走らせないこと —
 > 空でないディレクトリで失敗するか、生成物の `CLAUDE.md` を壊す。
 
-スクリプトは `${CLAUDE_SKILL_DIR}/scripts/create.mjs`（以降 `${CREATE}` と書く）。
+スクリプトは `${CLAUDE_SKILL_DIR}/scripts/create.mjs`。以降のコマンドでは `${CREATE}` と書くが、
+**シェル変数ではないので、実行時はこの絶対パス（区切りは `/`）に置き換えて書く。**
 ハーネスを毎回 GitHub から `--depth 1` で取得し、その `tools/create-project.mjs` を実行して後始末する。
+
+> `harness-update` のように「更新後の版のスクリプト」を引き直す必要は無い。このスクリプトは取得と実行だけで、
+> **生成ロジックは毎回取得した最新の `create-project.mjs` 側にある**ため、旧版で動いても生成結果は変わらない。
 
 ## Step 1: 何を作るかを決める
 
@@ -35,8 +39,19 @@ android は `APPLICATION_ID` / `MODULE_NAME` も要る）ので、**必ずここ
 | 値 | 決め方 |
 |---|---|
 | 環境 | 依頼文から（「Next.js」→ `nextjs`）。曖昧なら候補を示して聞く |
-| 生成先 | 絶対パスで確定させる。**既存のファイルがあるフォルダなら、上書きになる旨を伝えて確認を取る** |
+| 生成先 | 絶対パスで確定させる（下の「生成先の条件」） |
 | プレースホルダ | `describe` の `placeholders`。`default` があるものは提案値として示す。`example` は**例であって既定値ではない** |
+
+**プレースホルダは `describe` に出た全キーを `--set` で明示する。** `default` があるキーも省略しない —
+非対話で実行されるため、省略すると `default` が**黙って**採用される（ユーザーが別の値を答えていても）。
+
+### 生成先の条件
+
+| 生成先の状態 | 扱い |
+|---|---|
+| 存在しない・空・`.git` だけ | そのまま進める |
+| **`CLAUDE.md` か `.claude/` がある** | **中断する。** 既にハーネス（か別の Claude Code 設定）がある。更新なら `/harness-core:harness-update`、既存プロジェクトへの後付けならセットアップガイド §7 を案内する |
+| それ以外のファイルがある | 同名ファイルは**確認なしで上書きされる**ことを伝え、了承を得てから進める |
 
 ## Step 2: dry-run で確認する
 

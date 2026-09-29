@@ -73,7 +73,7 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 
 テスト: `tests/create-project.smoke.test.mjs` にラッパーの3件（describe・生成と baseline・値不足で非ゼロ終了）を追加。
 
-docs 影響: あり（guide/セットアップガイド.md §1-3 を追加・README.md のクイックスタートとスキル一覧・templates/base/CLAUDE.md のスキル表・background/01 のスキル一覧）
+docs 影響: あり（guide/セットアップガイド.md §1-3 を追加・README.md のクイックスタートとスキル一覧・templates/base/CLAUDE.md のスキル表・background/01 のスキル一覧・diagrams/01 の対応表・guide/運用ガイド.md §2-1。後ろの2つは `usage-audit` / `receive-handoff` の掲載漏れも併せて埋めた。README の「14スキル」は件数を書くのをやめた）
 
 ## [0.19.0] — `complete-feature` の `disable-model-invocation` を外す
 

@@ -127,7 +127,7 @@ claude-dev-harness/
 ├── plugins/
 │   ├── harness-core/                  # 共通コア（全環境で同一）
 │   │   ├── .claude-plugin/plugin.json
-│   │   ├── skills/                    # 14スキル（下表）
+│   │   ├── skills/                    # スキル（下表）
 │   │   ├── agents/                    # coding-specialist / code-reviewer / documentation-manager / japanese-proofreader / glossary-keeper
 │   │   │                              # （フックは7本。下表）
 │   │   └── hooks/

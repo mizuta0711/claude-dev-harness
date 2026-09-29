@@ -155,17 +155,58 @@ test("ラッパー: run は生成し、baseline を残す", () => {
   }
 });
 
-test("ラッパー: プレースホルダが足りなければ非ゼロで終わる", () => {
+/** ラッパーを実行し、終了コードと stderr を返す（失敗しても例外にしない） */
+const runWrapper = (args) => {
+  try {
+    execFileSync(process.execPath, [WRAPPER, ...args], { encoding: "utf-8", stdio: "pipe", timeout: 60000 });
+    return { status: 0, stderr: "" };
+  } catch (e) {
+    return { status: e.status, stderr: String(e.stderr) };
+  }
+};
+
+/** このプロセスの一時ディレクトリにあるラッパーの作業フォルダ */
+const leftovers = () => fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith("harness-create-"));
+
+test("ラッパー: プレースホルダが足りなければ、その名前を出して非ゼロで終わる", () => {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), "harness-smoke-wrap-bad-"));
   try {
-    assert.throws(() =>
-      execFileSync(
-        process.execPath,
-        [WRAPPER, "run", "--repo", ROOT, "--env", "nextjs", "--dest", dest, "--set", "PROJECT_NAME=x"],
-        { encoding: "utf-8", stdio: "pipe", timeout: 60000 }
-      )
-    );
+    const r = runWrapper(["run", "--repo", ROOT, "--env", "nextjs", "--dest", dest, "--set", "PROJECT_NAME=x"]);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /PROJECT_DESCRIPTION/);
   } finally {
     fs.rmSync(dest, { recursive: true, force: true });
   }
 });
+
+test("ラッパー: --dry-run は何も書き込まない", () => {
+  const { env, set } = ENVS[0];
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), "harness-smoke-wrap-dry-"));
+  try {
+    const args = ["run", "--repo", ROOT, "--env", env, "--dest", dest, "--dry-run"];
+    for (const [k, v] of Object.entries(set)) args.push("--set", `${k}=${v}`);
+    assert.equal(runWrapper(args).status, 0);
+    assert.deepEqual(fs.readdirSync(dest), []);
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+// ⚠️ 失敗時に `process.exit` すると `finally` が走らず、一時ディレクトリが残る（査読で実測された）。
+//    並行する他のテストも同じ接頭辞を作るので、「実行前後で増えていない」ではなく
+//    **失敗経路のあとに、実行前に無かったものが残っていない**ことを見る。
+for (const [label, args, pattern] of [
+  ["未知の環境", ["describe", "--repo", ROOT, "--env", "nosuchenv"], /未知の環境/],
+  ["--repo が別物", ["describe", "--repo", path.join(ROOT, "tests")], /クローンではありません/],
+  ["--repo の値が無い", ["describe", "--repo"], /--repo に値がありません/],
+  ["--env の値が無い", ["describe", "--repo", ROOT, "--env"], /--env に値がありません/],
+]) {
+  test(`ラッパー: 失敗しても一時ディレクトリを残さない（${label}）`, () => {
+    const before = new Set(leftovers());
+    const r = runWrapper(args);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, pattern);
+    const added = leftovers().filter((n) => !before.has(n));
+    assert.deepEqual(added, [], `残った: ${added.join(", ")}`);
+  });
+}

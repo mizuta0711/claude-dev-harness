@@ -29,9 +29,21 @@ import { execFileSync, spawnSync } from "node:child_process";
 
 const REPO_URL = "https://github.com/mizuta0711/claude-dev-harness.git";
 
+/**
+ * 失敗は例外で伝え、`main` の最上位で終了コードに変える。
+ * ⚠️ ここで `process.exit` しないこと — `finally` が走らず一時ディレクトリが残る。
+ */
+class CreateError extends Error {}
+
 function fail(message) {
-  console.error(`エラー: ${message}`);
-  process.exit(1);
+  throw new CreateError(message);
+}
+
+/** `--key value` の value を取る。値が無い・次のオプションを食う場合はエラー */
+function takeValue(argv, i, key) {
+  const v = argv[i + 1];
+  if (v === undefined || v.startsWith("--")) fail(`${key} に値がありません。`);
+  return v;
 }
 
 function git(args, cwd) {
@@ -43,7 +55,7 @@ function splitArgs(argv) {
   let repo = null;
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--repo") repo = argv[++i];
+    if (argv[i] === "--repo") repo = takeValue(argv, i++, "--repo");
     else rest.push(argv[i]);
   }
   return { repo, rest };
@@ -91,14 +103,15 @@ function main() {
     fail("使い方: node create.mjs <describe|run> [引数...]（詳細はスクリプト冒頭のコメント）");
   }
   const { repo, rest } = splitArgs(argv);
+  const envIndex = rest.indexOf("--env");
+  const env = envIndex >= 0 ? takeValue(rest, envIndex, "--env") : null;
 
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "harness-create-"));
   let status = 0;
   try {
     const repoDir = prepareRepo(repo, work);
     if (mode === "describe") {
-      const i = rest.indexOf("--env");
-      describe(repoDir, i >= 0 ? rest[i + 1] : null);
+      describe(repoDir, env);
     } else {
       // Bash ツールは TTY を持たないので create-project.mjs は対話しない。
       // 値が足りなければ create-project.mjs 自身が「--set で指定せよ」と言って止まる。
@@ -110,7 +123,13 @@ function main() {
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
-  process.exit(status);
+  return status;
 }
 
-main();
+try {
+  process.exitCode = main();
+} catch (e) {
+  if (!(e instanceof CreateError)) throw e;
+  console.error(`エラー: ${e.message}`);
+  process.exitCode = 1;
+}
