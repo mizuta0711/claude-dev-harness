@@ -7,10 +7,6 @@
       "PowerShell(dotnet build:*)",
       "PowerShell(dotnet format:*)",
       "PowerShell(dotnet test:*)"
-    ],
-    "ask": [
-      "Bash(dotnet run:*)",
-      "PowerShell(dotnet run:*)"
     ]
   }
 }

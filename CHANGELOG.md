@@ -52,6 +52,30 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [templates] — `permissions.ask` を、止めてでも人が見るべき操作だけに絞る
+
+**`ask` は bypassPermissions でも止まる。** bypass で運用している新規プロジェクト2つで
+「bypass なのにときどき許可を求められる」と報告があり、VSCode 拡張のログで聞かれたコマンドを特定したところ、
+**すべてテンプレートの `ask` に一致していた**。そのうち守る必要の無いものが次の2種類あった。
+
+- nextjs の `Bash(*prisma migrate*)` が、**読み取りだけの `prisma migrate status`** にも一致していた。
+  DB を変えるサブコマンド（`dev` / `deploy` / `reset` / `resolve`）の列挙に改めた。
+  `status` / `diff` は `pre-migrate-backup` も読み取り専用として扱っている
+- wpf の `Bash(dotnet run:*)` が、**サブエージェントが scratchpad の使い捨てプロジェクトで API を調べる実行**に
+  一致し、そのたびに作業が止まっていた。アプリを起動するだけで破壊的ではないので、`ask` から外した
+
+**前後のワイルドカードは残した。** `cd X && DATABASE_URL=... npx prisma migrate deploy` を取りこぼさないためである。
+実測（Claude Code 2.1.284・headless・bypass）では、この形と `dev` / `reset` / `resolve` / `db push` が止まった。
+`status` / `diff` は、複合コマンドの形も含めて止まらなかった。
+**`prisma migrate reset` を deny せず `ask` とフックで守る設計**（permissionsベースライン §5-4）は変えていない。
+
+テンプレートに `dotnet run` と `prisma migrate status` の allow は無い。
+そのため**通常モードでは従来どおり確認が出る**。変わるのは bypass / auto モードだけである。
+
+テンプレート層だけの変更なので**プラグインの版は据え置き**。既存の適用先は `harness-update` で受け取れる。
+
+docs 影響: あり（reference/permissionsベースライン.md §3 に `ask` の絞り方を追記・diagrams/05 の `prisma migrate reset` の実例を新しいルールに合わせた）
+
 ## [templates] — wpf の `xaml-ui.md` の例を、セマンティックカラーが効く形に直す（H35）
 
 `templates/wpf/.claude/rules/xaml-ui.md` の例は、App.xaml で空の `<ui:ThemeResources />` を読んだ後に、

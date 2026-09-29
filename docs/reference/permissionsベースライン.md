@@ -83,6 +83,20 @@
 
 `git push` は**テンプレート既定では allow にしない**。無確認の push は事故が戻しにくい。
 
+**`ask` は bypassPermissions でも止まる**（auto モードでも同じ）。bypass で運用する利用者にとって、
+`ask` は「確認が要る操作」ではなく「**毎回そこで作業が止まる操作**」になる。サブエージェントの中で
+聞かれると、気づくまで全体が止まる。**だから `ask` は、止めてでも人が見るべき操作だけに絞る。**
+
+- **読み取りだけの操作を巻き込まない。** 例: nextjs は `Bash(*prisma migrate*)` をやめ、DB を変える
+  サブコマンド（`dev` / `deploy` / `reset` / `resolve`）だけを並べる。`status` / `diff` は止めない
+  （`pre-migrate-backup` が読み取り専用として扱う集合と同じ）
+- **前後のワイルドカードは残す。** `cd X && DATABASE_URL=... npx prisma migrate deploy` のような
+  複合コマンド・環境変数付きの形を取りこぼさないため（2026-09-29 に Claude Code 2.1.284 の
+  bypass モードで、この形が止まり `status` の複合形が通ることを実測）
+- **破壊的でない実行は `ask` に置かない。** wpf の `dotnet run` は外した。アプリを起動するだけで、
+  サブエージェントが scratchpad の使い捨てプロジェクトで API を調べるたびに止まっていた
+- `ask` から外しても、**allow に無い限り通常モードでは従来どおり確認が出る**。変わるのは bypass / auto だけ
+
 ```jsonc
 {
   "permissions": {
