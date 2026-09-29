@@ -52,6 +52,25 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [templates] — wpf の `xaml-ui.md` の例を、セマンティックカラーが効く形に直す（H35）
+
+`templates/wpf/.claude/rules/xaml-ui.md` の例は、App.xaml で空の `<ui:ThemeResources />` を読んだ後に、
+ルートが `ui:ThemeResources` の `Themes/SemanticColors.xaml` を `ResourceDictionary Source=` で読む形だった。
+**この形では色が解決されない。** ModernWpfUI がライト/ダークの辞書を適用するのはアプリで最初の
+`ThemeResources` だけで、2つ目はエラーにならずに無視される（`DynamicResource` が既定色に落ちる）。
+
+**ビルド・テスト・レビューのどれも拾えない。** 実測: この例どおりに作ったプロジェクトで、
+4マイルストーンのあいだエラーの赤字・成功の緑が黒いままだった。実機確認のスクリーンショットで発覚した。
+
+例を、App.xaml の `<ui:ThemeResources>` の `ThemeDictionaries` に Light/Dark を置き、それぞれが
+`Themes/SemanticColors.Light.xaml` / `SemanticColors.Dark.xaml`（素の `ResourceDictionary`）を
+マージする形に改めた（色が効くことを実プロジェクトで確認済みの形）。やってはいけない形は警告として残した。
+
+テンプレート層だけの変更なので**プラグインの版は据え置き**。既存の適用先は `harness-update` で rules の差分を
+受け取れるが、**プロジェクトの App.xaml は直らない**ので、同じ形で作っていれば別途直すこと。
+
+docs 影響: なし
+
 ## [0.20.0] — 新規プロジェクトの生成を `create-project` スキルで頼めるようにする
 
 **harness-core に `create-project` スキルを追加した。** これまで新規プロジェクトは

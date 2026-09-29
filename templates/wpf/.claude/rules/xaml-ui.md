@@ -50,7 +50,8 @@ paths:
 ├── App.xaml                      # ThemeResources / XamlControlsResources のマージ、グローバル辞書
 ├── Converters/                   # IValueConverter 群（App.xaml でインスタンス登録）
 └── Themes/
-    ├── SemanticColors.xaml       # セマンティックカラー（ThemeDictionaries: Light/Dark）
+    ├── SemanticColors.Light.xaml # セマンティックカラー（ライト用。App.xaml の ThemeDictionaries から読み込む）
+    ├── SemanticColors.Dark.xaml  # セマンティックカラー（ダーク用）
     ├── Spacing.xaml              # 余白トークン（Thickness）
     ├── Typography.xaml           # TextBlock スタイル拡張
     └── Controls.xaml             # 共通コントロールスタイルの差分
@@ -65,9 +66,21 @@ paths:
 
 ```xml
 <ResourceDictionary.MergedDictionaries>
-  <ui:ThemeResources />                 <!-- ライト/ダーク・アクセント色 -->
+  <ui:ThemeResources>                   <!-- ライト/ダーク・アクセント色。セマンティックカラーもここに入れる（下記） -->
+    <ui:ThemeResources.ThemeDictionaries>
+      <ResourceDictionary x:Key="Light">
+        <ResourceDictionary.MergedDictionaries>
+          <ResourceDictionary Source="Themes/SemanticColors.Light.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
+      </ResourceDictionary>
+      <ResourceDictionary x:Key="Dark">
+        <ResourceDictionary.MergedDictionaries>
+          <ResourceDictionary Source="Themes/SemanticColors.Dark.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
+      </ResourceDictionary>
+    </ui:ThemeResources.ThemeDictionaries>
+  </ui:ThemeResources>
   <ui:XamlControlsResources />          <!-- ModernWpfUI コントロールスタイル -->
-  <ResourceDictionary Source="Themes/SemanticColors.xaml"/>
   <ResourceDictionary Source="Themes/Spacing.xaml"/>
   <ResourceDictionary Source="Themes/Typography.xaml"/>
 </ResourceDictionary.MergedDictionaries>
@@ -94,22 +107,32 @@ paths:
 | エラー（失敗・異常） | `ErrorBrush` |
 | 情報（通知・補足） | `InfoBrush` |
 
+| テーマ | 値（`SemanticColors.Light.xaml` / `SemanticColors.Dark.xaml`） |
+|--------|------|
+| Light | Success `#2E7D32` / Warning `#E65100` / Error `#C62828` / Info `#1565C0` |
+| Dark | Success `#81C784` / Warning `#FFB74D` / Error `#EF5350` / Info `#64B5F6` |
+
+各ファイルは**素の `ResourceDictionary`** に `SolidColorBrush` を並べ、App.xaml の
+`<ui:ThemeResources>` の `ThemeDictionaries` から読み込む（上の「ModernWpfUI のセットアップ」）。
+
 ```xml
-<ui:ThemeResources.ThemeDictionaries>
-  <ResourceDictionary x:Key="Light">
-    <SolidColorBrush x:Key="SuccessBrush" Color="#2E7D32"/>
-    <SolidColorBrush x:Key="WarningBrush" Color="#E65100"/>
-    <SolidColorBrush x:Key="ErrorBrush"   Color="#C62828"/>
-    <SolidColorBrush x:Key="InfoBrush"    Color="#1565C0"/>
-  </ResourceDictionary>
-  <ResourceDictionary x:Key="Dark">
-    <SolidColorBrush x:Key="SuccessBrush" Color="#81C784"/>
-    <SolidColorBrush x:Key="WarningBrush" Color="#FFB74D"/>
-    <SolidColorBrush x:Key="ErrorBrush"   Color="#EF5350"/>
-    <SolidColorBrush x:Key="InfoBrush"    Color="#64B5F6"/>
-  </ResourceDictionary>
-</ui:ThemeResources.ThemeDictionaries>
+<!-- Themes/SemanticColors.Light.xaml（Dark も同じ形で値だけ変える） -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="SuccessBrush" Color="#2E7D32"/>
+  <SolidColorBrush x:Key="WarningBrush" Color="#E65100"/>
+  <SolidColorBrush x:Key="ErrorBrush"   Color="#C62828"/>
+  <SolidColorBrush x:Key="InfoBrush"    Color="#1565C0"/>
+</ResourceDictionary>
 ```
+
+> ⚠️ **セマンティックカラーを、ルートが `ui:ThemeResources` の別ファイルにして `ResourceDictionary Source=` で
+> 読み込んではいけない**（空の `<ui:ThemeResources />` の後ろに足す形も同じ）。
+> ModernWpfUI がライト/ダークの辞書を適用するのはアプリで最初の `ThemeResources` だけで、
+> 2つ目は**エラーにならずに色が解決されない**（`DynamicResource` が既定色に落ち、エラー表示が黒字になる）。
+> **ビルドもテストもレビューも通り、画面を見るまで気づけない。** 実測: このテンプレートの旧版の例がこの形で、
+> そのとおりに作ったプロジェクトは4マイルストーンのあいだ気づかず、実機確認のスクリーンショットで
+> エラーの赤字が黒いことから発覚した。**色を足したら、エラー表示を一度は実画面で確認すること。**
 
 > ⚠️ **WPF 標準の `ResourceDictionary.ThemeDictionaries` は UWP/WinUI 専用で、クラシック WPF では
 > ビルドエラー（MC3074）になる。** ModernWpfUI が提供する `ui:ThemeResources.ThemeDictionaries`
