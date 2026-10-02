@@ -210,6 +210,9 @@ public object Convert(object value, Type targetType, object? parameter, CultureI
 - **別スレッドから `ObservableCollection` に Add** → 例外・破損（`csharp-wpf.md` のマーシャリング参照）
 - **コードビハインドで見た目を変更** → Style / Trigger / Converter で表現する
 - **Window を閉じてもバックグラウンドタスクが残る** → `OnClosing` で `Cancel()` と `StopAsync`
+- **`ObservableValidator` の ViewModel を DataContext に束縛すると、入力エラー1つで View 全体が赤枠** →
+  `Binding` は既定で `ValidatesOnNotifyDataErrors=True`。エラーを出す入力欄以外は
+  `ValidatesOnNotifyDataErrors=False` を明示する。**ビルド・テスト・レビューでは拾えない**（画面を見て初めて分かる）
 
 <!-- TODO: このアプリ固有のセマンティックカラー・再利用コンポーネント・画面レイアウト規約を追記する。
      まとまったデザイン方針は .claude/02_design_system/ へ。 -->

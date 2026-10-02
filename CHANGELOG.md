@@ -52,6 +52,18 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.22.2] — 重複した段落と、wpf の検証エラーの落とし穴（H38 / H44）
+
+- **`harness-update/SKILL.md` で「`disable-model-invocation` は付けない」の段落が2回続けて書かれていた（H38）。**
+  0.16.0 で足したときに重複したとみられる。詳しい側を残し、片方だけにあった1行を足して1つにまとめた。
+  実害は読み込むトークンが増えることだけ
+- **wpf: `ObservableValidator` の ViewModel を DataContext に束縛すると、入力エラー1つで View 全体に赤枠が出る（H44）。**
+  `Binding` が既定で `ValidatesOnNotifyDataErrors=True` のため。
+  **ビルド・テスト・レビューでは拾えない**（画面を見て初めて分かる）ので、
+  `templates/wpf/.claude/rules/xaml-ui.md` の「よくある落とし穴」に載せた
+
+docs 影響: なし
+
 ## [0.22.1 / nextjs 0.5.1] — コマンド解析の取りこぼしを直す（H47 / H40）
 
 **共有のコマンド解析（`git-scope`）が、3つの形で `git` のサブコマンドを取り違えていた（H47）。**
