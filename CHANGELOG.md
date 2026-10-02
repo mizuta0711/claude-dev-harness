@@ -52,6 +52,40 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.21.0] — 確認にかける操作を `permissions.ask` からフックへ移し、マシン別に出し分ける（H46）
+
+> ⚠️ **テンプレートの `settings.json` から `permissions.ask` を削除した（破壊的変更）。**
+> 既存プロジェクトは**先に harness-core 0.21.0 を入れてから** `harness-update` で ask を消すこと。
+> 順序が逆だと、フックの無いマシンでは確認が完全に消える（bypass で ask に無いコマンドは素通りする）。
+
+**`permissions.ask` はマシン別に無効化できない。** 権限を絞った専用ユーザーで動かす VPS では
+「確認を一切出さない」が要件だったが、ローカルPCでは今の確認を残したい。実測（Claude Code 2.1.270）では、
+上位層の `allow` でもフックが返す `allow` でも ask ルールは覆らなかった。一方、**フックが返す `ask` は
+bypassPermissions を貫通して止まる**。そこで判定をフックへ移した。
+
+- **`guarded-command-ask.js`（PreToolUse）を追加。** `harness.config.json` の `askGuards.sets` で選んだ集合
+  （`git-destructive` / `prisma-schema-change` / `android-device`）に一致すれば `permissionDecision: "ask"` を返す
+- **信頼済み環境では何も返さない。** `~/.claude/.harness-trusted-env` がある、または `HARNESS_TRUSTED_ENV=1`。
+  ホームしか見ないので、リポジトリに同名ファイルがあっても効かない
+- **config が無いリポジトリでは何もしない。** harness-core は user スコープでも入るため。
+  config はあるが `askGuards` が無い・config が壊れているときは、**`git-destructive` ＋ `environment` の既定**
+  （nextjs: `prisma-schema-change` / android: `android-device`）で止める。`harness-update` は settings.json の
+  ask 削除を自動で当てるが config への追加は提案どまりなので、見送っても守りが消えないようにした（査読 H1 / H2）
+- 判定は `git-scope.scanCommands()` でコマンド位置に限る。ask ルールが取りこぼしていた
+  `git -c k=v push` / `git -C dir push` / `pnpm exec prisma ...` / `npx.cmd prisma ...` / `./gradlew :app:installDebug` も止める。
+  ただし `node_modules/.bin/prisma` 以外の**ラッパー経由**（`bash -c` / `sudo` / `cmd /c`）は旧 ask と同じく対象外。
+  **空白入りパスの `git -C "a b" push` と、PowerShell の `"D:\work\"; git push` は取りこぼす**（共有の `git-scope` の解析の限界。別件で扱う）
+  `git commit -m "git push ..."` のような引用符内では止めない
+- **判定パターンは config に書かせない。** config は集合名を選ぶだけ（permissionsベースライン §3）
+- テンプレート: base / nextjs / android の `permissions.ask` を削除し、全環境の `harness.config.json` に `askGuards` を追加
+
+**退行（承知のうえ）**: harness-core を無効化すると確認が出なくなる。信頼済み環境では `git push` も無確認になる
+（force push は deny のまま）。
+
+テスト: `tests/guarded-command-ask.test.mjs`（`ASK` 配列33件・`PASS` 配列16件・集合の選択・マーカー・テンプレートと既定の一致）。
+
+docs 影響: あり（reference/permissionsベースライン.md §1・§3・5-4、reference/harness設定契約.md §1〜3 と §9 を新設、README.md のフック表、guide/運用ガイド.md §5-1、diagrams/01 の対応表、diagrams/05 のアクター・読み方・役割分担、background/01 のフック一覧）
+
 ## [templates] — `permissions.ask` を、止めてでも人が見るべき操作だけに絞る
 
 **`ask` は bypassPermissions でも止まる。** bypass で運用している新規プロジェクト2つで

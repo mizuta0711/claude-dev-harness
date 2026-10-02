@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.16.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
-| 最終更新 | 2026-08-20 |
+| 対応ハーネス版 | harness-core 0.21.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
+| 最終更新 | 2026-10-02 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
 
@@ -35,6 +35,10 @@
   "gates": {
     "preCommit": ["typecheck"],              // 空配列 = コミット前ゲート無し
     "commitScope": null                      // null/未設定 = 警告のみ / "paths" = ブロック / "off" = 無効
+  },
+
+  "askGuards": {                       // 任意。確認にかける操作の集合（§9）
+    "sets": ["git-destructive", "prisma-schema-change"]   // 未設定 = git-destructive ＋ environment の既定
   },
 
   "paths": {
@@ -75,6 +79,7 @@
 | `audit.intervalDays` | `session-start-context.js` | 前回の利用実績監査からこの日数を超えたら**知らせる**（止めない）。未設定は 30 日、`0` で無効。前回日は `.claude/.harness-audit.json`、無ければ `harness-baseline.json` の `appliedAt` から数える |
 | `update.intervalDays` | `session-start-context.js` | 前回の**テンプレート層の追従**からこの日数を超えたら**知らせる**（止めない）。未設定は 30 日、`0` で無効。前回日は `harness-baseline.json` の `appliedAt`（`harness-diff.mjs` の `finalize` が追従のたびに更新するので**専用マーカーは無い**）。**プラグイン層は marketplace が運ぶので対象外** |
 | `gates.commitScope` | `pre-commit-scope.js` | 範囲まるごとの git 操作（`add -A` / `commit -a` / `stash` / 範囲指定なしの破棄）を検知したときの扱い。**未設定なら警告のみ**、`"paths"` で `deny`、`"off"` で無効 |
+| `askGuards.sets` | `guarded-command-ask.js` | 選んだ集合（§9）に一致するコマンドに `permissionDecision:"ask"` を返す。**信頼済み環境では何も返さない**。未設定は `git-destructive` ＋ `environment` の既定（§9） |
 | `commands.*` | `build-check` スキル | 非 null を `typecheck → build → lint → format → test` の順で実行。`dev` は実行しない |
 | `paths.docTriggers` | `post-commit-doc-check.js` | 直近コミットの変更ファイル（`/` 正規化済み）を `pattern` の正規表現で判定し、一致した `docs` を通知 |
 | `paths.source` | `pre-push-check` スキル | ソース変更を含まないコミットを台帳チェックから SKIP |
@@ -93,6 +98,9 @@
 | `gates.preCommit` が空 / 対象 `commands` が null | 素通り（メッセージも出さない） | 「この環境に CLI チェックは無い」と報告 |
 | `gates.preCommit` のキーが `commands` に**存在しない**（typo 疑い） | 警告を出しつつ、そのキーはスキップして続行（ブロックしない） | — |
 | `gates.commitScope` 未設定 / config 不在 | **警告は出す**（素通りさせない）。ブロックはしない | 「止めたいなら `"paths"` を設定」と案内 |
+| `askGuards` で config が存在しない | **素通り**（確認を出さない）。harness-core は user スコープでも入るため、未導入のリポジトリで止め始めないように | — |
+| `askGuards` で config が壊れている / `schemaVersion` が新しい | **既定の集合で止める**（**fail-open にしない**。`permissions.ask` 時代は config が壊れても確認が出ていたため） | — |
+| `askGuards.sets` に未知の集合名 | その名前だけ無視して続行 | — |
 | `audit.intervalDays` 未設定 / マーカーも baseline も無い | **何も言わない**（判定材料が無いのに催促しない） | — |
 | `update.intervalDays` 未設定 / baseline も `appliedAt` も無い | **何も言わない**（同上。baseline を持たない旧生成プロジェクトでは判定できない） | — |
 | `docTriggers[].pattern` が不正な正規表現 | そのトリガーだけ無視して継続 | — |
@@ -237,3 +245,25 @@ Unity テンプレートでは `create-project` が `"rootNamespace": "{{PROJECT
 | 検査の向き | 設計書の記述が実態と食い違っていないか | **Stage 2 が既存の方針に反していないか** |
 | 構造 | `{ file, tracks, sources }` のオブジェクト配列 | ディレクトリパスの文字列配列 |
 | harness-update | `.doc-sync.md` のみ追従 | **README.md のみ追従**（中身は project-owned） |
+
+## 9. `askGuards`（任意フィールド・確認にかける操作の選択）
+
+**`permissions.ask` の代わり**（H46・harness-core 0.21.0）。`permissions.ask` はマシン別に無効化できないため、
+確認にかけるかどうかを `guarded-command-ask` フックが判断する。経緯と実測は
+[permissionsベースライン.md](permissionsベースライン.md) §3。
+
+| 項目 | 内容 |
+|------|------|
+| 必須か | **任意**。無ければ `git-destructive` ＋ `environment` の既定（nextjs: `prisma-schema-change` / android: `android-device`）。テンプレートの値と同じなので、追従で追加を見送っても守りは変わらない |
+| schemaVersion | **1 のまま**（`envOptions` と同じ扱い） |
+| 読む主体 | `guarded-command-ask.js`（harness-core の PreToolUse フック） |
+| 書けるもの | **集合名だけ**。判定パターンは書けない（同 §3） |
+
+| 集合名 | 止めるもの |
+|--------|-----------|
+| `git-destructive` | `git push` / `reset` / `checkout` / `clean` |
+| `prisma-schema-change` | `prisma migrate dev` / `deploy` / `reset` / `resolve`、`prisma db push` |
+| `android-device` | `gradlew installDebug` / `uninstallDebug` / `uninstallAll`、`adb install` / `uninstall` |
+
+**信頼済み環境**（`~/.claude/.harness-trusted-env` がある、または `HARNESS_TRUSTED_ENV=1`）では、
+集合の指定にかかわらず**何も返さない**。bypass で運用していれば無確認で通る。環境変数の値は **`1` だけ**を認める。

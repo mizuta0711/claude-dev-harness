@@ -51,13 +51,6 @@
       "PowerShell(git push -f *)",
       "PowerShell(git push * +*)"
     ],
-    "ask": [
-      "Bash(git push:*)",
-      "PowerShell(git push:*)",
-      "Bash(git reset:*)",
-      "Bash(git checkout:*)",
-      "Bash(git clean:*)"
-    ],
     "allow": [
       "Read",
       "Glob",

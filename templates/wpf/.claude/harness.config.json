@@ -11,6 +11,7 @@
   },
   "audit": { "intervalDays": 30 },
   "gates": { "preCommit": ["build"] },
+  "askGuards": { "sets": ["git-destructive"] },
   "paths": {
     "source": ["{{CORE_PROJECT}}/**", "{{UI_PROJECT}}/**"],
     "docTriggers": [

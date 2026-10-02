@@ -13,13 +13,6 @@
       "Bash(npx prisma validate:*)",
       "Bash(npx tsx tools/scripts/generate-table-docs.ts)",
       "Bash(npx tsx tools/export-to-sql.ts)"
-    ],
-    "ask": [
-      "Bash(*prisma migrate dev*)",
-      "Bash(*prisma migrate deploy*)",
-      "Bash(*prisma migrate reset*)",
-      "Bash(*prisma migrate resolve*)",
-      "Bash(*prisma db push*)"
     ]
   }
 }

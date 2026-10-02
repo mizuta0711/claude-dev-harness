@@ -38,6 +38,11 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-commit-check.js\"",
             "timeout": 600,
             "statusMessage": "コミット前チェックを実行中..."
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/guarded-command-ask.js\"",
+            "timeout": 5
           }
         ]
       }

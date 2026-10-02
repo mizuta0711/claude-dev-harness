@@ -6,18 +6,6 @@
       "Edit(./keystore.properties)",
       "Edit(./signing.properties)"
     ],
-    "ask": [
-      "Bash(./gradlew installDebug:*)",
-      "Bash(./gradlew uninstallDebug:*)",
-      "Bash(./gradlew uninstallAll:*)",
-      "Bash(adb install:*)",
-      "Bash(adb uninstall:*)",
-      "PowerShell(.\\gradlew.bat installDebug:*)",
-      "PowerShell(.\\gradlew.bat uninstallDebug:*)",
-      "PowerShell(.\\gradlew.bat uninstallAll:*)",
-      "PowerShell(adb install:*)",
-      "PowerShell(adb uninstall:*)"
-    ],
     "allow": [
       "Bash(./gradlew assembleDebug:*)",
       "Bash(./gradlew lintDebug:*)",

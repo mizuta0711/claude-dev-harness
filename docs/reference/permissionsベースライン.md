@@ -16,6 +16,9 @@
 
 **原則: セキュリティに関わる設定を `*.local.json` に置かない。** 共有されないため派生プロジェクトが無防備になる。
 
+**`ask` はどの層からも打ち消せない。** 上位層の `allow` でも `settings.local.json` でも、フックの `allow` でも覆らない
+（§3 の実測）。マシンごとに変えたい確認は `permissions.ask` に置かず、`askGuards`（§3）で扱う。
+
 ## 2. deny のベースライン
 
 ```jsonc
@@ -79,37 +82,77 @@
 }
 ```
 
-## 3. ask のベースライン
+## 3. ask のベースライン（`guarded-command-ask` フックが実装する）
+
+**テンプレートの `settings.json` は `permissions.ask` を持たない**（H46・harness-core 0.21.0）。
+止める操作は `harness.config.json` の `askGuards.sets` で選び、harness-core の
+`guarded-command-ask` フックが `permissionDecision: "ask"` を返す。
 
 `git push` は**テンプレート既定では allow にしない**。無確認の push は事故が戻しにくい。
 
-**`ask` は bypassPermissions でも止まる**（auto モードでも同じ）。bypass で運用する利用者にとって、
+### なぜ `permissions.ask` ではないのか
+
+**`permissions.ask` はマシン別に無効化できない。** 権限を絞った専用ユーザーで動かす VPS のように
+「このマシンでは確認を出さない」が妥当な環境があっても、打ち消す手段が無い。
+
+実測（2026-10-02・Claude Code 2.1.270・headless `claude -p` の `permission_denials`）:
+
+| 試した方式 | モード | 結果 |
+|---|---|---|
+| user 層の `permissions.allow` で同じコマンドを許可 | bypass | **止まる**（ask が勝つ） |
+| PreToolUse フックが `permissionDecision: "allow"` を返す | default / bypass | **止まる** |
+| PreToolUse フックが `permissionDecision: "ask"` を返す | bypass | **止まる**（`permissionDecisionReason` が画面に出る） |
+| どのリストにも無いコマンド | bypass | 素通り |
+
+つまり **deny > ask > allow は層をまたいで絶対で、フックの `allow` でも ask ルールは覆らない**。
+一方、**フックが返す `ask` は bypass / auto を貫通する**。だから止めるかどうかの判断をフックに置き、
+フックがマシンを見て出し分ける。
+
+### 信頼済み環境
+
+次のどちらかがあるマシンでは、フックは**何も返さない**（bypass なら無確認で通る）。
+
+- `~/.claude/.harness-trusted-env`（中身は問わない。置いた理由を書いておく）
+- 環境変数 `HARNESS_TRUSTED_ENV=1`（**値は `1` だけ**。`true` / `yes` では効かない）
+
+**ホームしか見ない。** リポジトリ内に同名ファイルを置いても効かない。
+
+### 集合
+
+| 集合 | 止めるもの | 有効にしているテンプレート |
+|---|---|---|
+| `git-destructive` | `git push` / `reset` / `checkout` / `clean` | 全環境 |
+| `prisma-schema-change` | `prisma migrate dev` / `deploy` / `reset` / `resolve`、`prisma db push` | nextjs |
+| `android-device` | `gradlew installDebug` / `uninstallDebug` / `uninstallAll`、`adb install` / `uninstall` | android |
+
+`askGuards` が無い config、壊れた config では、**`git-destructive` ＋ `environment` に応じた集合**（上の表の既定）が有効になる。
+`harness-update` が settings.json の ask 削除だけを当て、config への `askGuards` 追加を見送っても守りが消えないようにするため。
+**config 自体が無いリポジトリでは何もしない**（harness-core は user スコープでも入るので、ハーネス未導入のリポジトリで止め始めないため）。
+
+**ラッパー経由の起動は対象外**（`bash -c "git push"` / `sudo` / `cmd /c` / フルパスの `git.exe` 等）。`permissions.ask` 時代も同じく拾っていなかった。
+
+### 何を止めるかの方針
+
+**`ask` は bypassPermissions でも止まる**（フック由来の `ask` も同じ）。bypass で運用する利用者にとって、
 `ask` は「確認が要る操作」ではなく「**毎回そこで作業が止まる操作**」になる。サブエージェントの中で
 聞かれると、気づくまで全体が止まる。**だから `ask` は、止めてでも人が見るべき操作だけに絞る。**
 
-- **読み取りだけの操作を巻き込まない。** 例: nextjs は `Bash(*prisma migrate*)` をやめ、DB を変える
-  サブコマンド（`dev` / `deploy` / `reset` / `resolve`）だけを並べる。`status` / `diff` は止めない
-  （`pre-migrate-backup` が読み取り専用として扱う集合と同じ）
-- **前後のワイルドカードは残す。** `cd X && DATABASE_URL=... npx prisma migrate deploy` のような
-  複合コマンド・環境変数付きの形を取りこぼさないため（2026-09-29 に Claude Code 2.1.284 の
-  bypass モードで、この形が止まり `status` の複合形が通ることを実測）
-- **破壊的でない実行は `ask` に置かない。** wpf の `dotnet run` は外した。アプリを起動するだけで、
+- **読み取りだけの操作を巻き込まない。** 例: prisma は DB を変えるサブコマンドだけを止め、
+  `status` / `diff` は止めない（`pre-migrate-backup` が読み取り専用として扱う集合と同じ）
+- **コマンド位置で判定する。** `git-scope.scanCommands()` で引用符・コメント・ヒアドキュメントの外にある
+  コマンドの先頭だけを見る。`cd X && DATABASE_URL=... npx prisma migrate deploy` や
+  `git -c k=v push` は止め、`git commit -m "git push は禁止"` は止めない
+- **破壊的でない実行は止めない。** wpf の `dotnet run` は H39 で外した。アプリを起動するだけで、
   サブエージェントが scratchpad の使い捨てプロジェクトで API を調べるたびに止まっていた
-- `ask` から外しても、**allow に無い限り通常モードでは従来どおり確認が出る**。変わるのは bypass / auto だけ
+- **判定パターンを `harness.config.json` に書かせない。** config は集合名を選ぶだけにする。
+  §5 の 5-2 / 5-3 はどちらも「パターンを書き間違える・単純化する」ことで起きた。判定はコードに持ち、テストで守る
+- 止めない操作も、**allow に無い限り通常モードでは従来どおり確認が出る**。変わるのは bypass / auto だけ
 
-```jsonc
-{
-  "permissions": {
-    "ask": [
-      "Bash(git push:*)",
-      "PowerShell(git push:*)",
-      "Bash(git reset:*)",
-      "Bash(git checkout:*)",
-      "Bash(git clean:*)"
-    ]
-  }
-}
-```
+### 残余リスク（承知のうえで採っている）
+
+- **harness-core を無効化すると確認が一切出なくなる。** `permissions.ask` 時代はプラグイン無しでも止まった
+- **信頼済み環境では `git push` も無確認になる。** force push は `deny`（§2）なので引き続き止まる
+- **判定の取りこぼしの責任がハーネス側に移る。** 集合を増やすときは `tests/guarded-command-ask.test.mjs` にケースを足す
 
 ## 4. allow の方針
 
@@ -128,7 +171,7 @@
 | 5-1 | **`Write(path)` を deny に書かない。`Edit(path)` を使う** | `Write` はファイル権限チェックの対象外で照合されない。**書いても保護にならず**、毎回起動時に警告が出る |
 | 5-2 | **`.env` は `.env*` でなく列挙する** | `.env.example` を巻き込む。`.gitignore` の `!.env.example` と矛盾し、AI が雛形を読めず・作れなくなる。deny は「今回だけ許可」ができないため**シェル経由の迂回が常態化**する |
 | 5-3 | **`rm` はフラグの綴りごとに列挙する** | `Bash(rm -rf *)` だけでは **`rm -fr` が通る**（実測でディレクトリが消えた）。rm はフラグを1トークンに結合するため、中間ワイルドカードによる順序非依存化が効かない |
-| 5-4 | **`prisma migrate reset` を deny しない**（`ask` + フックで守る） | **deny はフックより手前で効く**ため、`pre-migrate-backup` が働く機会を奪う。さらにハーネス自身の手順と衝突し、DB を `rm` で消す**迂回案**を誘発した |
+| 5-4 | **`prisma migrate reset` を deny しない**（`askGuards` の `ask` + `pre-migrate-backup` で守る） | **deny はフックより手前で効く**ため、`pre-migrate-backup` が働く機会を奪う。さらにハーネス自身の手順と衝突し、DB を `rm` で消す**迂回案**を誘発した |
 
 **共通する型**: 5-1 / 5-2 / 5-4 はいずれも「**安全側に倒したつもりが安全性を損なう**」。
 deny を足す前に、**それがフックや正規の手順を殺さないか**を確認する。
