@@ -118,7 +118,9 @@ for (const key of gates) {
 // 同じコマンドの中で、`git commit` より前にファイルを変えうる操作がある（H48）。
 // このフックはコマンドの**実行前**に走るので、その変更はゲートに映らない。
 // 素通りさせると「✅ 成功」のまま壊れたコミットができるため deny する（分ければ済むので自己修復できる）。
-const unseen = runnable.length ? scope.changesBeforeCommit(lib.toolCommand(payload)) : null;
+const unseen = runnable.length
+  ? scope.changesBeforeCommit(lib.toolCommand(payload), { shell: lib.toolShell(payload) })
+  : null;
 if (unseen) {
   const reason =
     "`git commit` は、ファイルを変えうる操作とは**別の呼び出し**で実行してください。\n" +

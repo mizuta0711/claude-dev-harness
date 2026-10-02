@@ -142,6 +142,10 @@
 - **コマンド位置で判定する。** `git-scope.scanCommands()` で引用符・コメント・ヒアドキュメントの外にある
   コマンドの先頭だけを見る。`cd X && DATABASE_URL=... npx prisma migrate deploy` や
   `git -c k=v push` は止め、`git commit -m "git push は禁止"` は止めない
+- **シェルの方言で読み方を変える。** `Bash` と `PowerShell` はエスケープ文字が違う（`\` と `` ` ``）。
+  ツール名から判断し、PowerShell の `cd "D:\work\"; git push` でも後続を見落とさない（H47）
+- **`git` のグローバルオプションはトークン単位で飛ばす。** `git -C "D:/my proj" push` /
+  `git --git-dir x push` / `git -P push` のいずれもサブコマンドを取り違えない（H47）
 - **破壊的でない実行は止めない。** wpf の `dotnet run` は H39 で外した。アプリを起動するだけで、
   サブエージェントが scratchpad の使い捨てプロジェクトで API を調べるたびに止まっていた
 - **判定パターンを `harness.config.json` に書かせない。** config は集合名を選ぶだけにする。

@@ -99,3 +99,62 @@ test("git-scope: 引用符・コメント・ヒアドキュメントでは発火
     }
   }
 });
+
+// ---------------------------------------------------------------------------
+// H47: グローバルオプションとシェルの方言の取りこぼし（2026-10-02 の査読 M2 / M3 / L4）
+//
+// いずれも**ガードが素通りする**側の取りこぼしで、旧 `permissions.ask` でも拾えていなかった。
+// 3件とも 2026-10-02 に再現を確認してから直した。**ケースを消さないこと。**
+// ---------------------------------------------------------------------------
+
+// ① `-C` の値が引用符つき・空白入りだと、途中で切れて `sub` を取り違えていた
+test("H47①: 値つきのグローバルオプションを飛ばす", () => {
+  const sub = (cmd) => scope.gitInvocations(cmd).map((g) => g.sub);
+  assert.deepEqual(sub('git -C "D:/my proj" push'), ["push"]);
+  assert.deepEqual(sub("git -C 'D:/my proj' add -A"), ["add"]);
+  assert.deepEqual(sub("git --git-dir x push"), ["push"], "値が別トークンの長いオプション");
+  assert.deepEqual(sub("git --work-tree /w --git-dir /g commit -a"), ["commit"]);
+  assert.deepEqual(sub("git -c user.name=a push"), ["push"], "連結形は1つだけ飛ばす");
+  assert.deepEqual(sub("git --git-dir=x push"), ["push"], "= で繋いだ形も1つだけ");
+  for (const cmd of ['git -C "D:/my proj" add -A', "git --git-dir x add -A"]) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, `repo-guard も: ${cmd}`);
+  }
+});
+
+// ③ `-P` / `-p` は値を取らない1文字フラグ。当たる選択肢が無く null を返していた
+test("H47③: 値を取らない1文字のグローバルオプションでも読める", () => {
+  assert.deepEqual(scope.gitInvocations("git -P push").map((g) => g.sub), ["push"]);
+  assert.equal(scope.isBlockedStash("git -P stash"), true);
+  assert.equal(guard.isBlockedStash("git -P stash"), true);
+});
+
+// ② PowerShell では `\` はエスケープではない。bash の規則で読むと閉じ引用符を見失う
+test("H47②: PowerShell の `\` 終端文字列で後続を見落とさない", () => {
+  const cmd = String.raw`cd "D:\work\"; git add -A`;
+  assert.equal(scope.isBlockedAdd(cmd, { shell: "powershell" }), true);
+  assert.equal(guard.isBlockedAdd(cmd, { shell: "powershell" }), true);
+  // 既定（bash）は従来どおりの読み方を保つ。ツール名が分からないときの挙動を変えない
+  assert.equal(scope.isBlockedAdd(cmd), false, "既定は bash の規則");
+});
+
+test("H47②: PowerShell では `` ` `` は区切りではなくエスケープ", () => {
+  const ps = { shell: "powershell" };
+  assert.deepEqual(
+    scope.scanCommands("echo a`;git add -A", ps).map((s) => s.text),
+    ["echo a`;git add -A"],
+    "バックティックで逃がした `;` はコマンド位置を作らない"
+  );
+  assert.deepEqual(
+    scope.scanCommands("echo a; git add -A", ps).map((s) => s.text),
+    ["echo a", "git add -A"]
+  );
+});
+
+// Windows のパスはバックスラッシュを含む。bash の規則どおりに落とすと別のパスになる
+test("H47: トークン化がバックスラッシュを落とさない", () => {
+  const [tok] = scope.tokenize(String.raw`D:\work\x`);
+  assert.equal(tok.value, String.raw`D:\work\x`);
+  assert.equal(scope.tokenize(String.raw`"a b"`)[0].value, "a b", "引用符は外す");
+  assert.equal(scope.tokenize(String.raw`a\ b`)[0].value, "a b", "空白を逃がす形は落とす");
+});

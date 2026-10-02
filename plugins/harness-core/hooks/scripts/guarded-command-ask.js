@@ -128,10 +128,11 @@ function enabledSets(config) {
 
 /**
  * 最初に一致したガードを返す。
+ * @param {{shell?: "bash"|"powershell"}} [opts] シェルの方言（H47 ②）
  * @returns {{name: string, reason: string, hit: string} | null}
  */
-function findGuardHit(command, sets) {
-  const segments = scope.scanCommands(command);
+function findGuardHit(command, sets, opts) {
+  const segments = scope.scanCommands(command, opts);
   for (const name of sets) {
     const guard = GUARD_SETS[name];
     if (!guard) continue;
@@ -152,7 +153,7 @@ function main() {
   const { status, config } = lib.loadConfig();
   if (status === "missing") lib.passThrough();
 
-  const found = findGuardHit(command, enabledSets(config));
+  const found = findGuardHit(command, enabledSets(config), { shell: lib.toolShell(payload) });
   if (!found) lib.passThrough();
 
   lib.emit({

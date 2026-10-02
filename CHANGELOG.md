@@ -52,6 +52,48 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.22.1 / nextjs 0.5.1] — コマンド解析の取りこぼしを直す（H47 / H40）
+
+**共有のコマンド解析（`git-scope`）が、3つの形で `git` のサブコマンドを取り違えていた（H47）。**
+いずれも**ガードが素通りする**側の取りこぼしで、`guarded-command-ask` / `pre-commit-scope` /
+`pre-commit-check` と、リポジトリ側の `repo-guard`（2コピー）のすべてに及んでいた。
+3件とも 2026-10-02 に再現を確認してから直している（H46 の査読 M2 / M3 / L4）。
+
+| 形 | 直す前 | 直した後 |
+|----|--------|---------|
+| `git -C "D:/my proj" push` | 空白で切れて `sub` が `proj` | `push` |
+| `git --git-dir x push` | 値を飛ばせず `sub` が `x` | `push` |
+| `git -P push` | 当たる選択肢が無く解析不能 | `push` |
+| `cd "D:\work\"; git add -A`（PowerShell） | `\"` をエスケープと読んで閉じ引用符を見失い、**後続が引用符の内側扱い** | 止める |
+
+- **グローバルオプションをトークン単位で飛ばす。** 正規表現の選択肢を順に当てるのをやめ、
+  引用符を解釈する `tokenize()` を足した。値を別トークンで取るもの（`-c` / `-C` / `--git-dir` /
+  `--work-tree` / `--namespace` / `--exec-path` / `--config-env` / `--super-prefix` / `--attr-source`）は2つ、
+  それ以外のフラグは1つ飛ばす
+- **シェルの方言を引数で受ける。** `scanCommands(cmd, { shell })` が `"powershell"` のとき、
+  エスケープ文字を `` ` `` に切り替え、`` ` `` を区切り文字から外す。
+  呼び出し側は payload の `tool_name` から渡す（`harness-lib.toolShell()`）。
+  **既定は従来どおり bash**（ツール名が分からないときの挙動を変えない）
+- **エスケープ文字をむやみに落とさない。** Windows のパス（`D:\work\x`）を bash の規則どおりに
+  落とすと `D:workx` になり、`git -C` の対象ディレクトリを取り違える。
+  引用符・空白・エスケープ文字自身を逃がすときだけ落とす
+- `repo-guard` の `resolveTargetDir()` も同じトークン化で `-C` を読む
+
+**`pre-migrate-backup` が、引用符の中の `|` でコマンドを区切っていた（H40）。**
+`grep -n "a|prisma migrate|b" x.md` を migrate の実行と判定してバックアップが走り、
+`tools/dump.sql` が0件のダンプで上書きされた（2026-09-29 に再現）。
+
+- 分割の前に**引用符の中身を同じ長さの空白へ潰す**（`blankQuoted()`）。
+  長さと引用符そのものは残すので、区切り位置と `DATABASE_URL="..." npx prisma migrate deploy` の形は壊れない
+- 実行部を `main()` に閉じ込め、判定関数を `module.exports` から取れるようにした
+  （`require.main === module` で囲う。CLAUDE.md §4）
+- プラグインをまたいで `git-scope` を require できないため、必要な分だけ nextjs 側に置いている
+
+テスト: `tests/git-scope.test.mjs`（H47 の4ケース群を追加。配布物側と `repo-guard` の両方に同じケースを当てる）、
+`tests/pre-migrate-backup.test.mjs`（新規・6ケース群）。全209件が通る。
+
+docs 影響: あり（reference/permissionsベースライン.md §3 — 判定の方針に「シェルの方言」と「グローバルオプション」の2点を追記）
+
 ## [0.22.0] — コミット前ゲートの抜け道と、未初期化での必ず失敗を直す（H48 / H45）
 
 **同じ1行でファイルを書いてからコミットすると、ゲートを素通りしていた（H48）。**

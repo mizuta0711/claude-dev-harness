@@ -27,14 +27,38 @@
 /** コマンドが始まりうる位置を作る文字。`(` と `` ` `` はコマンド置換の内側を拾うため */
 const SEPARATORS = new Set([";", "&", "|", "\n", "(", ")", "`", "{", "}"]);
 
+/** PowerShell の区切り文字。`` ` `` は**エスケープ文字**であって区切りではない */
+const SEPARATORS_PS = new Set([";", "&", "|", "\n", "(", ")", "{", "}"]);
+
+/**
+ * シェルの方言差（H47 ②）。
+ *
+ * Claude Code は `Bash` と `PowerShell` の2つのツールから同じフックを呼ぶ。
+ * **エスケープ文字が違う**ので、片方の規則で読むと文字列の終わりを見失う。
+ *
+ * > 実測（2026-10-02・H46 の査読 M3）。PowerShell の `cd "D:\work\"; git push` を
+ * > bash の規則で読むと `\"` を「エスケープされた引用符」と解釈して閉じ引用符を見失い、
+ * > **後続の `git push` が引用符の内側扱いになる**。ガードが素通りした。
+ *
+ * 呼び出し側は payload の `tool_name` から `{ shell: "powershell" }` を渡す。
+ * **既定は bash**（情報が無ければ従来どおりに読む）。
+ */
+function dialect(opts) {
+  const ps = (opts && opts.shell) === "powershell";
+  return { escape: ps ? "`" : "\\", separators: ps ? SEPARATORS_PS : SEPARATORS };
+}
+
 /**
  * 引用符・エスケープを解釈しながら、**コマンド位置から始まる断片**を列挙する。
  *
  * 引用符の内側は**1つの断片にもならない**ので、`echo 'git add -A'` は拾われない。
  *
+ * @param {string} cmd
+ * @param {{shell?: "bash"|"powershell"}} [opts]
  * @returns {{index: number, text: string}[]} index はコマンド語の開始位置
  */
-function scanCommands(cmd) {
+function scanCommands(cmd, opts) {
+  const { escape, separators } = dialect(opts);
   const s = String(cmd || "");
   const out = [];
   let start = 0;
@@ -51,11 +75,11 @@ function scanCommands(cmd) {
     const c = s[i];
     if (quote) {
       // シングルクォートの中ではエスケープは効かない
-      if (c === "\\" && quote === '"') i++;
+      if (c === escape && quote === '"') i++;
       else if (c === quote) quote = null;
       continue;
     }
-    if (c === "\\") {
+    if (c === escape) {
       i++;
       continue;
     }
@@ -102,7 +126,7 @@ function scanCommands(cmd) {
       start = i + 1;
       continue;
     }
-    if (SEPARATORS.has(c)) {
+    if (separators.has(c)) {
       flush(i);
       start = i + 1;
     }
@@ -112,29 +136,120 @@ function scanCommands(cmd) {
 }
 
 /**
+ * 引用符を解釈してトークンへ分ける（引用符そのものは外す）。
+ *
+ * `parseGit` が**値つきのグローバルオプション**を飛ばすのに要る。
+ * 位置を返すので、呼び出し側は元の文字列から残りを切り出せる。
+ *
+ * @param {string} text
+ * @param {{shell?: "bash"|"powershell"}} [opts]
+ * @returns {{value: string, start: number, end: number}[]}
+ */
+function tokenize(text, opts) {
+  const { escape } = dialect(opts);
+  const s = String(text || "");
+  const out = [];
+  let value = "";
+  let start = -1;
+  let quote = null;
+
+  const flush = (end) => {
+    if (start >= 0) out.push({ value, start, end });
+    value = "";
+    start = -1;
+  };
+
+  // **エスケープ文字をむやみに落とさない。** Windows のパスは `D:\work\x` のように
+  // バックスラッシュを含み、bash の規則どおりに落とすと `D:workx` になる
+  // （実測: `git -C D:\...\plugins push` の対象ディレクトリを取り違えた）。
+  // 引用符・空白・エスケープ文字自身を逃がすときだけ落とす。
+  const unescape = (ch) => (/['"\s]/.test(ch) || ch === escape ? ch : escape + ch);
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === escape && quote === '"' && i + 1 < s.length) value += unescape(s[++i]);
+      else if (c === quote) quote = null;
+      else value += c;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      if (start < 0) start = i;
+      quote = c;
+      continue;
+    }
+    if (c === escape && i + 1 < s.length) {
+      if (start < 0) start = i;
+      value += unescape(s[++i]);
+      continue;
+    }
+    if (/\s/.test(c)) {
+      flush(i);
+      continue;
+    }
+    if (start < 0) start = i;
+    value += c;
+  }
+  flush(s.length);
+  return out;
+}
+
+/**
+ * `git` のグローバルオプションのうち、**値を別のトークンで取る**もの。
+ *
+ * 飛ばし損ねると値をサブコマンドと取り違える。
+ * 実測では `git --git-dir x push` の `sub` が `x` になり、push のガードが全部外れていた。
+ */
+const GIT_GLOBAL_VALUE_OPTS = new Set([
+  "-c",
+  "-C",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--exec-path",
+  "--config-env",
+  "--super-prefix",
+  "--attr-source",
+]);
+
+/**
  * 断片が `git` の呼び出しなら `{ index, sub, args }` を返す（違えば null）。
  *
  * 先頭の環境変数代入（`FOO=bar git ...`）と、
  * サブコマンドより前のグローバルオプション（`-c x=y` / `-C dir` / `--no-pager`）を飛ばす。
+ *
+ * **オプションはトークン単位で飛ばす**（H47 ①③）。初版は正規表現の選択肢を順に当てていたため、
+ * 次の3つを取りこぼした（いずれも 2026-10-02 に再現）。
+ *
+ * | 形 | 初版の結果 |
+ * |----|-----------|
+ * | `git -C "D:/my proj" push` | 空白で切れて `sub` が `proj` |
+ * | `git --git-dir x push` | 値を飛ばせず `sub` が `x` |
+ * | `git -P push` | 1文字フラグに当たる選択肢が無く null |
  */
-function parseGit(seg) {
-  let t = seg.text.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
-  const head = /^git(?:\s|$)/.exec(t);
-  if (!head) return null;
-  let rest = t.slice(head[0].length).trim();
+function parseGit(seg, opts) {
+  const text = String(seg.text || "").replace(
+    /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/,
+    ""
+  );
+  const tokens = tokenize(text, opts);
+  if (!tokens.length || tokens[0].value !== "git") return null;
 
-  const globalOpt = /^(?:-[cC]\s+\S+|-[cC]\S+|-C\s+(?:"[^"]*"|'[^']*'|\S+)|--[a-z-]+(?:=\S+)?)\s*/;
-  for (let g; (g = globalOpt.exec(rest)) !== null; ) rest = rest.slice(g[0].length);
+  let i = 1;
+  while (i < tokens.length && tokens[i].value.startsWith("-")) {
+    // 値が同じトークンに付いている形（`-cuser.name=x` / `--git-dir=x`）は1つだけ飛ばす
+    i += GIT_GLOBAL_VALUE_OPTS.has(tokens[i].value) ? 2 : 1;
+  }
 
-  const m = /^([a-zA-Z][\w-]*)\s*([\s\S]*)$/.exec(rest);
-  if (!m) return null;
-  return { index: seg.index, sub: m[1], args: m[2].trim() };
+  const sub = tokens[i];
+  if (!sub || !/^[a-zA-Z][\w-]*$/.test(sub.value)) return null;
+  return { index: seg.index, sub: sub.value, args: text.slice(sub.end).trim() };
 }
 
 /** コマンド位置に現れた git 呼び出しをすべて返す */
-function gitInvocations(cmd) {
-  return scanCommands(cmd)
-    .map(parseGit)
+function gitInvocations(cmd, opts) {
+  return scanCommands(cmd, opts)
+    .map((seg) => parseGit(seg, opts))
     .filter(Boolean);
 }
 
@@ -154,8 +269,8 @@ const firstOperand = (args) =>
     .find((a) => a !== "--" && !a.startsWith("-")) || "";
 
 /** `git add` に「範囲まるごと」の指定が付いているか（`--dry-run` は対象外） */
-function isBlockedAdd(command) {
-  return gitInvocations(command).some(
+function isBlockedAdd(command, opts) {
+  return gitInvocations(command, opts).some(
     (g) =>
       g.sub === "add" &&
       !hasFlag(g.args, /(^|\s)(--dry-run|-n)(\s|$)/) &&
@@ -164,23 +279,23 @@ function isBlockedAdd(command) {
 }
 
 /** `git commit -a` / `-am` / `--all`（追跡済みを全部巻き込む） */
-function isBlockedCommitAll(command) {
-  return gitInvocations(command).some(
+function isBlockedCommitAll(command, opts) {
+  return gitInvocations(command, opts).some(
     (g) => g.sub === "commit" && (inBundle(g.args, "a") || hasFlag(g.args, /(^|\s)--all(\s|$)/))
   );
 }
 
 /** 退避する形の `git stash`（`list` / `show` / `pop` / `apply` / `drop` は読み出し・復元なので通す） */
 const STASH_SAFE = new Set(["list", "show", "pop", "apply", "drop", "branch", "clear"]);
-function isBlockedStash(command) {
-  return gitInvocations(command).some(
+function isBlockedStash(command, opts) {
+  return gitInvocations(command, opts).some(
     (g) => g.sub === "stash" && !STASH_SAFE.has(firstOperand(g.args))
   );
 }
 
 /** 範囲指定なしの破棄（`checkout -- .` / `restore .` / パス指定なしの `clean`） */
-function isBlockedDiscard(command) {
-  return gitInvocations(command).some((g) => {
+function isBlockedDiscard(command, opts) {
+  return gitInvocations(command, opts).some((g) => {
     if (g.sub === "checkout" || g.sub === "restore") {
       const op = firstOperand(g.args);
       return op === "." || op === ":/" || op === "./";
@@ -197,8 +312,8 @@ function isBlockedDiscard(command) {
  * パス指定なしの `git commit`。**deny しない**（`git add <path>` の直後など正当な使い方がある）。
  * 警告に留めるのは R4 の明示的な指示。
  */
-function isUnscopedCommit(command) {
-  return gitInvocations(command).some(
+function isUnscopedCommit(command, opts) {
+  return gitInvocations(command, opts).some(
     (g) =>
       g.sub === "commit" &&
       !g.args.includes("--") &&
@@ -245,10 +360,10 @@ const FILE_REDIRECT = />>?\s*(?!\/dev\/null\b)(?!\$null\b)(?!nul\b)[^\s&|;<>]/i;
 /** 断片の先頭にあるシェルの予約語（`if ...; then git commit` の `then` など）を剥がす */
 const stripKeyword = (seg) => ({ ...seg, text: seg.text.replace(/^(?:then|do|else|elif|time|!)\s+/, "") });
 
-function changesTree(seg) {
+function changesTree(seg, opts) {
   const unquoted = seg.text.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '""');
   if (FILE_REDIRECT.test(unquoted)) return true;
-  const g = parseGit(seg);
+  const g = parseGit(seg, opts);
   if (g) return !gitTreeSafe(g);
   // PowerShell の変数代入（`$x = 1`）
   if (/^\$[\w:]+\s*=/.test(seg.text)) return false;
@@ -276,31 +391,32 @@ function wrappedCommand(text) {
  *
  * repo-guard には複製しない（ゲートを持つのは配布物の `pre-commit-check` だけ）。
  */
-function changesBeforeCommit(command) {
+function changesBeforeCommit(command, opts) {
   // `2>&1` / `>&2` のような fd の複製は、`&` が区切り文字なので走査の前に消す（ファイルを書かない）。
   // `&> file`（stdout と stderr の両方をファイルへ）はリダイレクトとして残す
   const text = String(command || "").replace(/\d*>&(?:\d+|-)/g, " ").replace(/&>/g, ">");
-  const segs = scanCommands(text).map(stripKeyword);
-  const ci = segs.findIndex((seg) => parseGit(seg)?.sub === "commit");
+  const segs = scanCommands(text, opts).map(stripKeyword);
+  const ci = segs.findIndex((seg) => parseGit(seg, opts)?.sub === "commit");
   if (ci < 0) {
     // コミットが `bash -c "..."` 等の内側にある。中身を同じ規則で見る
     for (let i = 0; i < segs.length; i++) {
       const inner = wrappedCommand(segs[i].text);
       if (inner === null) continue;
-      const before = segs.slice(0, i).find(changesTree);
+      const before = segs.slice(0, i).find((seg) => changesTree(seg, opts));
       if (before && /\bgit\b[\s\S]*\bcommit\b/.test(inner)) return before.text;
-      const hit = changesBeforeCommit(inner);
+      const hit = changesBeforeCommit(inner, opts);
       if (hit) return hit;
     }
     return null;
   }
-  const hit = segs.slice(0, ci).find(changesTree);
+  const hit = segs.slice(0, ci).find((seg) => changesTree(seg, opts));
   return hit ? hit.text : null;
 }
 
 module.exports = {
   changesBeforeCommit,
   scanCommands,
+  tokenize,
   parseGit,
   gitInvocations,
   isBlockedAdd,

@@ -80,7 +80,8 @@ function main() {
   const command = lib.toolCommand(payload);
   if (!command) lib.passThrough();
 
-  const hits = CHECKS.filter((c) => c.hit(command));
+  const opts = { shell: lib.toolShell(payload) };
+  const hits = CHECKS.filter((c) => c.hit(command, opts));
   if (!hits.length) lib.passThrough();
 
   // config が読めなくても既定（警告）で動く。**黙らないことが目的**なので

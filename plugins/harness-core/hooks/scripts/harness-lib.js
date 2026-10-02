@@ -85,6 +85,17 @@ function toolCommand(payload) {
 }
 
 /**
+ * コマンドを解釈するときのシェルの方言（`git-scope` の `opts.shell` に渡す）。
+ *
+ * `Bash` と `PowerShell` は**エスケープ文字が違う**ため、片方の規則で読むと
+ * 文字列の終わりを見失い、後続のコマンドを見落とす（H47 ②）。
+ * ツール名が分からないときは bash として読む（従来の挙動）。
+ */
+function toolShell(payload) {
+  return /powershell|pwsh/i.test(payload?.tool_name || "") ? "powershell" : "bash";
+}
+
+/**
  * `git commit` を含むコマンドか（matcher が Bash|PowerShell 全体に効くため各スクリプトで判定する）。
  *
  * `git` と `commit` の間にはグローバルオプションが挟まりうる（`git -C dir commit`、
@@ -419,6 +430,7 @@ module.exports = {
   projectDir,
   readPayload,
   toolCommand,
+  toolShell,
   isGitCommit,
   toPosix,
   loadConfig,

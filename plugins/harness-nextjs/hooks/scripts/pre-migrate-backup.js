@@ -37,10 +37,49 @@ const EXPORT_TOOL = "tools/export-to-sql.ts";
  */
 const READ_ONLY_MIGRATE_SUBCOMMANDS = new Set(["status", "diff"]);
 
-const payload = lib.readPayload();
-if (!payload) process.exit(0);
-
-const command = payload?.tool_input?.command || "";
+/**
+ * 引用符の中身を同じ長さの空白へ置き換える（H40）。
+ *
+ * `prisma migrate` を**実行する**かどうかの判定なので、引用符の中にある文字列は
+ * データであって実行ではない。初版は引用符を見ずに `|` で区切っていたため、
+ * `grep -n "a|prisma migrate|b" x.md` を実行と判定して**バックアップを走らせた**
+ * （2026-09-29 に再現。`tools/dump.sql` が0件のダンプで上書きされた）。
+ *
+ * 長さと引用符そのものは残す。区切り位置と、環境変数代入の形
+ * （`DATABASE_URL="..." npx prisma migrate deploy`）を壊さないため。
+ *
+ * core の `git-scope.scanCommands()` と同じ狙いだが、**プラグインをまたいで
+ * require できない**ため、ここに必要な分だけ置く。
+ */
+function blankQuoted(text) {
+  const s = String(text || "");
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === "\\" && quote === '"' && i + 1 < s.length) {
+        out += "  ";
+        i++;
+        continue;
+      }
+      if (c === quote) {
+        quote = null;
+        out += c;
+        continue;
+      }
+      out += c === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      out += c;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
 
 /**
  * コマンド文字列に `prisma migrate` が「含まれる」かではなく、
@@ -48,9 +87,10 @@ const command = payload?.tool_input?.command || "";
  *
  * 1. ヒアドキュメント本文を除去する（コミットメッセージ等に書かれた
  *    `npx prisma migrate deploy` で誤発火しないようにするため）
- * 2. `&&` `||` `;` `|` 改行 でコマンドを分割する
- * 3. 各セグメントの先頭にある環境変数代入（`DATABASE_URL="..."` 等）を剥がす
- * 4. 残りが prisma migrate の起動そのものであるかを先頭一致で判定する
+ * 2. 引用符の中身を潰す（H40。`grep "a|prisma migrate|b"` を実行と読まないため）
+ * 3. `&&` `||` `;` `|` 改行 でコマンドを分割する
+ * 4. 各セグメントの先頭にある環境変数代入（`DATABASE_URL="..."` 等）を剥がす
+ * 5. 残りが prisma migrate の起動そのものであるかを先頭一致で判定する
  */
 function runsPrismaMigrate(raw) {
   // 1. ヒアドキュメント本文の除去
@@ -67,22 +107,22 @@ function runsPrismaMigrate(raw) {
     }
   }
 
-  // 2. コマンドの分割
-  const segments = text.split(/&&|\|\||;|\||\n/);
+  // 2. 引用符の中身を潰す / 3. コマンドの分割
+  const segments = blankQuoted(text).split(/&&|\|\||;|\||\n/);
 
   for (const segment of segments) {
-    // 3. 先頭の環境変数代入を剥がす
+    // 4. 先頭の環境変数代入を剥がす
     const stripped = segment
       .trim()
       .replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
 
-    // 4. prisma migrate の起動そのものか
+    // 5. prisma migrate の起動そのものか
     const m = stripped.match(
       /^(?:(?:npx|pnpm|yarn|bunx|bun)\s+)?prisma\s+migrate\b(.*)$/
     );
     if (!m) continue;
 
-    // 5. **DB を変更しない呼び出しは対象外**にする（C1 2周目の還元 #16）。
+    // 6. **DB を変更しない呼び出しは対象外**にする（C1 2周目の還元 #16）。
     //    `prisma migrate\b` の前方一致だけだと `migrate status` や `--help` でも
     //    バックアップが走り、実 migrate ゼロ回で同一内容の .bak が 7 個溜まった（実測）。
     //    ヘッダの「実際に実行するときのみ」という設計意図に実装を合わせる。
@@ -168,71 +208,82 @@ function isFirstMigration(root) {
   return !entries.some((e) => e.isDirectory());
 }
 
-if (!runsPrismaMigrate(command)) {
-  process.exit(0);
+function main() {
+  const payload = lib.readPayload();
+  if (!payload) process.exit(0);
+
+  const command = payload?.tool_input?.command || "";
+  if (!runsPrismaMigrate(command)) process.exit(0);
+
+  const root = lib.projectDir();
+
+  if (isFirstMigration(root)) {
+    // 画面と Claude の文脈の両方へ（#23）
+    lib.notify(
+      "PreToolUse",
+      "初回マイグレーションのため DB バックアップをスキップしました" +
+        "（prisma/migrations/ に適用済みマイグレーションが無く、保護すべき既存データが存在しないため）。\n" +
+        `2回目以降は ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP が必要になります。` +
+        "スキーマが固まった時点で記入してください（.claude/rules/prisma.md の「3点同期」）。"
+    );
+    process.exit(0);
+  }
+
+  const configured = backupTargetsConfigured(root);
+  if (configured.ok && configured.unknown) {
+    // 判定できなかった。**通すが黙らない。**
+    // 黙って通すと「ブロックが効いている」と誤認したまま運用が続く（実測で発生した）。
+    lib.emit({
+      systemMessage:
+        `[harness] ${EXPORT_TOOL} のバックアップ対象一覧を判定できませんでした` +
+        `（テンプレートの ORDERED_TABLES とは別の命名の可能性）。\n` +
+        `バックアップ自体はこのあと実行しますが、**「対象が空でないか」のチェックは行われていません**。\n` +
+        `対象: ${EXPORT_TOOL}。命名を確認し、.claude/rules/prisma.md の3点同期の記述を実態に合わせてください。`,
+    });
+  }
+  if (!configured.ok) {
+    lib.emit({
+      continue: false,
+      stopReason:
+        `DB バックアップを実行できません: ${configured.reason}\n` +
+        `対処: ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP を実テーブルに合わせて記入してください` +
+        `（.claude/rules/prisma.md の「3点同期」）。\n` +
+        `まだテーブルが1つも無い初回マイグレーションでバックアップ不要と判断できる場合は、` +
+        `ユーザー自身が migrate を実行してください。`,
+    });
+    process.exit(0);
+  }
+
+  // stdio は必ず pipe にする。hook の stdout に子プロセスの出力が混ざると、
+  // Claude Code が JSON をパースできず continue:false が無効化される
+  // （公式仕様: stdout は JSON オブジェクトのみでなければならない）。
+  try {
+    execSync(`npx tsx ${EXPORT_TOOL}`, {
+      cwd: root,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30000,
+    });
+    lib.notify("PreToolUse", "DB backup completed before migrate.");
+  } catch (e) {
+    const excerpt = ((e.stdout || "") + "\n" + (e.stderr || ""))
+      .split("\n")
+      .filter((l) => l.trim())
+      .slice(0, 10)
+      .join("\n");
+    lib.emit({
+      continue: false,
+      stopReason:
+        "DB backup failed. Fix before running migrate: " +
+        e.message +
+        (excerpt ? "\n" + excerpt : ""),
+    });
+  }
 }
 
-const root = lib.projectDir();
+// フックとして起動されたときだけ実行する。
+// `require` されたとき（テスト）は判定関数だけを取り出せるようにしておく
+// （囲わないと require した瞬間に stdin を読みに行って固まる）。
+if (require.main === module) main();
 
-if (isFirstMigration(root)) {
-  // 画面と Claude の文脈の両方へ（#23）
-  lib.notify(
-    "PreToolUse",
-    "初回マイグレーションのため DB バックアップをスキップしました" +
-      "（prisma/migrations/ に適用済みマイグレーションが無く、保護すべき既存データが存在しないため）。\n" +
-      `2回目以降は ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP が必要になります。` +
-      "スキーマが固まった時点で記入してください（.claude/rules/prisma.md の「3点同期」）。"
-  );
-  process.exit(0);
-}
-
-const configured = backupTargetsConfigured(root);
-if (configured.ok && configured.unknown) {
-  // 判定できなかった。**通すが黙らない。**
-  // 黙って通すと「ブロックが効いている」と誤認したまま運用が続く（実測で発生した）。
-  lib.emit({
-    systemMessage:
-      `[harness] ${EXPORT_TOOL} のバックアップ対象一覧を判定できませんでした` +
-      `（テンプレートの ORDERED_TABLES とは別の命名の可能性）。\n` +
-      `バックアップ自体はこのあと実行しますが、**「対象が空でないか」のチェックは行われていません**。\n` +
-      `対象: ${EXPORT_TOOL}。命名を確認し、.claude/rules/prisma.md の3点同期の記述を実態に合わせてください。`,
-  });
-}
-if (!configured.ok) {
-  lib.emit({
-    continue: false,
-    stopReason:
-      `DB バックアップを実行できません: ${configured.reason}\n` +
-      `対処: ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP を実テーブルに合わせて記入してください` +
-      `（.claude/rules/prisma.md の「3点同期」）。\n` +
-      `まだテーブルが1つも無い初回マイグレーションでバックアップ不要と判断できる場合は、` +
-      `ユーザー自身が migrate を実行してください。`,
-  });
-  process.exit(0);
-}
-
-// stdio は必ず pipe にする。hook の stdout に子プロセスの出力が混ざると、
-// Claude Code が JSON をパースできず continue:false が無効化される
-// （公式仕様: stdout は JSON オブジェクトのみでなければならない）。
-try {
-  execSync(`npx tsx ${EXPORT_TOOL}`, {
-    cwd: root,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 30000,
-  });
-  lib.notify("PreToolUse", "DB backup completed before migrate.");
-} catch (e) {
-  const excerpt = ((e.stdout || "") + "\n" + (e.stderr || ""))
-    .split("\n")
-    .filter((l) => l.trim())
-    .slice(0, 10)
-    .join("\n");
-  lib.emit({
-    continue: false,
-    stopReason:
-      "DB backup failed. Fix before running migrate: " +
-      e.message +
-      (excerpt ? "\n" + excerpt : ""),
-  });
-}
+module.exports = { blankQuoted, runsPrismaMigrate, backupTargetsConfigured, isFirstMigration };
