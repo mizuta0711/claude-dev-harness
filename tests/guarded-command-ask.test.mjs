@@ -160,3 +160,22 @@ test("templates の settings.json は permissions.ask を持たない（H46）",
     assert.ok(!ask || ask.length === 0, `${env}: permissions.ask が残っている（askGuards へ移す）`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// シェルの方言は `scanCommands` だけでなく `parseGit` にも渡す（H47 ②・2026-10-03 の査読 中3）
+//
+// 渡し忘れると、PowerShell の `git -C "D:\my proj\" push` が素通りする。
+// **`scanCommands` に渡したから大丈夫、にはならない。**
+// ---------------------------------------------------------------------------
+test("PowerShell の `\` 終端パスつき git push も確認を求める", () => {
+  const cmd = String.raw`git -C "D:\my proj\" push`;
+  const found = guard.findGuardHit(cmd, ["git-destructive"], { shell: "powershell" });
+  assert.ok(found, "PowerShell の方言で読めば push と分かる");
+  assert.equal(found.name, "git-destructive");
+});
+
+test("空白入りの `-C` でも git-destructive が効く", () => {
+  assert.ok(guard.findGuardHit('git -C "D:/my proj" push', ["git-destructive"]));
+  assert.equal(hit("git --git-dir x reset --hard"), "git-destructive");
+  assert.equal(hit("git -P clean -fd"), "git-destructive");
+});

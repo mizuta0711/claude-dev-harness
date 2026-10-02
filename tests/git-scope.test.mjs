@@ -158,3 +158,22 @@ test("H47: トークン化がバックスラッシュを落とさない", () => 
   assert.equal(scope.tokenize(String.raw`"a b"`)[0].value, "a b", "引用符は外す");
   assert.equal(scope.tokenize(String.raw`a\ b`)[0].value, "a b", "空白を逃がす形は落とす");
 });
+
+// 2026-10-03 の査読（低1 / 低2）。どちらも**ガードが素通りする**側
+test("H47: 値を `=` でしか取らないグローバルオプションを飛ばしすぎない", () => {
+  // `git --exec-path status` は exec path を表示して終わる（次のトークンは値ではない）
+  assert.deepEqual(scope.gitInvocations("git --exec-path push").map((g) => g.sub), ["push"]);
+  assert.deepEqual(scope.gitInvocations("git --super-prefix=x push").map((g) => g.sub), ["push"]);
+  // 値を別トークンで取るものは従来どおり飛ばす（いずれも git が受け付ける形）
+  for (const opt of ["-c k=v", "-C .", "--git-dir .git", "--work-tree .", "--namespace n", "--config-env X=Y"]) {
+    assert.deepEqual(scope.gitInvocations(`git ${opt} push`).map((g) => g.sub), ["push"], opt);
+  }
+});
+
+test("H47: 行継続（`git \<改行> add -A`）を読む", () => {
+  const bash = ["git \\", "  add -A"].join("\n");
+  assert.equal(scope.isBlockedAdd(bash), true);
+  assert.equal(guard.isBlockedAdd(bash), true);
+  const ps = ["git `", "  add -A"].join("\n");
+  assert.equal(scope.isBlockedAdd(ps, { shell: "powershell" }), true);
+});

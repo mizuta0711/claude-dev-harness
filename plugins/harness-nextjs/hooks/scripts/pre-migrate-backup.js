@@ -48,17 +48,27 @@ const READ_ONLY_MIGRATE_SUBCOMMANDS = new Set(["status", "diff"]);
  * 長さと引用符そのものは残す。区切り位置と、環境変数代入の形
  * （`DATABASE_URL="..." npx prisma migrate deploy`）を壊さないため。
  *
+ * **引用符が閉じていなければ null を返す。** 英語コメントのアポストロフィ（`# don't forget`）
+ * ひとつで以後の行が全部潰れ、**本物の migrate を見落としてバックアップなしで通す**。
+ * このフックの見逃しは DB の破壊に直結するので、読めなかったときは
+ * 潰さない側（＝余計にバックアップが走る側）へ倒す。
+ *
+ * `shell` は `Bash` / `PowerShell` でエスケープ文字が違うため（H47 ②）。
+ *
  * core の `git-scope.scanCommands()` と同じ狙いだが、**プラグインをまたいで
  * require できない**ため、ここに必要な分だけ置く。
+ *
+ * @returns {string|null} 潰した文字列。引用符が閉じていなければ null
  */
-function blankQuoted(text) {
+function blankQuoted(text, shell) {
+  const escape = shell === "powershell" ? "`" : "\\";
   const s = String(text || "");
   let out = "";
   let quote = null;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) {
-      if (c === "\\" && quote === '"' && i + 1 < s.length) {
+      if (c === escape && quote === '"' && i + 1 < s.length) {
         out += "  ";
         i++;
         continue;
@@ -78,7 +88,7 @@ function blankQuoted(text) {
     }
     out += c;
   }
-  return out;
+  return quote === null ? out : null;
 }
 
 /**
@@ -87,12 +97,13 @@ function blankQuoted(text) {
  *
  * 1. ヒアドキュメント本文を除去する（コミットメッセージ等に書かれた
  *    `npx prisma migrate deploy` で誤発火しないようにするため）
- * 2. 引用符の中身を潰す（H40。`grep "a|prisma migrate|b"` を実行と読まないため）
+ * 2. 引用符の中身を潰す（H40。`grep "a|prisma migrate|b"` を実行と読まないため）。
+ *    **読めなかったときは潰さない**（見逃しよりバックアップが余計に走る方を選ぶ）
  * 3. `&&` `||` `;` `|` 改行 でコマンドを分割する
  * 4. 各セグメントの先頭にある環境変数代入（`DATABASE_URL="..."` 等）を剥がす
  * 5. 残りが prisma migrate の起動そのものであるかを先頭一致で判定する
  */
-function runsPrismaMigrate(raw) {
+function runsPrismaMigrate(raw, shell) {
   // 1. ヒアドキュメント本文の除去
   let text = raw;
   const heredoc = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g;
@@ -108,7 +119,7 @@ function runsPrismaMigrate(raw) {
   }
 
   // 2. 引用符の中身を潰す / 3. コマンドの分割
-  const segments = blankQuoted(text).split(/&&|\|\||;|\||\n/);
+  const segments = (blankQuoted(text, shell) ?? text).split(/&&|\|\||;|\||\n/);
 
   for (const segment of segments) {
     // 4. 先頭の環境変数代入を剥がす
@@ -213,7 +224,9 @@ function main() {
   if (!payload) process.exit(0);
 
   const command = payload?.tool_input?.command || "";
-  if (!runsPrismaMigrate(command)) process.exit(0);
+  // `Bash` と `PowerShell` でエスケープ文字が違う（H47 ②）
+  const shell = /powershell|pwsh/i.test(payload?.tool_name || "") ? "powershell" : "bash";
+  if (!runsPrismaMigrate(command, shell)) process.exit(0);
 
   const root = lib.projectDir();
 

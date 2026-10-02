@@ -74,9 +74,10 @@ const GRADLE_DEVICE_TASKS = new Set(["installDebug", "uninstallDebug", "uninstal
 const GUARD_SETS = {
   "git-destructive": {
     reason: "履歴や作業ツリーを書き換え得る git 操作です",
-    // グローバルオプション（`-c k=v` / `-C dir` / `--no-pager`）が挟まる形も parseGit が吸収する
-    test: (seg) => {
-      const g = scope.parseGit(seg);
+    // グローバルオプション（`-c k=v` / `-C dir` / `--no-pager`）が挟まる形も parseGit が吸収する。
+    // **`opts` を渡し忘れない。** PowerShell の `git -C "D:\my proj\" push` を取りこぼす（H47）
+    test: (seg, opts) => {
+      const g = scope.parseGit(seg, opts);
       return !!g && ["push", "reset", "checkout", "clean"].includes(g.sub);
     },
   },
@@ -136,7 +137,7 @@ function findGuardHit(command, sets, opts) {
   for (const name of sets) {
     const guard = GUARD_SETS[name];
     if (!guard) continue;
-    const seg = segments.find((s) => guard.test(s));
+    const seg = segments.find((s) => guard.test(s, opts));
     if (seg) return { name, reason: guard.reason, hit: seg.text };
   }
   return null;

@@ -179,6 +179,12 @@ function tokenize(text, opts) {
       continue;
     }
     if (c === escape && i + 1 < s.length) {
+      // 行継続（`git \<改行> add -A`）。トークンの切れ目として扱う
+      if (s[i + 1] === "\n") {
+        flush(i);
+        i++;
+        continue;
+      }
       if (start < 0) start = i;
       value += unescape(s[++i]);
       continue;
@@ -206,11 +212,13 @@ const GIT_GLOBAL_VALUE_OPTS = new Set([
   "--git-dir",
   "--work-tree",
   "--namespace",
-  "--exec-path",
   "--config-env",
-  "--super-prefix",
-  "--attr-source",
 ]);
+
+// ⚠️ **値を `=` でしか取らないものを入れない。** 入れると次のトークン（サブコマンド）を
+// 値として飛ばしてしまい、**ガードが素通りする**。
+// `git --exec-path status` は exec path を表示して終わる（値を取らない）、
+// `--super-prefix` / `--attr-source` は `=` が無いとエラーになる（いずれも実測）。
 
 /**
  * 断片が `git` の呼び出しなら `{ index, sub, args }` を返す（違えば null）。

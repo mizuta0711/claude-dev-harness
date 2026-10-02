@@ -88,8 +88,14 @@ docs 影響: なし
   **既定は従来どおり bash**（ツール名が分からないときの挙動を変えない）
 - **エスケープ文字をむやみに落とさない。** Windows のパス（`D:\work\x`）を bash の規則どおりに
   落とすと `D:workx` になり、`git -C` の対象ディレクトリを取り違える。
-  引用符・空白・エスケープ文字自身を逃がすときだけ落とす
+  引用符・空白・エスケープ文字自身を逃がすときだけ落とす。
+  エスケープした改行は**行継続**として扱う（`git \<改行> add -A`）
+- **値を `=` でしか取らないものを飛ばさない。** `--exec-path` / `--super-prefix` / `--attr-source` を
+  値つきとして扱うとサブコマンドを飲み込み、**逆に素通りする**（いずれも実測で確認）
 - `repo-guard` の `resolveTargetDir()` も同じトークン化で `-C` を読む
+- **方言は `scanCommands` だけでなく `parseGit` にも渡す。** `guarded-command-ask` の
+  `git-destructive` は `parseGit` を直に呼ぶため、渡し忘れると
+  PowerShell の `git -C "D:\my proj\" push` が素通りする
 
 **`pre-migrate-backup` が、引用符の中の `|` でコマンドを区切っていた（H40）。**
 `grep -n "a|prisma migrate|b" x.md` を migrate の実行と判定してバックアップが走り、
@@ -97,12 +103,24 @@ docs 影響: なし
 
 - 分割の前に**引用符の中身を同じ長さの空白へ潰す**（`blankQuoted()`）。
   長さと引用符そのものは残すので、区切り位置と `DATABASE_URL="..." npx prisma migrate deploy` の形は壊れない
+- **引用符が閉じていなければ潰さない。** 英語コメントのアポストロフィ（`# don't forget`）ひとつで
+  以後が全部潰れ、**本物の migrate を見落としてバックアップなしで通す**。
+  このフックの見逃しは DB の破壊に直結するので、読めなかったときは余計に走る側へ倒す
+- ここでもシェルの方言を見る（`tool_name` から判断）
 - 実行部を `main()` に閉じ込め、判定関数を `module.exports` から取れるようにした
   （`require.main === module` で囲う。CLAUDE.md §4）
 - プラグインをまたいで `git-scope` を require できないため、必要な分だけ nextjs 側に置いている
 
-テスト: `tests/git-scope.test.mjs`（H47 の4ケース群を追加。配布物側と `repo-guard` の両方に同じケースを当てる）、
-`tests/pre-migrate-backup.test.mjs`（新規・6ケース群）。全209件が通る。
+**まだ塞いでいないもの**（承知のうえで残している）。
+
+- **PowerShell の here-string（`@'` / `@"`）は解釈しない。** `git commit -m @'...'@; git add -A` の後続を取りこぼす
+- **`harness-android/plugin-lib.js` は独自の `scanCommands` を持つ**（`pre-adb-uninstall-guard` が使う）。
+  方言とトークン化は未適用
+- ラッパー経由の起動（`bash -c "git push"` / `sudo` / `cmd /c`）は従来どおり対象外
+
+テスト: `tests/git-scope.test.mjs`（H47 の6ケース群を追加。配布物側と `repo-guard` の両方に同じケースを当てる）、
+`tests/pre-migrate-backup.test.mjs`（新規・6ケース群）、`tests/guarded-command-ask.test.mjs`（PowerShell 経路2件）。
+全215件が通る。
 
 docs 影響: あり（reference/permissionsベースライン.md §3 — 判定の方針に「シェルの方言」と「グローバルオプション」の2点を追記）
 

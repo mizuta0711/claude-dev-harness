@@ -62,3 +62,29 @@ test("H40: 引用符を潰しても区切りと環境変数代入の形は壊れ
   assert.equal(blanked, 'DATABASE_URL="   " npx prisma migrate deploy');
   assert.equal(hook.runsPrismaMigrate(src), true, "正規の手順は取りこぼさない");
 });
+
+// ---------------------------------------------------------------------------
+// 見逃しは DB の破壊に直結する。**読めなかったら潰さない側へ倒す**
+// （H40 の修正が持ち込んだ回帰。2026-10-03 の査読 中1 / 中2）
+// ---------------------------------------------------------------------------
+test("引用符が閉じていなければ潰さない（バックアップを素通りさせない）", () => {
+  // bash の規則では閉じない形。潰すと以後が全部消え、本物の migrate を見落とす
+  for (const cmd of [
+    ["# don't forget", "npx prisma migrate deploy"].join("\n"),
+    String.raw`echo \" ; npx prisma migrate deploy`,
+    String.raw`cd "D:\w\"; npx prisma migrate deploy`,
+  ]) {
+    assert.equal(hook.blankQuoted(cmd), null, `潰さない: ${cmd}`);
+    assert.equal(hook.runsPrismaMigrate(cmd), true, cmd);
+  }
+  // PowerShell として読めば引用符は閉じている。潰したうえで正しく拾う
+  const ps = String.raw`cd "D:\w\"; npx prisma migrate deploy`;
+  assert.notEqual(hook.blankQuoted(ps, "powershell"), null);
+  assert.equal(hook.runsPrismaMigrate(ps, "powershell"), true);
+});
+
+test("PowerShell では `\` はエスケープではない", () => {
+  const cmd = String.raw`cd "D:\w"; npx prisma migrate deploy`;
+  assert.equal(hook.runsPrismaMigrate(cmd, "powershell"), true);
+  assert.notEqual(hook.blankQuoted(cmd, "powershell"), null, "引用符は閉じている");
+});
