@@ -190,6 +190,40 @@ function git(args, timeout = 5000) {
 }
 
 /**
+ * `paths.source` に一致するファイルが作業ツリーに1つでもあるか（H45）。
+ *
+ * `new-feature` の Step 0 と同じ「未初期化」の判定を、フックでも使う。
+ * 追跡済みと未追跡（`.gitignore` 対象外）の両方を見る。初期化直後はまだ何もコミットされていないため。
+ *
+ * グロブは git の `:(glob)` パススペックに渡す（`**` は `/` を跨ぐ・`*` は跨がない ＝ 設定契約と同じ意味）。
+ * 一致したものだけを出させるので、大きなリポジトリでも出力が膨らまない。
+ *
+ * @returns {boolean|null} 判定できないとき（git が使えない・`paths.source` が無い）は null。
+ *   **呼び出し側は null を「初期化済み」として扱うこと**（分からないときにゲートを飛ばさない）
+ */
+function hasSourceFiles(config) {
+  const globs = config?.paths?.source;
+  if (!Array.isArray(globs) || !globs.length) return null;
+  // git の `:(glob)` はブレース展開（`*.{ts,tsx}`）を持たないので、一致しないまま「未初期化」と誤判定する。
+  // 判定できないものとして扱い、ゲートを飛ばさない
+  if (globs.some((g) => /[{}[\]]/.test(String(g)))) return null;
+  if (git("rev-parse --is-inside-work-tree") !== "true") return null;
+  const specs = globs.map((g) => `":(glob)${String(g).replace(/"/g, "")}"`).join(" ");
+  try {
+    const out = execSync(`git ls-files -co --exclude-standard -- ${specs}`, {
+      cwd: projectDir(),
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10000,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    return out.trim().length > 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 任意のコマンドを実行する。
  *
  * @param {string} command
@@ -391,6 +425,7 @@ module.exports = {
   commandFor,
   resolveCommand,
   git,
+  hasSourceFiles,
   run,
   errorExcerpt,
   emit,

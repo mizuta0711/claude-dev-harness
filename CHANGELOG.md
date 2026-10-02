@@ -52,6 +52,37 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.22.0] — コミット前ゲートの抜け道と、未初期化での必ず失敗を直す（H48 / H45）
+
+**同じ1行でファイルを書いてからコミットすると、ゲートを素通りしていた（H48）。**
+`pre-commit-check` は PreToolUse で、コマンドの**実行前**の作業ツリーにゲートを当てる。
+`printf '...型エラー...' > src/x.ts && git add -- src/x.ts && git commit ...` は、`x.ts` が検査時点で存在しないため
+「✅ typecheck 成功」のままコミットされた（pocket-drop で実測）。
+
+- `git commit` より前に**ファイルを変えうる操作**（リダイレクト、`sed -i`、`cp`、`Set-Content`、`git checkout` / `apply` など）があれば
+  **deny** し、「コミットは別の呼び出しで」と伝える。分けて実行すれば通るので、Claude が自分でやり直せる
+- 判定は `git-scope.changesBeforeCommit()`。`cd` / `git add` / `git status` など**作業ツリーを変えないと分かっているもの以外は
+  「変えうる」と見なす**（見逃しは不可・誤検知は許容。`npm run lint && git commit` も止まるが、分ければ済む）。
+  引用符・ヒアドキュメントの中と、コミットより後ろの操作は見ない。`2>&1` のような fd の複製、パイプの受け手（`| wc -l` / `| Out-Null`）、
+  index だけを触る `git mv` / `git rm --cached` / `git reset`（`--hard` 等を除く）/ `git restore --staged` は止めない
+- コミットが `bash -c "..."` / `pwsh -Command "..."` / `eval` の内側にある形も、中身を同じ規則で見る
+- **未初期化の判定より先に見る。** 同じ1行で最初のソースを作ってコミットすると、未初期化に見えて素通りするため
+- ゲートが無い環境（`gates.preCommit` が空）では何もしない
+
+**未初期化のプロジェクトで、ゲートが必ず失敗していた（H45）。** create-project 直後は `package.json` も TypeScript も無く、
+ハーネスが案内する流れ（create-project → new-feature）で Phase 0 より前のコミットが正規の手段では通らなかった。
+
+- `paths.source` に一致するファイル（追跡済み＋未追跡、`.gitignore` 対象外）が1つも無ければ**ゲートを飛ばし、飛ばしたことを知らせる**。
+  判定は `new-feature` の Step 0 と同じ
+- **判定できないとき（`paths.source` が無い・git が使えない）は飛ばさない**
+- 判定は git の `:(glob)` パススペックで一致したものだけを出させる（大きなリポジトリでも出力が膨らまない）
+- **ブレース（`*.{ts,tsx}`）・角括弧を含むグロブは判定しない。** git の `:(glob)` が展開せず、初期化済みなのに「未初期化」に見えてゲートが黙って飛ぶため
+- 飛ばしたときの通知に、使った `paths.source` を載せる（ソースが別の場所にあるなら気づける）
+
+テスト: `tests/pre-commit-check-gates.test.mjs`（`CHANGES` 配列17件・`NO_CHANGES` 配列20件、`hasSourceFiles` 4件、使い捨てリポジトリでフックを起動する5件）。
+
+docs 影響: あり（reference/harness設定契約.md §2・§3、README.md のフック表、guide/運用ガイド.md §5-1、diagrams/05 のフック一覧）
+
 ## [0.21.0] — 確認にかける操作を `permissions.ask` からフックへ移し、マシン別に出し分ける（H46）
 
 > ⚠️ **テンプレートの `settings.json` から `permissions.ask` を削除した（破壊的変更）。**

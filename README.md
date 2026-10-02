@@ -200,7 +200,7 @@ claude-dev-harness/
 | SessionStart | `session-start-context.js` | 状況の注入＋`harness.config.json` の検証・警告 |
 | PreCompact | `pre-compact-save.js` | コンパクト前の文脈退避 |
 | PreToolUse | `pre-commit-scope.js` | 範囲まるごとの git 操作を検知。**既定は警告のみ**、`gates.commitScope: "paths"` でブロック |
-| PreToolUse | `pre-commit-check.js` | `gates.preCommit` のコマンドを実行し、失敗でコミットをブロック |
+| PreToolUse | `pre-commit-check.js` | `gates.preCommit` のコマンドを実行し、失敗でコミットをブロック。未初期化なら飛ばして知らせ、同じ1行でファイルを変えてからのコミットはブロック |
 | PreToolUse | `guarded-command-ask.js` | `askGuards.sets` に一致する危険な操作を確認にかける（bypass でも止まる）。**信頼済み環境では素通り** |
 | PostToolUse | `post-commit-doc-check.js` | `paths.docTriggers` に従い設計書更新を促す |
 | PostToolUse | `post-branch-notice.js` | ブランチ作成を検知して画面と文脈の両方へ通知する（**止めない**） |

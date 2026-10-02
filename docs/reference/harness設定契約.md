@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.21.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
+| 対応ハーネス版 | harness-core 0.22.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
 | 最終更新 | 2026-10-02 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
@@ -83,6 +83,7 @@
 | `commands.*` | `build-check` スキル | 非 null を `typecheck → build → lint → format → test` の順で実行。`dev` は実行しない |
 | `paths.docTriggers` | `post-commit-doc-check.js` | 直近コミットの変更ファイル（`/` 正規化済み）を `pattern` の正規表現で判定し、一致した `docs` を通知 |
 | `paths.source` | `pre-push-check` スキル | ソース変更を含まないコミットを台帳チェックから SKIP |
+| `paths.source` | `pre-commit-check.js` | 一致するファイル（追跡済み＋`.gitignore` 対象外の未追跡）が**1つも無ければ未初期化**とみなし、`gates.preCommit` を飛ばして知らせる（`new-feature` の Step 0 と同じ判定）。**ブレース（`*.{ts,tsx}`）・角括弧を含むグロブは判定せず、ゲートを飛ばさない**（git の `:(glob)` が展開しないため） |
 | `designDocs.*` | `update-docs` / `sync-check` / `complete-feature` / **`pre-push-check`** スキル | 照合対象の決定（`sources`）、粒度の決定（`tracks`）、記録先（`ledger`）。**`pre-push-check` は台帳（`ledger`）に加え、ソース変更があるとき `docs[]` の全量照合も行う** |
 | `projectDocs.requirements` | `new-feature`（Step 2）/ `design-review feature` | Stage 1 の前にドメイン制約・ビジネスルールを読む。**未登録・空なら素通り** |
 | `projectDocs.policy` | `new-feature/TEMPLATE.md`（§4）/ `design-review tech` / `complete-feature`（ゲート3） | Stage 2 が既存の設計方針に反していないかを検査し、新たな設計判断を**完了時に書き戻させる**。**未登録・空なら素通り** |
@@ -96,6 +97,8 @@
 | JSON が壊れている | 同上 | 同上 |
 | `schemaVersion` が core より新しい | 警告メッセージを出して素通り | 同左 |
 | `gates.preCommit` が空 / 対象 `commands` が null | 素通り（メッセージも出さない） | 「この環境に CLI チェックは無い」と報告 |
+| `paths.source` に一致するファイルが無い（未初期化） | ゲートを**飛ばし、飛ばしたことを知らせる**。`paths.source` が無い・git が使えないなど判定できないときは**飛ばさない** | — |
+| 同じコマンドの中で `git commit` より前にファイルを変えうる操作がある | **deny**（「コミットは別の呼び出しで」）。フックは実行前に走るので、その変更はゲートに映らない。ゲートが無い環境では何もしない | — |
 | `gates.preCommit` のキーが `commands` に**存在しない**（typo 疑い） | 警告を出しつつ、そのキーはスキップして続行（ブロックしない） | — |
 | `gates.commitScope` 未設定 / config 不在 | **警告は出す**（素通りさせない）。ブロックはしない | 「止めたいなら `"paths"` を設定」と案内 |
 | `askGuards` で config が存在しない | **素通り**（確認を出さない）。harness-core は user スコープでも入るため、未導入のリポジトリで止め始めないように | — |

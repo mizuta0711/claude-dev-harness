@@ -9,6 +9,8 @@
  *   - `git commit` を含むコマンド以外は即素通り（matcher は Bash|PowerShell 全体に効くため）
  *   - config 不在・壊れている・schemaVersion が新しすぎる → 素通り（fail-open）
  *   - gates.preCommit が空 / 対応する commands が null → 素通り（Unity のようなCLIチェック無し環境）
+ *   - paths.source に一致するファイルが無い（未初期化）→ ゲートを飛ばし、飛ばしたことを知らせる（H45）
+ *   - 同じコマンドで git commit より前にファイルを変えうる操作がある → deny（H48。その変更はゲートに映らない）
  *   - コマンド失敗 → permissionDecision:"deny" でブロック（自己修復可能な失敗のため deny を使う）
  *
  * ブロック強度の使い分け（Phase 1 指示書 §0）:
@@ -22,6 +24,7 @@
  *   個々のコマンドを打ち切って **失敗として deny する**（素通りさせない）。
  */
 const lib = require("./harness-lib");
+const scope = require("./git-scope");
 
 const payload = lib.readPayload();
 if (!payload) lib.passThrough();
@@ -110,6 +113,45 @@ for (const key of gates) {
   if (resolved.status === "ok") runnable.push(resolved);
   else if (resolved.status === "null") skipped.push(key);
   else warnings.push(`gates.preCommit の "${key}" は commands に存在しません（typo?）`);
+}
+
+// 同じコマンドの中で、`git commit` より前にファイルを変えうる操作がある（H48）。
+// このフックはコマンドの**実行前**に走るので、その変更はゲートに映らない。
+// 素通りさせると「✅ 成功」のまま壊れたコミットができるため deny する（分ければ済むので自己修復できる）。
+const unseen = runnable.length ? scope.changesBeforeCommit(lib.toolCommand(payload)) : null;
+if (unseen) {
+  const reason =
+    "`git commit` は、ファイルを変えうる操作とは**別の呼び出し**で実行してください。\n" +
+    `このコマンドでは \`${unseen}\` がコミットより前にあります。コミット前チェック（${runnable.map((r) => r.key).join(" / ")}）は` +
+    "コマンドの実行前に走るため、その変更を検査できません（同じ1行のままだと、壊れていても「成功」と表示されてコミットされます）。\n" +
+    "先にその操作だけを実行し、`git add` / `git commit` を次の呼び出しで実行してください。" +
+    subagent;
+  restoreSubagentMarks();
+  lib.emit({
+    systemMessage: `[pre-commit-check] ❌ ${reason}`,
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: reason,
+    },
+  });
+  process.exit(0);
+}
+
+// 未初期化のプロジェクト（`paths.source` に一致するファイルが1つも無い）ではゲートを飛ばす（H45）。
+// create-project 直後は package.json もツールチェーンも無く、ゲートが**必ず**失敗して
+// Phase 0 より前のコミットが正規の手段では通らなかった。判定は new-feature の Step 0 と同じ。
+// **判定できないとき（null）は飛ばさない。** 飛ばしたことは必ず知らせる。
+// H48 の判定より後に置く: 同じ1行で最初のソースを作ってコミットすると、ここでは「未初期化」に見えるため。
+if (runnable.length && lib.hasSourceFiles(config) === false) {
+  lib.notify(
+    "PreToolUse",
+    `[pre-commit-check] ⏭️ プロジェクトが未初期化のため、コミット前チェック（${runnable.map((r) => r.key).join(" / ")}）を飛ばしました` +
+      `（paths.source = ${JSON.stringify(config.paths.source)} に一致するファイルがありません。ソースが別の場所にあるなら paths.source を直してください）。` +
+      (warnings.length ? `\n⚠️ ${warnings.join(" / ")}` : "") +
+      subagent
+  );
+  process.exit(0);
 }
 
 const results = [];

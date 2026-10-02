@@ -208,7 +208,98 @@ function isUnscopedCommit(command) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// コミット前ゲートが見られない変更（H48）
+// ---------------------------------------------------------------------------
+
+/** `git commit` より前に置いても作業ツリーを変えない git サブコマンド（`add` はステージするだけ） */
+const TREE_SAFE_GIT = new Set([
+  "add", "status", "diff", "log", "show", "rev-parse", "ls-files", "branch", "remote", "config", "fetch", "tag",
+]);
+
+/** 引数しだいで index だけを触る git サブコマンド（`git mv` は旧・新パスの両方を指定するコミットの前置きとして常用される） */
+function gitTreeSafe(g) {
+  if (TREE_SAFE_GIT.has(g.sub) || g.sub === "mv") return true;
+  const flag = (re) => re.test(g.args);
+  if (g.sub === "rm") return flag(/(^|\s)--cached(\s|$)/);
+  if (g.sub === "reset") return !flag(/(^|\s)--(hard|merge|keep)(\s|$)/);
+  if (g.sub === "restore") return flag(/(^|\s)(--staged|-S)(\s|$)/) && !flag(/(^|\s)(--worktree|-W)(\s|$)/);
+  return false;
+}
+
+/**
+ * 作業ツリーを変えないコマンド（Bash / PowerShell）。**ここに無いものは「変えうる」と見なす**。
+ * 後半はパイプの受け手としてよく付くもの（`ls | wc -l` / `git add a | Out-Null`）
+ */
+const TREE_SAFE_COMMANDS = new Set([
+  "cd", "pushd", "popd", "chdir", "pwd", "ls", "dir", "echo", "printf", "cat", "true", "test", "[", ":",
+  "set-location", "sl", "get-location", "get-childitem", "gci", "write-host", "write-output", "start-sleep", "sleep",
+  "wc", "head", "tail", "grep", "sort", "uniq", "type", "findstr", "get-content", "gc",
+  "out-null", "out-string", "select-object", "select", "where-object", "where", "measure-object",
+  "select-string", "sls", "format-table", "ft",
+]);
+
+/** ファイルへのリダイレクト（`/dev/null` / `$null` / `NUL` は除く） */
+const FILE_REDIRECT = />>?\s*(?!\/dev\/null\b)(?!\$null\b)(?!nul\b)[^\s&|;<>]/i;
+
+/** 断片の先頭にあるシェルの予約語（`if ...; then git commit` の `then` など）を剥がす */
+const stripKeyword = (seg) => ({ ...seg, text: seg.text.replace(/^(?:then|do|else|elif|time|!)\s+/, "") });
+
+function changesTree(seg) {
+  const unquoted = seg.text.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '""');
+  if (FILE_REDIRECT.test(unquoted)) return true;
+  const g = parseGit(seg);
+  if (g) return !gitTreeSafe(g);
+  // PowerShell の変数代入（`$x = 1`）
+  if (/^\$[\w:]+\s*=/.test(seg.text)) return false;
+  const t = seg.text.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
+  const name = (t.split(/\s+/)[0] || "").split(/[\\/]/).pop().toLowerCase().replace(/\.exe$/, "");
+  return !TREE_SAFE_COMMANDS.has(name);
+}
+
+/** `bash -c "..."` / `pwsh -Command "..."` / `eval "..."` の中身（引用符の内側）を取り出す */
+function wrappedCommand(text) {
+  const m =
+    /^(?:(?:bash|sh|zsh|pwsh|powershell)(?:\.exe)?\s+(?:-\S+\s+)*?(?:-c|-command)|eval)\s+(["'])([\s\S]*)\1\s*$/i.exec(text);
+  return m ? m[2] : null;
+}
+
+/**
+ * **同じコマンドの中で `git commit` より前にファイルを変えうる操作**があれば、その断片を返す（無ければ null）。
+ *
+ * `pre-commit-check` は PreToolUse で、**コマンドの実行前**の作業ツリーにゲートを当てる。
+ * `printf ... > x.ts && git commit` の `x.ts` は検査の時点では存在しないので、
+ * 型エラーがあっても「✅ 成功」のままコミットされる（pocket-drop で実測）。
+ *
+ * 判定は「安全と分かっているもの以外は変えうる」の側に倒す（**見逃しは不可・誤検知は許容**。
+ * 誤検知しても、コミットを別の呼び出しに分ければ済む）。
+ *
+ * repo-guard には複製しない（ゲートを持つのは配布物の `pre-commit-check` だけ）。
+ */
+function changesBeforeCommit(command) {
+  // `2>&1` / `>&2` のような fd の複製は、`&` が区切り文字なので走査の前に消す（ファイルを書かない）。
+  // `&> file`（stdout と stderr の両方をファイルへ）はリダイレクトとして残す
+  const text = String(command || "").replace(/\d*>&(?:\d+|-)/g, " ").replace(/&>/g, ">");
+  const segs = scanCommands(text).map(stripKeyword);
+  const ci = segs.findIndex((seg) => parseGit(seg)?.sub === "commit");
+  if (ci < 0) {
+    // コミットが `bash -c "..."` 等の内側にある。中身を同じ規則で見る
+    for (let i = 0; i < segs.length; i++) {
+      const inner = wrappedCommand(segs[i].text);
+      if (inner === null) continue;
+      const before = segs.slice(0, i).find(changesTree);
+      if (before && /\bgit\b[\s\S]*\bcommit\b/.test(inner)) return before.text;
+      const hit = changesBeforeCommit(inner);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  const hit = segs.slice(0, ci).find(changesTree);
+  return hit ? hit.text : null;
+}
+
 module.exports = {
+  changesBeforeCommit,
   scanCommands,
   parseGit,
   gitInvocations,
