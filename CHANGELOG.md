@@ -52,6 +52,32 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [docs] — 実装に追いついていなかった記述を直す（docs 全点検・0.22.2 時点）
+
+`docs/` 全16本と README・`templates/README.md` を、実装（hooks.json・hook スクリプト・SKILL.md・テンプレート）と突き合わせた。
+**挙動は変えていない。** 文書だけが過去の版のまま残っていた箇所を直した。
+
+**申告していたのに反映されていなかったもの**が中心で、`docs 影響` を書いても当て漏れが残ることを改めて示した。
+
+| 遅れていた変更 | 残っていた記述 | 直した文書 |
+|---|---|---|
+| 0.17.0（`harness-update` の自動適用・査読つき推奨） | 「承認したものだけを適用」「ファイル単位で承認」 | guide/セットアップガイド §6-2・diagrams/06 |
+| 0.18.0（`enabledPlugins` の削除・スコープは導入する側が選ぶ） | 「スコープは `project` だけにしておく」・`enabledPlugins` をマージ・スニペットの `enabledPlugins` | guide/セットアップガイド §6-1・§7-2、README、templates/README、diagrams/06 |
+| 0.20.0 / 0.21.0（スキル・フックの追加） | `skills 14 / hooks 7` などの件数、フック一覧の欠け | diagrams/01・05、background/01、README（件数を書くのをやめた） |
+| 0.21.0（`permissions.ask` → `guarded-command-ask`） | settings.json に ask を置く、移行時に allow / ask を見る | reference/permissionsベースライン §1、templates/README、guide/既存プロジェクト移行指示書 §5・§10-2、background/01 |
+| 0.22.0（コミット前ゲートの未初期化・同じ1行での変更） | ゲート4は「config 不在なら素通り」だけ | diagrams/02 |
+
+ほかに、実装と違っていた記述を直した。
+
+- **壊れた config での `askGuards`**: 「環境の既定で止める」とあったが、JSON が壊れると `environment` が読めないので、**効くのは `git-destructive` だけ**（reference/harness設定契約 §3・permissionsベースライン §3・diagrams/05）。**実装の意図とずれているので、別途直す**
+- **`scanCommands()` の残余リスク**: `"$(…)"` の中のヒアドキュメント、PowerShell の here-string の本文に囲みと同じ引用符が奇数個あると、後続のコマンドを見落とす（permissionsベースライン §3。未修正）
+- 設定契約: `environment` の消費者（`guarded-command-ask` / `harness-update`）、`envOptions.applicationId`（android）、config 不在時のスキルごとの挙動
+- 移行指示書: `.gitignore` に足す行（`.harness-audit.json` / `*.local.json` が漏れていた）、`docs/` 骨格の移植、`askGuards` の行
+- background/01・02: `autoUpdate` を選択肢として書いていた箇所（§5 自身が「使わない」としている）、android の移行実績
+- プラグイン開発手順: push 前の `node --test` と、`repo-guard` が push 時に検査すること
+
+docs 影響: あり（README.md / templates/README.md / guide/セットアップガイド・運用ガイド・既存プロジェクト移行指示書 / reference/harness設定契約・permissionsベースライン・プラグイン開発手順 / diagrams/01・02・03・05・06 / background/01・02）
+
 ## [0.22.2] — 重複した段落と、wpf の検証エラーの落とし穴（H38 / H44）
 
 - **`harness-update/SKILL.md` で「`disable-model-invocation` は付けない」の段落が2回続けて書かれていた（H38）。**

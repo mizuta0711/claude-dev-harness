@@ -4,7 +4,7 @@
 共通コアを **プラグイン**（`plugins/harness-core`）として配信し、環境差分は薄い **テンプレート層**（`templates/`）で吸収する。
 
 nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレートを統合したもの。
-設計の経緯は ProjectTemplete リポジトリの `docs/02_統合テンプレート提案.md` を参照。
+設計の経緯は ProjectTemplete リポジトリの `docs/background/02_統合テンプレート提案.md` を参照。
 
 **このリポジトリは、ハーネスを自分のプロジェクトへ導入して使う人向け。**
 「なぜこの設計か」「次に何を変えるか」を決める側の検討・査読・作業指示は、
@@ -15,7 +15,7 @@ nextjs-claude-template / UnityTemplate / WPFDotNet8Templete の3テンプレー�
 | フェーズ | 内容 | 状態 |
 |---------|------|------|
 | Phase 1 | `harness-core` の抽出と config 契約化 | ✅ 完了 |
-| Phase 2 | 環境プラグイン3本（nextjs / unity / wpf）とテンプレート層、`create-project.mjs` | ✅ 完了 |
+| Phase 2 | 環境プラグイン3本（nextjs / unity / wpf。android は後に追加）とテンプレート層、`create-project.mjs` | ✅ 完了 |
 | Phase 3 | `harness-update` の実装、既存3テンプレートの後始末、CHANGELOG | ✅ 本リポジトリの現状 |
 
 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
@@ -129,7 +129,7 @@ claude-dev-harness/
 │   │   ├── .claude-plugin/plugin.json
 │   │   ├── skills/                    # スキル（下表）
 │   │   ├── agents/                    # coding-specialist / code-reviewer / documentation-manager / japanese-proofreader / glossary-keeper
-│   │   │                              # （フックは7本。下表）
+│   │   │                              # （フックは下表）
 │   │   └── hooks/
 │   │       ├── hooks.json
 │   │       └── scripts/               # 全 Node.js・config 駆動
@@ -144,6 +144,8 @@ claude-dev-harness/
 │   ├── wpf/
 │   └── android/
 ├── tools/create-project.mjs           # base + env を合成してプロジェクトを生成する
+├── tests/                             # 判定ロジックのテスト（node --test）
+├── .claude/                           # このリポジトリ自身のガード（hooks/repo-guard.js）
 └── docs/                              # ハーネス自体の仕様・運用文書
     ├── guide/                    # **使う人**向け（導入・運用・移行・オプション MCP）
     ├── reference/                # **直す人・設定を触る人**向け（仕様と方針。必要なときに引く）
@@ -156,8 +158,8 @@ claude-dev-harness/
 
 ### 環境プラグイン
 
-`harness-core` と**併用**する。テンプレートが生成する `.claude/settings.json` が
-該当プラグインを `enabledPlugins` に入れるが、**導入は `claude plugin install` で別途行う**
+`harness-core` と**併用**する。テンプレートが生成する `.claude/settings.json` は
+marketplace の場所（`extraKnownMarketplaces`）を教えるだけで、**導入は `claude plugin install` で別途行う**
 （[プロジェクトからの利用](#プロジェクトからの利用marketplace-経由)を参照）。
 
 | プラグイン | スキル | エージェント | フック |
@@ -228,19 +230,16 @@ core の hooks / skills は**すべてこのファイルを読んで動く**。�
     "dev-harness": {
       "source": { "source": "github", "repo": "mizuta0711/claude-dev-harness" }
     }
-  },
-  "enabledPlugins": {
-    "harness-core@dev-harness": true,
-    "harness-nextjs@dev-harness": true
   }
 }
 ```
 
 （この設定は `create-project.mjs` が生成時に書き込むため、通常は手で書く必要はない。）
 
-> ⚠️ **`enabledPlugins` は初回起動ではプラグインを導入しない**（実測）。
-> `extraKnownMarketplaces` が行うのは marketplace の登録とクローンまでで、
-> **導入は `claude plugin install` が必須**。導入確認は `/plugin` と `/` で行う
+> ⚠️ `extraKnownMarketplaces` が行うのは marketplace の登録とクローンまでで、
+> **導入は `claude plugin install --scope <user か project>` が必須**。
+> **`enabledPlugins` は書かない**（起動時に `project` スコープの登録が自動で作られ、
+> スコープを選べなくなる。0.17.0 以前に生成したプロジェクトに残っていれば消す）。導入確認は `/plugin` と `/` で行う
 > （起動時の `[harness] <環境> / config OK` の1行でも分かる。harness-core 0.5.0 以降）。
 >
 > 手順・確認方法・つまずいたときの対処は

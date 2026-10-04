@@ -85,7 +85,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 
 | ファイル | Git 管理 | 置くもの |
 |---------|---------|---------|
-| `.claude/settings.json` | **する**（派生プロジェクトへ伝播する） | **deny は全部ここ**。共有すべき allow / ask、hooks、`enabledPlugins` |
+| `.claude/settings.json` | **する**（派生プロジェクトへ伝播する） | **deny は全部ここ**。共有すべき allow、`extraKnownMarketplaces`（`enabledPlugins` は書かない — 書くと project スコープの登録が自動で作られる。`permissions.ask` は置かない — 確認はフック） |
 | `.claude/settings.local.json` | しない | **手元だけの allow**（個人の作業効率化）、個人的な env |
 
 **セキュリティに関わる設定を `settings.local.json` に置かない。** 共有されないため、
@@ -110,7 +110,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 | 3 | `templates/<env>/.claude/harness.config.json`（`commands` / `gates` / `paths` / `designDocs` / `verification`） | ✅ |
 | 4 | `templates/<env>/.claude/rules/`（パス条件付きの規約） | ✅ |
 | 5 | `templates/<env>/docs/設計書/`（**ヘッダと表の枠だけ**。実データを入れない） | ✅ |
-| 6 | `templates/<env>/.claude/settings.json`（`enabledPlugins` と、その環境のコマンドの allow / ask） | ✅ |
+| 6 | `templates/<env>/.claude/settings.json`（その環境のコマンドの allow と、環境固有の deny。`enabledPlugins` / `permissions.ask` は書かない） | ✅ |
 | 7 | `templates/<env>/.gitignore` / `.mcp.json`（要る場合だけ） | 任意 |
 | 8 | `templates/<env>/.claude/01_development_docs/01_*.md`（設計方針層の骨格） | 推奨 |
 | 9 | `plugins/harness-<env>/`（動作確認スキル・体験系エージェント・環境固有フック） | ✅ |

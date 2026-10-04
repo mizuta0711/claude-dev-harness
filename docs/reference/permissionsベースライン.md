@@ -11,7 +11,7 @@
 
 | ファイル | Git 管理 | 置くもの |
 |---------|---------|---------|
-| `.claude/settings.json` | **する**（テンプレート・派生プロジェクトへ伝播） | **deny 全部**、共有すべき allow / ask、hooks、`extraKnownMarketplaces` |
+| `.claude/settings.json` | **する**（テンプレート・派生プロジェクトへ伝播） | **deny 全部**、共有すべき allow、`extraKnownMarketplaces`（`permissions.ask` は置かない → §3。hooks はプラグインが配る） |
 | `.claude/settings.local.json` | しない（`.gitignore`） | 手元だけの allow（個人の作業効率化）、個人的な env |
 
 **原則: セキュリティに関わる設定を `*.local.json` に置かない。** 共有されないため派生プロジェクトが無防備になる。
@@ -125,7 +125,8 @@
 | `prisma-schema-change` | `prisma migrate dev` / `deploy` / `reset` / `resolve`、`prisma db push` | nextjs |
 | `android-device` | `gradlew installDebug` / `uninstallDebug` / `uninstallAll`、`adb install` / `uninstall` | android |
 
-`askGuards` が無い config、壊れた config では、**`git-destructive` ＋ `environment` に応じた集合**（上の表の既定）が有効になる。
+`askGuards` が無い config では、**`git-destructive` ＋ `environment` に応じた集合**（上の表の既定）が有効になる。
+**JSON が壊れた config では `git-destructive` だけ**になる（`environment` も読めないため）。素通りにはしない。
 `harness-update` が settings.json の ask 削除だけを当て、config への `askGuards` 追加を見送っても守りが消えないようにするため。
 **config 自体が無いリポジトリでは何もしない**（harness-core は user スコープでも入るので、ハーネス未導入のリポジトリで止め始めないため）。
 
@@ -141,7 +142,8 @@
   `status` / `diff` は止めない（`pre-migrate-backup` が読み取り専用として扱う集合と同じ）
 - **コマンド位置で判定する。** `git-scope.scanCommands()` で引用符・コメント・ヒアドキュメントの外にある
   コマンドの先頭だけを見る。`cd X && DATABASE_URL=... npx prisma migrate deploy` や
-  `git -c k=v push` は止め、`git commit -m "git push は禁止"` は止めない
+  `git -c k=v push` は止め、`git commit -m "git push は禁止"` は止めない。
+  **引用符の状態が反転して後続を見落とす形が残っている**（下の残余リスク）
 - **シェルの方言で読み方を変える。** `Bash` と `PowerShell` はエスケープ文字が違う（`\` と `` ` ``）。
   ツール名から判断し、PowerShell の `cd "D:\work\"; git push` でも後続を見落とさない（H47）
 - **`git` のグローバルオプションはトークン単位で飛ばす。** `git -C "D:/my proj" push` /
@@ -157,6 +159,12 @@
 - **harness-core を無効化すると確認が一切出なくなる。** `permissions.ask` 時代はプラグイン無しでも止まった
 - **信頼済み環境では `git push` も無確認になる。** force push は `deny`（§2）なので引き続き止まる
 - **判定の取りこぼしの責任がハーネス側に移る。** 集合を増やすときは `tests/guarded-command-ask.test.mjs` にケースを足す
+- **引用符の状態が反転して後続を見落とす形が残っている**（harness-core 0.22.2 時点で未修正）。
+  `scanCommands()` は次の形で**本文の中の引用符まで数えてしまう**。
+  - `"$(…)"` の中のヒアドキュメント（`git commit -m "$(cat <<'EOF' … EOF\n)"` の定番形）で、本文の `"` が奇数個
+  - PowerShell の here-string（`@'…'@` / `@"…"@`）で、本文に囲みと同じ引用符が奇数個（here-string 自体を解釈しない）
+
+  どちらも後続の `&& git add -A` / `; git push` 等を取りこぼす。`git-scope` の同じ走査を使う `pre-commit-scope` / `pre-commit-check`（同じ1行での変更の判定）も同じ
 
 ## 4. allow の方針
 
@@ -188,4 +196,3 @@ deny を足す前に、**それがフックや正規の手順を殺さないか*
   別名の網羅は現実的でないため未対応とする
 - `.env.staging` のような**列挙外の命名**は 5-2 の deny をすり抜ける。
   独自の環境名を使うプロジェクトは `.claude/settings.json` に追加すること
-</content>
