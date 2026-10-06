@@ -1,6 +1,6 @@
 ---
 name: new-feature
-description: 新しい機能・改修・バグ修正の設計書をテンプレートから作成する。規模判定（S/M/L）と曖昧さの解消まで行う。機能名を引数で指定する。
+description: 新しい機能・改修・バグ修正の設計書をテンプレートから作成する。規模判定（S/M/L）と曖昧さの解消まで行う。機能名を引数で指定する。すべての作業（新規機能・改修・バグ修正）の入口であり、ここから S/M/L のフローが分岐する。
 argument-hint: "[機能名 or 修正内容]"
 allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
 ---

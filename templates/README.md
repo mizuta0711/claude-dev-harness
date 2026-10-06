@@ -106,14 +106,28 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 | # | 置くもの | 必須 |
 |---|---------|------|
 | 1 | `templates/<env>/template.json`（`environment` / `plugin` / `placeholders`） | ✅ |
-| 2 | `templates/<env>/CLAUDE.section.md`（技術スタック・構成・コマンド・rules 表・環境固有スキル） | ✅ |
+| 2 | `templates/<env>/CLAUDE.section.md`（技術スタック・構成・環境固有の挙動） | ✅ |
 | 3 | `templates/<env>/.claude/harness.config.json`（`commands` / `gates` / `paths` / `designDocs` / `verification`） | ✅ |
 | 4 | `templates/<env>/.claude/rules/`（パス条件付きの規約） | ✅ |
 | 5 | `templates/<env>/docs/設計書/`（**ヘッダと表の枠だけ**。実データを入れない） | ✅ |
 | 6 | `templates/<env>/.claude/settings.json`（その環境のコマンドの allow と、環境固有の deny。`enabledPlugins` / `permissions.ask` は書かない） | ✅ |
 | 7 | `templates/<env>/.gitignore` / `.mcp.json`（要る場合だけ） | 任意 |
+| 7b | `templates/<env>/SETUP.md`（**初回だけ必要な手順**。置けば `create-project` が生成後の案内に1行足す） | 任意 |
 | 8 | `templates/<env>/.claude/01_development_docs/01_*.md`（設計方針層の骨格） | 推奨 |
 | 9 | `plugins/harness-<env>/`（動作確認スキル・体験系エージェント・環境固有フック） | ✅ |
+
+> **`CLAUDE.section.md` に実態を再掲しない。** `CLAUDE.md` は全セッションで常時ロードされるため、
+> **正典が別にあるものを写すと二重管理になり、必ず片方が腐る**。
+>
+> | 書きたくなるもの | 正典 | section に書くこと |
+> |---|---|---|
+> | ビルド・lint・テストのコマンド | `harness.config.json` の `commands` | 「`commands` が正典」の1行とゲートの種類だけ |
+> | rules の発火条件 | 各 rules の frontmatter `paths` | 「自動ロードされる」の1行だけ |
+> | スキルの一覧と用途 | **利用者向けは `../docs/guide/運用ガイド.md` §2-1「いつ呼ぶか」。** AI 側はスキルの `description`（起動時に自動で載る） | **書かない**。外すと事故る注意だけ |
+> | 初回だけ必要な手順 | `SETUP.md`（#7b） | そちらへのリンク1行 |
+>
+> **例外**: `paths` 条件つき rules はコンパクト後に再注入されないため、
+> **要点の箇条（守らないと壊れる規約）は意図的に再掲する**。
 
 ### 2. リポジトリ側の波及（**ここが抜ける**）
 

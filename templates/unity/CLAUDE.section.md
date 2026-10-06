@@ -8,6 +8,8 @@
 | Namespace | `{{PROJECT_NAME}}` |
 | レンダーパイプライン | <!-- TODO: URP / HDRP / Built-in --> |
 
+**初回のセットアップ（プラグイン導入・Unity MCP の接続）は [SETUP.md](SETUP.md) にある。**
+
 ### フォルダ構成
 
 ```
@@ -30,9 +32,9 @@ Assets/
 
 ### コーディング規約
 
-C# の規約は [.claude/rules/csharp-unity.md](.claude/rules/csharp-unity.md) に置いてある
-（`Assets/Scripts/**` を読んだ時点で自動ロードされるため、手動で読む必要はない）。
-設計ドキュメントの規約は [.claude/rules/docs.md](.claude/rules/docs.md)（`docs/features/**` `docs/設計書/**` で発火）。
+C# と設計ドキュメントの規約は `.claude/rules/` にパス条件付きで置いてある
+（該当ファイルを読んだ時点で自動ロードされるため、手動で読む必要はない。
+**発火条件は各ファイルの frontmatter `paths` が正**）。
 
 要点だけ再掲する:
 
@@ -69,11 +71,3 @@ Unity にはコマンドラインのビルド・型チェック手段を既定�
 
 - 新しい MonoBehaviour システムを追加する場合は **L 寄り**で提示する
 - 複数シーン・複数 Prefab に影響する場合は **L**
-- `/harness-core:design-review feature` は code-reviewer と **game-designer** を並列起動する
-  （ゲームデザイン・難易度・プレイヤー体験の観点）
-
-### 環境固有スキル
-
-| スキル | 用途 |
-|--------|------|
-| `/harness-unity:unity-verify` | Unity MCP でシーン状態・Play モード・Console を確認し、動作確認計画と突き合わせて報告する |

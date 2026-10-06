@@ -7,6 +7,8 @@
 > **Next.js 16 注意**: このバージョンには破壊的変更がある。
 > コードを書く前に `node_modules/next/dist/docs/` のガイドを参照し、非推奨 API に注意すること。
 
+**初回のセットアップ（プラグイン導入・`create-next-app` の落とし穴）は [SETUP.md](SETUP.md) にある。**
+
 ### ディレクトリ構成
 
 ```
@@ -19,43 +21,10 @@ src/
 └── types/         # 型定義
 ```
 
-### コマンド
+### コマンドとゲート
 
-`.claude/harness.config.json` の `commands` が正典（`/harness-core:build-check` が使う）。
-
-| 用途 | コマンド |
-|------|---------|
-| 開発サーバー | `npm run dev` |
-| ビルド | `npm run build` |
-| 型チェック | `npx tsc --noEmit`（コミット前ゲート） |
-| lint | `npm run lint` |
-
-### プロジェクトの初期化（`create-next-app`）
-
-**ハーネス適用済みのリポジトリは既に非空**である。`create-next-app` をそのまま実行すると
-必ず詰まるか、既存ファイルを壊す。初回のみ以下に従うこと。
-
-| 落とし穴 | 対処 |
-|---------|------|
-| **非空ディレクトリで失敗する** | 一時ディレクトリに生成してから中身を移す。`--yes` で対話を飛ばす |
-| **生成物の `CLAUDE.md` / `AGENTS.md` を取り込むと、ハーネスの `CLAUDE.md` を上書きして壊す** | 移す前に**必ず除外する**。ハーネスの `CLAUDE.md` / `constitution.md` / `.claude/` / `docs/` / `tools/` が正 |
-| **`.gitignore` が上書きされる** | ハーネス側の `.gitignore` とマージする（`!.env.example` の行を失わないこと） |
-| **`npm run lint` が初回から失敗する** | `eslint.config.mjs` の `globalIgnores` に **`.claude/**` を追加**する（下記） |
-
-`.claude/statusline.js` は Node で直接実行される CommonJS のため `require()` が
-`@typescript-eslint/no-require-imports` に引っかかる。除外しないと**アプリのコードが 0 行の時点で
-`npm run lint` が失敗し、`/harness-core:build-check` が初回から赤くなる**。
-
-```js
-globalIgnores([
-  ".next/**", "out/**", "build/**", "next-env.d.ts",
-  // ハーネスが提供する設定・スクリプト群。アプリのソースではない
-  ".claude/**",
-]),
-```
-
-初期化が済んだら、このセクションの `Stack:` 行を**実際に採用した構成へ更新**すること
-（既定から外した場合は理由も1行残す）。
+**`.claude/harness.config.json` の `commands` が正典**（`/harness-core:build-check` が一括実行する）。
+**コマンドはここに再掲しない。** コミット前ゲートは `gates.preCommit` の **`typecheck`**。
 
 ### アーキテクチャ規約
 
@@ -66,17 +35,8 @@ globalIgnores([
 - `any` 型は禁止（`unknown` / union / ジェネリクスで代替）
 
 詳細なコーディング規約は `.claude/rules/` にパス条件付きで置いてある
-（該当ファイルを読んだ時点で自動ロードされるため、手動で読む必要はない）。
-
-| ルール | 発火条件（`paths`） |
-|--------|-------------------|
-| `typescript.md` | `src/**/*.{ts,tsx}` |
-| `react-nextjs.md` | `src/features/**/*.tsx`, `src/components/**/*.tsx`, `src/app/**/*.tsx` |
-| `state-management.md` | `src/features/**/stores/**`, `src/stores/**`, `src/lib/stores/**` |
-| `api.md` | `src/app/api/**`, `src/features/**/hooks/**`, `src/lib/services/**` |
-| `prisma.md` | `prisma/schema.prisma`, `tools/export-to-sql.ts`, `tools/scripts/generate-table-docs.ts` |
-| `tools-scripts.md` | `tools/**` |
-| `docs.md` | `docs/features/**`, `docs/設計書/**` |
+（該当ファイルを読んだ時点で自動ロードされるため、手動で読む必要はない。
+**発火条件は各ファイルの frontmatter `paths` が正**）。
 
 ### DB スキーマ変更時の必須ルール
 
@@ -88,19 +48,9 @@ globalIgnores([
      paths ルールはコンパクト後に自動再注入されないため、この要約だけは常時ロードされる
      CLAUDE.md 側に残す。手順の詳細は .claude/rules/prisma.md にのみ書く。 -->
 
-### 環境固有スキル
+### 環境固有の挙動
 
-| スキル | 用途 |
-|--------|------|
-| `/harness-nextjs:browser-test` | Playwright MCP でブラウザ動作確認・UX 評価を行い、エビデンスを残す |
-
-- `browser-test` は UI 変更を含む場合に実施する（M / L フローの「動作確認」に相当）
-- `product-advisor` エージェントは `/harness-core:design-review feature` が
-  code-reviewer と並列で起動する（企画・UX 体験観点）
-
-### 環境固有フック（harness-nextjs プラグイン）
-
-| フック | 発火 | 挙動 |
-|--------|------|------|
-| `post-edit-lint` | `src/**` の編集直後 | `npx eslint --fix` を実行。自動修正できない指摘だけ通知（非ブロッキング） |
-| `pre-migrate-backup` | `prisma migrate` 実行前 | `tools/export-to-sql.ts` でバックアップ。**失敗・未設定なら migrate をブロックする** |
+- **`/harness-nextjs:browser-test` は UI 変更を含む場合に実施する**（M / L フローの「動作確認」に相当）
+- **`pre-migrate-backup` フックは `prisma migrate` の前にバックアップを取り、
+  失敗・未設定なら migrate をブロックする**（`tools/export-to-sql.ts`）
+- `post-edit-lint` フックが `src/**` の編集直後に `npx eslint --fix` を走らせる（非ブロッキング）

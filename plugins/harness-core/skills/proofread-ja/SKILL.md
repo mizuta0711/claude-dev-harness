@@ -1,6 +1,6 @@
 ---
 name: proofread-ja
-description: 日本語ドキュメントの校正。japanese-proofreader サブエージェントで、英語直訳調・AI っぽい不自然な表現を自然な日本語へ修正する。対象パスは引数で指定でき、省略時は直近の変更が対象になる。
+description: 日本語ドキュメントの校正。japanese-proofreader サブエージェントで、英語直訳調・AI っぽい不自然な表現を自然な日本語へ修正する。対象パスは引数で指定でき、省略時は直近の変更が対象になる。update-docs / complete-feature が「利用者が読む日本語を書いた」ときに案内するので、その案内が出たら実行を検討する。
 argument-hint: "[対象ファイルまたはディレクトリ（省略時は直近の変更）]"
 allowed-tools: "Bash(git diff:*), Bash(git log:*), Bash(git status:*), Grep, Glob, Read, Edit"
 ---

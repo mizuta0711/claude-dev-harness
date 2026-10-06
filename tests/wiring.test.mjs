@@ -105,17 +105,37 @@ test("配布するエージェントには、コメント外からの呼び出�
 // 2. スキルは利用者から見えるところに列挙されている
 // ---------------------------------------------------------------------------
 
-test("配布するスキルは CLAUDE.md（base か環境セクション）に列挙されている", () => {
-  const listings = ["templates/base/CLAUDE.md", ...PLUGINS.map(() => null)]
-    .filter(Boolean)
-    .concat(walk("templates").filter((f) => f.endsWith("CLAUDE.section.md")));
+/**
+ * **利用者向けのスキル一覧の正本は `docs/guide/運用ガイド.md` §2-1「いつ呼ぶか」**
+ * （「呼ばなくてよい場面」まで持つ）。
+ *
+ * かつて `templates/base/CLAUDE.md` が同じ一覧を表で持っていたが、**それは §2-1 の重複**で、
+ * 常時ロードされる `CLAUDE.md` を 300 行目安の内側へ戻すときに落とした（H49・0.22.3）。
+ * `CLAUDE.md` には §2 へのリンクと「外すと事故る注意」だけが残っている。
+ *
+ * **検査の趣旨は変えていない** — 「配ったのに利用者から見えないスキル」を作らないこと。
+ * 見える場所を `CLAUDE.md` に限らず、利用者向けの読み物まで広げた。
+ * **判定は名前空間つき（`:<skill>`）のまま据え置く** — `CLAUDE.md` 自身が
+ * 「素の `/code-review` は組み込みが起動するので名前空間付きで呼べ」と求めており、
+ * **文書の表記もその形でなければ読んだ人が素の名前で呼ぶ**。
+ *
+ * ⚠️ この検査はファイル全文に対する部分一致で、**「§2-1 の表にある」までは見ていない**。
+ * 散文にスキル名が1回出れば通るので、**正本の表の抜けは検出できない**（実際 `plugin-update` が
+ * §2-1 の表に無いまま通っていた。0.22.3 で表に足した）。節の切り出しまで機械化するより、
+ * スキルを増減したときに §2-1 を目で見る運用で足りると判断している。
+ */
+const SKILL_LISTINGS = ["docs/guide/運用ガイド.md", "templates/base/CLAUDE.md"];
+
+test("配布するスキルは利用者から見えるところに名前空間つきで列挙されている", () => {
+  const listings = SKILL_LISTINGS.concat(walk("templates").filter((f) => f.endsWith("CLAUDE.section.md")));
   const text = listings.map((f) => stripComments(read(f))).join("\n");
   const missing = SKILLS.filter((s) => !text.includes(`:${s.name}`)).map((s) => `${s.plugin}:${s.name}`);
   assert.deepEqual(
     missing,
     [],
-    `CLAUDE.md に列挙されていないスキル: ${missing.join(", ")}\n` +
-      "列挙されていないスキルは、ユーザーにも AI にも存在が見えない",
+    `どこにも列挙されていないスキル: ${missing.join(", ")}\n` +
+      `検査対象: ${SKILL_LISTINGS.join(" / ")} と各環境の CLAUDE.section.md\n` +
+      "列挙されていないスキルは、利用者が存在に気づけない（AI 側は description が自動で載る）",
   );
 });
 

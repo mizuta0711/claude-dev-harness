@@ -37,14 +37,9 @@
 
 ### コマンドとゲート
 
-`.claude/harness.config.json` の `commands` が正典（`/harness-core:build-check` が使う）。
-
-| 用途 | コマンド（Bash / WSL） | PowerShell |
-|------|----------------------|-----------|
-| ビルド | `./gradlew assembleDebug` | `.\gradlew.bat assembleDebug` |
-| Lint | `./gradlew lintDebug` | `.\gradlew.bat lintDebug` |
-| ユニットテスト | `./gradlew testDebugUnitTest` | `.\gradlew.bat testDebugUnitTest` |
-| 実機・エミュレータへ導入 | `./gradlew installDebug` | `.\gradlew.bat installDebug` |
+**`.claude/harness.config.json` の `commands` が正典**（`/harness-core:build-check` が一括実行する）。
+**コマンドはここに再掲しない。** PowerShell から直接叩くときだけ
+`./gradlew` を `.\gradlew.bat` に読み替える。
 
 > **コミット前ゲートは既定で空**（`gates.preCommit: []`）。Gradle ビルドは数十秒〜数分かかり、
 > 毎回のコミットを詰まらせるため。**必要になったらプロジェクト側で足す**
@@ -59,14 +54,8 @@
 ### 実装ルール
 
 Kotlin / Compose の規約は `.claude/rules/` にパス条件付きで置いてある
-（該当ファイルを読んだ時点で自動ロードされるため、手動で読む必要はない）。
-
-| ルール | 発火条件（`paths`） |
-|--------|-------------------|
-| `kotlin.md` | `{{MODULE_NAME}}/src/**/*.kt` |
-| `compose-ui.md` | `{{MODULE_NAME}}/src/main/**/ui/**` |
-| `android-data.md` | `{{MODULE_NAME}}/src/main/**/data/**` |
-| `docs.md` | `docs/features/**`, `docs/設計書/**` |
+（該当ファイルを読んだ時点で自動ロードされるため、手動で読む必要はない。
+**発火条件は各ファイルの frontmatter `paths` が正**）。
 
 要点だけ再掲する:
 
@@ -75,16 +64,10 @@ Kotlin / Compose の規約は `.claude/rules/` にパス条件付きで置いて
   （画面ごとに作ると設定が復元されない・同期が二重に走る）
 - **権限は「使う直前に要求し、拒否されたときの画面を必ず用意する」**
 
-### 環境固有スキル
+### 環境固有の挙動
 
-| スキル | 用途 |
-|--------|------|
-| `/harness-android:capture-screenshots` | 実機・エミュレータのスクリーンショットを adb で撮影する（プライバシー保護チェック込み） |
-
-- `product-advisor` エージェントは `/harness-core:design-review feature` が
-  code-reviewer と並列で起動する（企画・UX 体験観点）
-- 動作確認（`verification.skill`）は `capture-screenshots`。
-  **画面を伴う変更は、撮った画像を自分で確認してから完了報告すること**
+- **動作確認（`verification.skill`）は `/harness-android:capture-screenshots`**（adb で撮影・
+  プライバシー保護チェック込み）。**画面を伴う変更は、撮った画像を自分で確認してから完了報告する**
 
 ### 実装順序
 

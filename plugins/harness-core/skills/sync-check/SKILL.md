@@ -1,6 +1,6 @@
 ---
 name: sync-check
-description: 設計書と実装の網羅的な突き合わせチェック。フェーズ完了時や push 前に実行し、変更駆動では検出できない乖離を発見する。
+description: 設計書と実装の網羅的な突き合わせチェック。フェーズ完了時や push 前に実行し、変更駆動では検出できない乖離を発見する。push 前は pre-push-check が自動で呼ぶため、通常は直接起動しない。
 allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
 ---
 

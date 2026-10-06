@@ -52,6 +52,70 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.22.3] — テンプレートの `CLAUDE.md` を 300 行目安の内側へ戻す（H49）
+
+**生成される `CLAUDE.md` が、自分で書いた上限に迫っていた。** `templates/base/CLAUDE.md` は **179行**、
+環境セクションを合成した生成物は **258〜285行**で、`base/CLAUDE.md` 自身の
+「全体で 300 行を超えたら整理対象」に到達間近だった。**原因は追記の下手さではなく、
+置き場が決まっていない情報が既定で `CLAUDE.md` へ落ちる構造**で、4種類に分かれる。
+
+- **実態の二重管理を落とした。** 「`harness.config.json` の `commands` が正典」と書いた直下の
+  コマンド表（nextjs / android / wpf の3環境）と、rules の発火条件表（同3環境。`paths` は
+  各 rules の frontmatter が正）を削除した。`commands` の全項目（`dev` も含む）はこの3環境とも
+  config に揃っており、表は写しだった（unity はもともと表を持たず、`commands` が全て `null` である旨を
+  散文で説明している。そこは残した）
+- **スキル一覧の表（19行）を落とした。** `docs/guide/運用ガイド.md` §2-1「いつ呼ぶか」が
+  「呼ばなくてよい場面」まで持つ**より詳しい同じ表**で、`CLAUDE.md` 側はその重複だった。
+  `CLAUDE.md` には **§2 へのリンクと、外すと事故る注意だけ**を残した
+  （素の `/code-review` は組み込みが起動するので名前空間付きで呼ぶ／`pre-push-check` は push の直前）。
+  表にしか無かった4点は**スキル側の `description` へ移した**
+  （`new-feature` =すべての作業の入口 / `sync-check` = `pre-push-check` が呼ぶので直接起動しない /
+  `plugin-update` = 反映に再起動が要る / `proofread-ja` = 案内が出たら実行する）
+- **初回だけ必要な手順を `templates/nextjs/SETUP.md` へ移した**（`create-next-app` の落とし穴4点・
+  eslint の `globalIgnores`。26行）。unity の `SETUP.md` と同じ扱いで、`create-project` は
+  `SETUP.md` の存在を見て生成後の案内に1行足す（既存の配線をそのまま使う）。
+  `guide/セットアップガイド.md` §4-1 も unity と同じ「`SETUP.md` が正」の形にした
+- **「スラッシュコマンドが解決しない環境での実行」（24行）を `guide/セットアップガイド.md` §3-2 へ移した。**
+  参照が逆向き（ガイドが `CLAUDE.md` の節を名指し）だったので手順の本体をガイドへ置いた。
+  **`CLAUDE.md` にはパスを引くコマンド1行を残した** — この手順を要るのは
+  スラッシュコマンドが解決しないクライアントにいるエージェントで、**手順の全部を
+  ネットワーク越しにすると「取得できなければ使えません」に戻る**。
+  `plugin-update/SKILL.md` と `diagrams/03`・`diagrams/04` の名指しも同じ先へ付け替えた
+- **constitution.md §6 との重複を消した。** サブエージェントに `model: sonnet` を明示する理由・例外は
+  §6 が持っているのに `CLAUDE.md` が全文を複製していた（自ら「原則は constitution に集約し、
+  ここには複製しない」と書いている箇所の直下で）。参照に差し替えた
+- **`design-review` が体験系エージェントを並列起動する旨の記述**を4環境のセクションから落とした。
+  `design-review/SKILL.md` が既に「`product-advisor` / `game-designer` 等があれば並列で起動する」と持っている
+- **handoff が「空＝廃止」と誤解された経緯**（6行）は `guide/運用ガイド.md` §6-2b が全文を持っていたので、
+  `CLAUDE.md` からは「空が正常な状態」の1行だけ残し、`receive-handoff/SKILL.md` には §6-2b への参照を置いた
+- **`update-docs` 実行時に台帳へ追記する旨**（1行）を落とした。`constitution.md` §4 と
+  `update-docs/SKILL.md` が持つ
+- **ブランチ報告の実測**（「4コミットが約20時間気づかれずに残った」）を落とした。
+  ルール本体は残し、根拠は `guide/運用ガイド.md` と `diagrams/05` にある
+- **`templates/README.md` に再発防止を入れた。** 「`CLAUDE.section.md` に実態を再掲しない」の表
+  （何の正典がどこにあるか）と、`SETUP.md` を環境アダプタの任意項目として明記
+- **`wpf/CLAUDE.section.md` の誤記を直した。** 「**スキル名**は `.gitignore` のビルド成果物パターンと
+  衝突しないか確認する」は、`capture-screenshots/SKILL.md` が「スクショの格納先は `docs/` や
+  `assets/` 等プロジェクトで決めた場所に統一する」と定めている**保存先ディレクトリ名**の話だった
+- **`guide/運用ガイド.md` §2-1 を正本として整えた。** `plugin-update` が表から漏れていたので足し、
+  スキル名を**名前空間つき**（`/harness-core:...`）へ書き換えた。`CLAUDE.md` が
+  「名前空間付きで呼べ」と求めているのに、一覧の表記が素の名前だった
+
+**消さなかったもの。** `paths` 条件つき rules はコンパクト後に自動再注入されないため、
+**要点の箇条（守らないと壊れる規約）は意図的な例外として残した**（nextjs の DB バックアップ3点・
+android の `StateFlow` 公開・wpf の Core の WPF 非依存など）。実害のある警告も残した
+（android のアンインストールでローカルデータが全消去される件・`pre-migrate-backup` が migrate を止める件）。
+
+テスト: `tests/wiring.test.mjs` の「配布するスキルは利用者から見えるところに列挙されている」は、
+検査対象に `guide/運用ガイド.md` を加えた（趣旨は変えていない。**判定は名前空間つきのまま据え置いた** —
+緩めると文書が素の名前で書かれてしまう）。この検査が「§2-1 の表にある」までは見ないこと、
+そのため正本の表の抜けは検出できないことをコメントに明記した。
+
+結果: `base` 179 → **131行**、合成後 258〜285 → **187〜207行**。
+
+docs 影響: あり（guide/セットアップガイド.md §3-2・§4-1・改訂履歴、guide/運用ガイド.md §2-1、
+diagrams/03_役割比較図.md、diagrams/04_スキル実行シーケンス図.md、templates/README.md）
+
 ## [docs] — 実装に追いついていなかった記述を直す（docs 全点検・0.22.2 時点）
 
 `docs/` 全16本と README・`templates/README.md` を、実装（hooks.json・hook スクリプト・SKILL.md・テンプレート）と突き合わせた。

@@ -36,24 +36,14 @@
 
 ### コマンドとゲート
 
-`.claude/harness.config.json` の `commands` が正典（`/harness-core:build-check` が使う）。
-
-| 用途 | コマンド |
-|------|---------|
-| ビルド | `dotnet build --nologo -v quiet -clp:NoSummary`（**コミット前ゲート**） |
-| フォーマット検証 | `dotnet format --verify-no-changes --no-restore` |
-| 実行 | `dotnet run` |
+**`.claude/harness.config.json` の `commands` が正典**（`/harness-core:build-check` が一括実行する）。
+**コマンドはここに再掲しない。** コミット前ゲートは `gates.preCommit` の **`build`**。
 
 ### 実装ルール
 
-C# / MVVM の規約は `.claude/rules/` にパス条件付きで置いてある
-（該当ファイルを読んだ時点で自動ロードされるため、手動で読む必要はない）。
-
-| ルール | 発火条件（`paths`） |
-|--------|-------------------|
-| `csharp-wpf.md` | `{{CORE_PROJECT}}/**`, `{{UI_PROJECT}}/**` |
-| `mvvm-viewmodel.md` | `{{UI_PROJECT}}/ViewModels/**`, `{{UI_PROJECT}}/Views/**` |
-| `docs.md` | `docs/features/**`, `docs/設計書/**` |
+C# / MVVM / XAML の規約は `.claude/rules/` にパス条件付きで置いてある
+（該当ファイルを読んだ時点で自動ロードされるため、手動で読む必要はない。
+**発火条件は各ファイルの frontmatter `paths` が正**）。
 
 要点だけ再掲する:
 
@@ -61,17 +51,13 @@ C# / MVVM の規約は `.claude/rules/` にパス条件付きで置いてある
 - 非同期処理は `async/await` + `CancellationToken` を徹底する
 - 例外は Core 層でキャッチせず、イベントで通知して ViewModel 側でハンドリングする
 
-### 環境固有スキル
+### 環境固有の挙動
 
-| スキル | 用途 |
-|--------|------|
-| `/harness-wpf:capture-screenshots` | UIAutomation で実機スクリーンショットを撮影する（プライバシー保護チェック込み） |
-
-- `product-advisor` エージェントは `/harness-core:design-review feature` が
-  code-reviewer と並列で起動する（企画・UX 体験観点）
-- **スキル名は `.gitignore` のビルド成果物パターン（`[Rr]elease/` `[Bb]uild/` `[Oo]ut/` `[Dd]ebug/`
-  `[Ll]og(s)/` `[Bb]in/` `[Oo]bj/` 等）と衝突しないか確認する**
-  （衝突すると `git status` にすら出ずコミット対象外になる）
+- **動作確認（`verification.skill`）は `/harness-wpf:capture-screenshots`**（UIAutomation で
+  実機スクリーンショットを撮影・プライバシー保護チェック込み）
+- **スクリーンショットの保存先は `.gitignore` のビルド成果物パターン
+  （`[Rr]elease/` `[Bb]uild/` `[Oo]ut/` `[Dd]ebug/` `[Ll]og(s)/` `[Bb]in/` `[Oo]bj/` 等）と
+  衝突しないか確認する**（衝突すると `git status` にすら出ずコミット対象外になる）
 
 ### 実装順序
 

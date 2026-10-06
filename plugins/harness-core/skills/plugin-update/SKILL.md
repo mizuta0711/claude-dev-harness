@@ -1,6 +1,6 @@
 ---
 name: plugin-update
-description: このプロジェクトに導入されているハーネスプラグイン（skills / agents / hooks）を最新版へ更新し、更新前後の版を表で報告する。テンプレート層（CLAUDE.md / rules / config）は対象外で、そちらは harness-update が扱う。同梱の plugin-versions.mjs は --skill でスキルの SKILL.md のパスも引ける。
+description: このプロジェクトに導入されているハーネスプラグイン（skills / agents / hooks）を最新版へ更新し、更新前後の版を表で報告する。更新を反映するには Claude Code の再起動が要る。プラグイン層とテンプレート層の両方をまとめて更新するなら harness-update を使う。テンプレート層（CLAUDE.md / rules / config）は対象外で、そちらは harness-update が扱う。同梱の plugin-versions.mjs は --skill でスキルの SKILL.md のパスも引ける。
 allowed-tools: "Read, Glob, Bash, PowerShell"
 ---
 
@@ -108,7 +108,7 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/plugin-update/scripts/plugin-versions.mjs" --
 - 環境プラグインのスキル（`browser-test` 等）も同じコマンドで引ける
 - 見つからない場合は探した場所を標準エラーに出して終了コード 1
 
-**使い方の規定は `CLAUDE.md`「スラッシュコマンドが解決しない環境での実行」にある。**
+**使い方の規定は [セットアップガイド §3-2](../../../../docs/guide/セットアップガイド.md) にある。**
 
 ## やらないこと
 

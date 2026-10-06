@@ -20,7 +20,7 @@ claude plugin install harness-unity@dev-harness --scope <同じ方>
 ```
 
 **スコープは`user`/`project`どちらでもよい（選ぶのは導入する側）。`--scope`は省略しない**
-（詳細は[セットアップガイド§2-1](../../docs/guide/セットアップガイド.md#2-1-スコープの選び方)）。
+（詳細は[セットアップガイド §2-1](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/guide/%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97%E3%82%AC%E3%82%A4%E3%83%89.md#2-1-スコープの選び方)）。
 
 読み込めたかは **`/plugin`（enabled とバージョン）** と **`/`（スキル一覧に `harness-core:new-feature`）**
 で確認する。
