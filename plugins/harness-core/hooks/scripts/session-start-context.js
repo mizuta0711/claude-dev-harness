@@ -62,6 +62,11 @@ function activeFeatureDocs() {
           .join("\n");
         const m = head.match(/\|\s*全体ステータス\s*\|\s*([^|]+?)\s*\|/);
         if (m) status = m[1];
+        // Stage 2 をフェーズごとに書いた設計書では、どこまで確定したかが
+        // 「Stage 2」行にしか無い。セッションをまたぐと次に設計するフェーズが
+        // 分からなくなるため、Phase を含むときだけ併記する。
+        const s2 = head.match(/\|\s*Stage 2[^|]*\|\s*([^|]+?)\s*\|/);
+        if (s2 && /Phase/.test(s2[1])) status = `${status} / Stage 2: ${s2[1]}`;
       } catch {
         /* 読めなければステータスなしで列挙する */
       }
