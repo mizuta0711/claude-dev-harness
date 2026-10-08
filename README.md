@@ -180,6 +180,7 @@ marketplace の場所（`extraKnownMarketplaces`）を教えるだけで、**導
 | スキル | 用途 |
 |--------|------|
 | `new-feature` | 機能設計書の作成（規模判定 S/M/L ＋ 曖昧さの解消） |
+| `plan-milestones` | 依頼が1本の設計書に収まらないとき、マイルストーンに分けて台帳（`docs/backlog.md`）へ順序を置く（**`new-feature` から呼ばれる**） |
 | `design-review` | 設計レビュー（`feature` = Stage 1 / `tech` = Stage 2）＋ トレーサビリティ検査 |
 | `code-review` | 実装レビュー＋指摘対応 |
 | `build-check` | `commands` に定義されたチェックの一括実行 |

@@ -288,7 +288,7 @@ function classify(a, b, c) {
   if (!inA) {
     return b === c
       ? { kind: "unchanged", note: "" }
-      : { kind: "conflict", note: "baseline が無いため差分は全て要判断" };
+      : { kind: "conflict", note: "baseline にこのファイルが無い（テンプレートの新規配布とローカルの両方がある）" };
   }
 
   const abSame = a === b;

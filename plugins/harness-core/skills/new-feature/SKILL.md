@@ -2,7 +2,7 @@
 name: new-feature
 description: 新しい機能・改修・バグ修正の設計書をテンプレートから作成する。規模判定（S/M/L）と曖昧さの解消まで行う。機能名を引数で指定する。すべての作業（新規機能・改修・バグ修正）の入口であり、ここから S/M/L のフローが分岐する。
 argument-hint: "[機能名 or 修正内容]"
-allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
+allowed-tools: "Bash(git status:*), Bash(git log:*), Bash(git mv:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # 新規設計書の作成
@@ -153,7 +153,7 @@ S 規模のため設計書は不要です。
 2. 以下の命名規則でファイルを作成:
    - パス: `docs/features/yyyymmdd_$ARGUMENTS.md`
    - **マイルストーンに分けた中の「まだ着手しない」分は `docs/features/planned/yyyymmdd_$ARGUMENTS.md`**
-     （無ければ作る）。**着手するときに直下へ `git mv` する** —
+     （無ければ作る）。**着手するときに直下へ `git mv` し、台帳（`docs/backlog.md`）の「設計書」の欄も直下のパスへ直す** —
      直下に未着手を並べると、フックが毎セッション列挙し `sync-check` が毎回照合する
    - 日付は本日の日付（yyyymmdd 形式）
 3. メタ情報を埋める:

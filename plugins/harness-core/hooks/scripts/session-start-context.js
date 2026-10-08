@@ -45,24 +45,75 @@ function pendingHandoffs() {
  * **台帳は読まれないと意味が無い。** 大きい依頼をマイルストーンに分けると
  * フェーズ間で必ず区切りが入るので、セッションをまたぐと「次は何か」が分からなくなる。
  * 表の1行目だけを出す（全部出すと長い。詳細は台帳を読む）。
+ *
+ * ## 走査は「区切り行の直後」から始める
+ *
+ * **ヘッダ行や区切り行を拾わないための要点。** 初版は1列目が `#` かどうかと `/^-+$/` で
+ * 判定していたが、**標準の Markdown で普通に書かれる形で9パターン誤動作した**（査読の実測）:
+ * 位置揃えの区切り（`|:--|---:|`）／ヘッダが `| No |`／番号列が無い表／
+ * コードフェンスや HTML コメントの中にある書式例の表。
+ *
+ * **区切り行（全セルが `:?-+:?`）を見つけ、その次の行から探す**ことで、
+ * 列の名前にも番号の有無にも依存しなくなる。
  */
 function nextMilestone() {
+  let lines;
   try {
-    const text = fs.readFileSync(path.join(lib.projectDir(), "docs", "backlog.md"), "utf-8");
-    const lines = text.split("\n");
-    const head = lines.findIndex((l) => /^#{1,3}\s*マイルストーン/.test(l));
-    if (head < 0) return null;
-    for (let i = head + 1; i < lines.length && i < head + 40; i++) {
-      const l = lines[i];
-      if (/^#{1,3}\s/.test(l)) break; // 次の見出しまで
-      const m = l.match(/^\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|/);
-      if (!m) continue;
-      if (/^-+$/.test(m[1]) || m[1] === "#" || !m[2]) continue; // 区切り行・ヘッダ行
-      if (!m[2].trim()) continue; // 空行
-      return `${m[1] ? m[1] + ". " : ""}${m[2]}`;
-    }
+    lines = fs.readFileSync(path.join(lib.projectDir(), "docs", "backlog.md"), "utf-8").split("\n");
   } catch {
-    /* 台帳が無ければ何も出さない（fail-open） */
+    return null; // 台帳が無ければ何も出さない（fail-open）
+  }
+
+  // コードフェンスと HTML コメントの中は読まない（書式の例が置かれている）
+  const live = [];
+  let inFence = false;
+  let inComment = false;
+  for (const l of lines) {
+    if (/^\s*(```|~~~)/.test(l)) {
+      inFence = !inFence;
+      live.push("");
+      continue;
+    }
+    if (!inFence && l.includes("<!--")) inComment = true;
+    const hidden = inFence || inComment;
+    if (!inFence && inComment && l.includes("-->")) inComment = false;
+    live.push(hidden ? "" : l);
+  }
+
+  const head = live.findIndex((l) => /^#{1,6} /.test(l) && l.includes("マイルストーン"));
+  if (head < 0) return null;
+
+  const isSeparator = (l) =>
+    /^\s*\|/.test(l) &&
+    l
+      .replace(/^\s*\|/, "")
+      .replace(/\|\s*$/, "")
+      .split("|")
+      .every((c) => /^\s*:?-+:?\s*$/.test(c));
+
+  // 見出しから次の見出しまでの間で、区切り行を探し、その後の最初の中身のある行を返す
+  let sep = -1;
+  for (let i = head + 1; i < live.length; i++) {
+    if (/^#{1,6} /.test(live[i])) break; // 次の見出しまで
+    if (isSeparator(live[i])) {
+      sep = i;
+      break;
+    }
+  }
+  if (sep < 0) return null;
+
+  for (let i = sep + 1; i < live.length; i++) {
+    if (/^#{1,6} /.test(live[i])) break;
+    const cells = live[i].match(/^\s*\|(.*)\|\s*$/);
+    if (!cells) continue;
+    const cols = cells[1].split("|").map((c) => c.trim());
+    const name = cols.find((c, k) => k > 0 && c) || (cols[0] ? cols[0] : "");
+    if (!name) continue; // 空行
+    const num = cols[0] && cols[0] !== name ? `${cols[0]}. ` : "";
+    // **完了印が残っていたら、それ自体を知らせる。** 台帳は進捗を持たない設計なので、
+    // 行の削除が唯一の進行信号である（消し忘れると古い先頭行を出し続ける）。
+    if (/✅|完了/.test(live[i])) return `${num}${name}  ⚠️ 台帳に完了印が残っている（完了した行は消す）`;
+    return `${num}${name}`;
   }
   return null;
 }

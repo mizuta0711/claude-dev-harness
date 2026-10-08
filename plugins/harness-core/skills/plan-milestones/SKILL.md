@@ -2,7 +2,7 @@
 name: plan-milestones
 description: 1つの依頼が大きすぎるとき、マイルストーンに分けて台帳（docs/backlog.md）へ順序を置く。new-feature が規模判定で「分割が要る」と判定したときに呼ばれる。利用者から直接呼ぶ入口ではない（作業の入口は new-feature）。
 argument-hint: "[依頼の内容（new-feature から渡される）]"
-allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Edit, AskUserQuestion"
+allowed-tools: "Bash(git status:*), Bash(git log:*), Bash(git mv:*), Grep, Glob, Read, Write, Edit, AskUserQuestion"
 ---
 
 # マイルストーンに分ける
@@ -47,8 +47,10 @@ allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Ed
 
 ## Step 2: 分け方を立てて承認を取る
 
+**2本でもよい**（一次ゲートは「2つ以上に分かれるか」）。**3〜6本が目安。**
+
 **マイルストーン1本の大きさは M 以上に相当すること。** S 相当ならそれはマイルストーンではなくタスクである
-（S では設計書を作らないので、台帳の行として存在できない）。**本数は暫定3〜6本。**
+（S では設計書を作らないので、台帳の行として存在できない）。
 
 分け方の原則:
 
@@ -56,11 +58,14 @@ allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Ed
 2. **全順序（1本道）にする。** 依存の網にしない。**依存が絡むなら切り方が間違っている合図**
 3. **横断するものは散らす**（`§4-3` を参照）
 4. **最も不確実なものを先に置く。** 落ちたら後続の設計が全部無駄になるものから確かめる
+5. **最後のマイルストーンが「通しの受け入れ基準」を持つ。** 索引を作らず各設計書を自己完結させる形なので、
+   **「全部そろって元の依頼が満たされた」を確かめる持ち主が居なくなる。**
+   最後の1本の受け入れ基準に、**通しで動かす確認を1つ以上入れる**（これで既存の完了処理のゲートがそのまま効く）
 
 **`AskUserQuestion` で承認を取る。** 提示するのは「マイルストーンの名前・狙い・順序」で、
 **設計書の中身はまだ書かない**。
 
-## Step 3: 台帳へ行を足す
+## Step 3: 台帳（`docs/backlog.md`）へ行を足す
 
 `docs/backlog.md` の**見出し「マイルストーン」**の表に足す。
 
@@ -80,7 +85,7 @@ allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Ed
 一括で作ると**N本分の質問を推測で埋める**ことになり、同スキルの禁止事項に正面から反する。
 
 1. 1本目について `new-feature` の Step 2 以降を進め、**Stage 1 まで書く**
-2. 置き場は **`docs/features/planned/`**（着手前）。**着手するときに直下へ `git mv` する**
+2. 置き場は **`docs/features/planned/`**（着手前）。**着手するときに直下へ `git mv` し、台帳の「設計書」の欄も直す**
 3. **残りのマイルストーンの Stage 1 も、先に書いてよい。** ただし
    **`✅ 確定` にしない**（`🔵 記入中` のまま）。**先に書くのは見通しであって確定ではない**
    — 後続の Stage 1 は先行の実装で変わる
