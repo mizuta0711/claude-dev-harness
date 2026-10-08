@@ -52,6 +52,26 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.29.0] — `japanese-proofreader` のモデルを `fable` → `opus` にする
+
+**ユーザー判断。** 文章の自然さを判断する作業なので上位モデルを当てる方針は変えず、系列だけ移した。
+
+- `plugins/harness-core/agents/japanese-proofreader.md`（frontmatter・description・「モデルについて」節）
+- `plugins/harness-core/skills/proofread-ja/SKILL.md`（委譲時の注記）
+- `tests/wiring.test.mjs` のモデル例外リスト（`sonnet` 以外を許す1件）
+
+**版番号は書かない。** `sonnet` / `opus` / `fable` は**エイリアス**（「最新のその系列」を指す）で、
+`opus` は 2026-10 時点では Opus 5.5 を指す。**系列が上がってもファイルを書き換える必要はない。**
+0.9.0 でモデル固定をやめた理由（「モデル名の変更で全プロジェクトが壊れる」）は、
+エイリアスを使う限り当たらない — だから 0.11.0 で固定に戻した。この判断は変えていない。
+
+> **系列を上げること自体は品質の保証ではない。** `japanese-proofreader.md` に残している実測
+> （`measurement window` を「窓」と14箇所で使った文書）では、**`fable` / `opus` / `sonnet` の
+> 3モデルとも1件も直せなかった**。あの節（「そういう用語なんだろう」で通してはいけない）が
+> 効かせている部分は、モデルの系列とは別の問題である。
+
+docs 影響: なし（モデル表を持つ文書は無い。`README.md` と `diagrams/01` はエージェント名の一覧だけ）
+
 ## [0.28.0] — `environment.md` の所有をプロジェクトへ戻す（0.25.0 の誤り）
 
 **`.claude/harness/environment.md` を「ハーネス所有・追従する」と宣言したのは誤りだった。**

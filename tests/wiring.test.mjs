@@ -227,7 +227,7 @@ test("「自動実行」と主張しているスキルには、実際の呼び�
  * 増やすときは「なぜ上位モデルが要るのか」を書くこと。書けないなら既定でよい。
  */
 const MODEL_EXCEPTIONS = {
-  "japanese-proofreader": { model: "fable", why: "文章の自然さを判断する作業のため" },
+  "japanese-proofreader": { model: "opus", why: "文章の自然さを判断する作業のため" },
 };
 
 test("すべてのエージェントが model を持ち、既定は sonnet（例外は明示リストのみ）", () => {
