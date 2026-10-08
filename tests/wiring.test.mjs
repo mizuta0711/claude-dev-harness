@@ -127,14 +127,14 @@ test("配布するエージェントには、コメント外からの呼び出�
 const SKILL_LISTINGS = ["docs/guide/運用ガイド.md", "templates/base/CLAUDE.md"];
 
 test("配布するスキルは利用者から見えるところに名前空間つきで列挙されている", () => {
-  const listings = SKILL_LISTINGS.concat(walk("templates").filter((f) => f.endsWith("CLAUDE.section.md")));
+  const listings = SKILL_LISTINGS.concat(walk("templates").filter((f) => f.endsWith(".claude/harness/environment.md")));
   const text = listings.map((f) => stripComments(read(f))).join("\n");
   const missing = SKILLS.filter((s) => !text.includes(`:${s.name}`)).map((s) => `${s.plugin}:${s.name}`);
   assert.deepEqual(
     missing,
     [],
     `どこにも列挙されていないスキル: ${missing.join(", ")}\n` +
-      `検査対象: ${SKILL_LISTINGS.join(" / ")} と各環境の CLAUDE.section.md\n` +
+      `検査対象: ${SKILL_LISTINGS.join(" / ")} と各環境の .claude/harness/environment.md\n` +
       "列挙されていないスキルは、利用者が存在に気づけない（AI 側は description が自動で載る）",
   );
 });

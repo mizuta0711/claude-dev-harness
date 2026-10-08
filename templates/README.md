@@ -43,7 +43,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 
 | 対象 | 合成方法 |
 |------|---------|
-| `CLAUDE.md` | base の `<!-- ENV_SECTION -->` マーカーを、env の `CLAUDE.section.md` の内容で置換する |
+| `CLAUDE.md` | **base のまま配る**（0.25.0）。ハーネスの説明は `.claude/harness/core.md`、環境セクションは `.claude/harness/environment.md` に分かれ、CLAUDE.md が `@` で読み込む。**合成の特別扱いは無くなった** |
 | `.claude/settings.json` | deep-merge（オブジェクトは再帰マージ、配列は連結 + 重複除去） |
 | `.gitignore` | base + env の連結 |
 | その他 | env が base を上書きする |
@@ -53,7 +53,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 | ファイル | 役割 |
 |---------|------|
 | `<env>/template.json` | その環境が要求するプレースホルダの宣言（`create-project` が読む） |
-| `<env>/CLAUDE.section.md` | `CLAUDE.md` へ埋め込まれる環境セクションの原稿 |
+| `<env>/.claude/harness/environment.md` | 環境セクション。**同じパスで base 版を上書きする**（`CLAUDE.md` が `@` で読み込む） |
 
 ## プレースホルダ
 
@@ -106,7 +106,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 | # | 置くもの | 必須 |
 |---|---------|------|
 | 1 | `templates/<env>/template.json`（`environment` / `plugin` / `placeholders`） | ✅ |
-| 2 | `templates/<env>/CLAUDE.section.md`（技術スタック・構成・環境固有の挙動） | ✅ |
+| 2 | `templates/<env>/.claude/harness/environment.md`（技術スタック・構成・環境固有の挙動） | ✅ |
 | 3 | `templates/<env>/.claude/harness.config.json`（`commands` / `gates` / `paths` / `designDocs` / `verification`） | ✅ |
 | 4 | `templates/<env>/.claude/rules/`（パス条件付きの規約） | ✅ |
 | 5 | `templates/<env>/docs/設計書/`（**ヘッダと表の枠だけ**。実データを入れない） | ✅ |
@@ -116,7 +116,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 | 8 | `templates/<env>/.claude/01_development_docs/01_*.md`（設計方針層の骨格） | 推奨 |
 | 9 | `plugins/harness-<env>/`（動作確認スキル・体験系エージェント・環境固有フック） | ✅ |
 
-> **`CLAUDE.section.md` に実態を再掲しない。** `CLAUDE.md` は全セッションで常時ロードされるため、
+> **`environment.md` に実態を再掲しない。** `CLAUDE.md` から `@` で読み込まれ**全セッションで常時展開される**ため、
 > **正典が別にあるものを写すと二重管理になり、必ず片方が腐る**。
 >
 > | 書きたくなるもの | 正典 | section に書くこと |

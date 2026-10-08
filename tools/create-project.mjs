@@ -12,7 +12,7 @@
  *   node tools/create-project.mjs --env nextjs --dest ../my-app --set PROJECT_NAME=my-app --dry-run
  *
  * 合成のルール（Phase 2 指示書 §0-3〜§0-5）:
- *   - CLAUDE.md      : base の `<!-- ENV_SECTION -->` を env の CLAUDE.section.md で置換する
+ *   - CLAUDE.md      : base のまま配る（ハーネスの説明は `.claude/harness/` へ分けた。0.25.0）
  *   - settings.json  : deep-merge（オブジェクトは再帰マージ、配列は連結 + 重複除去）
  *   - .gitignore     : base + env の連結
  *   - それ以外       : env が base を上書きする
@@ -30,7 +30,7 @@ const HARNESS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const TEMPLATES_DIR = path.join(HARNESS_ROOT, "templates");
 
 /** 生成先へコピーしないテンプレート層のメタファイル */
-const TEMPLATE_META_FILES = new Set(["template.json", "CLAUDE.section.md"]);
+const TEMPLATE_META_FILES = new Set(["template.json"]);
 
 /**
  * 適用済みテンプレートの記録先（Phase 3 §0-2）。
@@ -230,16 +230,10 @@ function composeFiles(baseDir, envDir) {
     files.set(rel, envContent); // それ以外は env が上書き
   }
 
-  // §0-3: CLAUDE.md の ENV_SECTION 置換
-  const sectionPath = path.join(envDir, "CLAUDE.section.md");
-  if (files.has("CLAUDE.md") && fs.existsSync(sectionPath)) {
-    const marker = "<!-- ENV_SECTION -->";
-    const claudeMd = files.get("CLAUDE.md");
-    if (!claudeMd.includes(marker)) {
-      fail(`templates/base/CLAUDE.md にマーカー ${marker} がありません。合成できません。`);
-    }
-    files.set("CLAUDE.md", claudeMd.replace(marker, readText(sectionPath).trimEnd() + "\n"));
-  }
+  // §0-3 の「CLAUDE.md の ENV_SECTION 置換」は 0.25.0 で不要になった。
+  // 環境セクションは `.claude/harness/environment.md` として配られ、
+  // 上の「env が上書き」でそのまま入れ替わる（CLAUDE.md が `@` で読み込む）。
+  // **所有の境界をファイル単位にしたので、合成の特別扱いが1つ消えた。**
 
   return files;
 }

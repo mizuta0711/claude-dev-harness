@@ -210,3 +210,50 @@ for (const [label, args, pattern] of [
     assert.deepEqual(added, [], `残った: ${added.join(", ")}`);
   });
 }
+
+// ---------------------------------------------------------------------------
+// CLAUDE.md の所有の分離（0.25.0・H53 の第2弾）
+//
+// テンプレートが配るファイルをプロジェクトも育てると、ハーネス更新のたびに
+// ファイル全体が「競合」になる（実測: 導入済み3プロジェクトすべてで CLAUDE.md が競合）。
+// そこで **ハーネスの説明を `.claude/harness/` へ出し、CLAUDE.md は `@` で読み込む**形にした。
+// 所有の境界がファイル単位に戻るので、既存の追従の仕組みがそのまま効く。
+// ---------------------------------------------------------------------------
+
+for (const { env, set } of ENVS) {
+  test(`CLAUDE.md はハーネスの説明を持たず、@ で読み込む（${env}）`, () => {
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), `harness-own-${env}-`));
+    try {
+      execFileSync(process.execPath, argsFor(env, set, dest), { encoding: "utf-8" });
+      const claudeMd = fs.readFileSync(path.join(dest, "CLAUDE.md"), "utf-8");
+
+      // import は**バッククォートの外**に書く（コードスパンの中では展開されない）
+      assert.match(claudeMd, /^@\.claude\/harness\/core\.md$/m, "core.md の import が無い");
+      assert.match(claudeMd, /^@\.claude\/harness\/environment\.md$/m, "environment.md の import が無い");
+
+      // ハーネスの説明は CLAUDE.md に残っていない
+      assert.doesNotMatch(claudeMd, /^## 開発フロー$/m);
+      assert.doesNotMatch(claudeMd, /^## 運用ルール$/m);
+      assert.doesNotMatch(claudeMd, /ENV_SECTION/, "合成マーカーが残っている");
+
+      // 読み込み先が実在する（import 先が無いと起動時に展開されない）
+      for (const rel of [".claude/harness/core.md", ".claude/harness/environment.md"]) {
+        assert.ok(fs.existsSync(path.join(dest, rel)), `${rel} が無い`);
+      }
+
+      // 環境セクションは env 版に置き換わっている（base の予備が配られていない）
+      const envMd = fs.readFileSync(path.join(dest, ".claude/harness/environment.md"), "utf-8");
+      assert.doesNotMatch(
+        envMd,
+        /を用意すれば、ここは自動で置き換わる/,
+        `base の予備が配られている（templates/${env}/.claude/harness/environment.md が無い）`
+      );
+
+      // ハーネス所有のファイルには「編集しない」が書かれている（競合の原因を先に潰す）
+      const core = fs.readFileSync(path.join(dest, ".claude/harness/core.md"), "utf-8");
+      assert.match(core, /プロジェクト側では編集しない/);
+    } finally {
+      fs.rmSync(dest, { recursive: true, force: true });
+    }
+  });
+}

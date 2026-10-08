@@ -148,6 +148,36 @@ node "${DIFF}" analyze \
 **この時点ではまだ何も適用しない。** 判断が要るもの（`conflict` / `template-removed` /
 `schemaVersion`）があれば Step 3 へ、無ければ Step 4 へ進む。
 
+### `CLAUDE.md` の競合は 0.25.0 で一度だけ
+
+**0.25.0 でハーネスの説明を `CLAUDE.md` から `.claude/harness/` へ出した。**
+これで所有がファイル単位に分かれ、**以後 `CLAUDE.md` は競合しなくなる**
+（プロジェクトが育てるので `project-local` として保持される）。
+
+| ファイル | 所有 | 追従での分類 |
+|---|---|---|
+| `CLAUDE.md` | **プロジェクト** | `project-local`（保持）。骨組みは安定なので競合しない |
+| `.claude/harness/core.md` | **ハーネス**（環境非依存） | `template-improvement`（自動適用） |
+| `.claude/harness/environment.md` | **ハーネス**（環境ごと） | 同じ |
+| `.claude/rules/*.md` | **ハーネス**。**`paths` 条件で必要なときだけ読まれる** | 同じ |
+
+**0.25.0 より前に生成したプロジェクトは、一度だけ `CLAUDE.md` が競合する。** これは移行作業である:
+
+1. `.claude/harness/core.md` と `environment.md` は**新規ファイル**なので自動適用される
+2. `CLAUDE.md` の競合は、**プロジェクト固有の記述だけを残し、ハーネスの説明を落として
+   `@.claude/harness/core.md` と `@.claude/harness/environment.md` の2行に置き換える**作業
+3. **import はバッククォートの外に書く**（コードスパンとフェンスの中では展開されない）
+4. **プロジェクト固有の上書き・補足は、import より後ろ（`CLAUDE.md` の末尾）に置く。**
+   import は書いた位置に展開されるので、後ろの記述が後に読まれる
+
+> **移行で消す対象を迷ったら、`.claude/harness/core.md` と見比べる。**
+> 同じことが書いてあればプロジェクト側から消してよい（ハーネスが持つ）。
+> **書いていないものは消さない** — それはこのプロジェクトが育てた規律である。
+>
+> **import は分量の問題を解かない。** 公式に「imported files also load at launch」とあり、
+> **コンテキストの総量は変わらない**（解くのはマージのコストだけ）。
+> 分量を下げたいなら `.claude/rules/` の `paths` 条件を使う。
+
 ### `json-merge` — 所有の境界をファイルからキーへ下げる
 
 **テンプレートが配るファイルをプロジェクトも育てるので、`.claude/settings.json` は

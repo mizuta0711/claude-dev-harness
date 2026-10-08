@@ -1,0 +1,136 @@
+<!--
+  このファイルはハーネス（claude-dev-harness）が所有する。
+  CLAUDE.md から `@` で読み込まれ、起動時に展開される。
+
+  **プロジェクト側では編集しない。** ハーネスを更新すると
+  `/harness-core:harness-update` が差分を自動で当てる（分類は template-improvement）。
+  ここを編集すると「競合」になり、更新のたびに判断を求められる。
+
+  **このプロジェクトだけの規律・ハーネスの規律への上書きは、CLAUDE.md の末尾に書く。**
+  （import は書いた位置に展開されるので、CLAUDE.md の末尾＝このファイルより後に読まれる）
+
+  ファイルごとに所有が分かれている:
+  - CLAUDE.md                      … プロジェクトが育てる
+  - .claude/harness/core.md        … ハーネスが所有（このファイル。環境非依存）
+  - .claude/harness/environment.md … ハーネスが所有（環境ごと）
+  - .claude/rules/*.md             … ハーネスが所有。**paths 条件で必要なときだけ読まれる**
+-->
+
+## 開発フロー
+
+**すべての作業（新規機能・改修・バグ修正）は規模判定 S/M/L から始める。**
+入口は `/harness-core:new-feature`。判定基準・各規模のフロー・バグ修正フローは
+スキルが読み込む「開発フローと規模判定」に定義されている（CLAUDE.md には複製しない）。
+
+| 規模 | フロー |
+|------|--------|
+| S（軽微・1ファイル程度） | 実装 → `/harness-core:build-check` → コミット → `/harness-core:done` |
+| M（機能追加・複数ファイル・UX変更なし） | 設計 → 実装 → `/harness-core:code-review` → 動作確認 → `/harness-core:build-check` → `/harness-core:update-docs` → コミット → `/harness-core:done` |
+| L（新機能・大規模変更・UX変更あり） | Stage 1 設計 → `/harness-core:design-review feature` → ユーザー承認 → Stage 2 設計 → `/harness-core:design-review tech` → 実装 →（以降 M と同じ） |
+
+規模判定は **AI が推測 → ユーザーが承認** の2ステップ。迷ったら L 寄りで提示し、
+**UX 変更（画面・操作フローの変更）を含む場合は自動的に L** として扱う。
+
+### スキルの呼び分け
+
+**どのスキルがあるかは起動時に自動で載る**（名前と用途）。ここには列挙しない。
+**いつ呼ぶか・呼ばなくてよい場面の一覧は [運用ガイド §2](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/guide/%E9%81%8B%E7%94%A8%E3%82%AC%E3%82%A4%E3%83%89.md#2-スキルの使い分け) にある。**
+ここに置くのは**呼ぶときに外さないための注意だけ**。
+
+- **素の `/code-review` は Claude Code 組み込みスキルが起動する。** 本ハーネスのレビューは
+  必ず `/harness-core:code-review` と**名前空間付き**で呼ぶこと
+- 環境固有のスキルは `/harness-<環境>:...`（本ファイル末尾の「環境」セクションを参照）
+- **スラッシュコマンドが解決しないクライアントでも、スキルは実行できる**（★エージェント向け）。
+  実体は `SKILL.md` という手順書なので、**読んで従えば同じことができる。「使えません」と返さない。**
+  導入済みの版のパスは次で引く（`${CLAUDE_PLUGIN_ROOT}` の読み替えと報告の作法は
+  [セットアップガイド §3-2](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/guide/%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97%E3%82%AC%E3%82%A4%E3%83%89.md#3-2-vs-code-の拡張パネルではスキルが解決しない)）:
+
+  ```bash
+  node "$HOME/.claude/plugins/marketplaces/dev-harness/plugins/harness-core/skills/plugin-update/scripts/plugin-versions.mjs" --skill <スキル名>
+  ```
+
+> **ハーネスの使い方**（導入・確認・つまずいたとき）は
+> [セットアップガイド](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/guide/セットアップガイド.md)、
+> 更新の流れは [改善還元フロー図](https://github.com/mizuta0711/claude-dev-harness/blob/master/docs/diagrams/06_改善還元フロー図.md) を参照。
+
+## 原則
+
+不変原則は [constitution.md](constitution.md) に集約している。**変更にはユーザー承認が必要**。
+ここには複製しない — 判断に迷ったら constitution.md を読むこと。
+
+## 運用ルール
+
+- **コミットは必ずパス指定**: `git commit` はインデックス全体をコミットするため、
+  他のエージェント／セッションがステージ済みの変更を巻き込む。`git commit -- <path...>` を使い、
+  `git add -A` / `git add .` / `git commit -a` / `-am` は使わない。`git stash` と、
+  範囲指定なしの `git checkout -- .` / `git restore .` / `git clean` も避ける
+  - `pre-commit-scope` フックが検知して**知らせる**。**止めたいなら**
+    `.claude/harness.config.json` に `"gates": { "commitScope": "paths" }` を設定する
+    （既定は警告のみ。既存プロジェクトが追従した瞬間にコミットが止まらないようにしてある）
+- 一度に編集するファイルは最大5ファイル。段階的にビルド確認する
+- push はフェーズ完了時、またはユーザーから指示された時のみ。軽微な修正のたびに push しない。
+  **push の直前に `/harness-core:pre-push-check` を通す**（未 push コミットが台帳に載っているかの確認。
+  ソース変更を含むときは設計書との全量照合も走る）
+- **ブランチを切ったら必ず報告する。** エージェントは既定ブランチ上でコミットするとき
+  自動でブランチを作るが、**作成そのものは黙って行われる**。完了報告に
+  「ブランチ `<名前>` を作成した」の1行を必ず入れ、**push するか既定ブランチへマージするかの
+  判断をユーザーに返すこと**。報告しないと、**ユーザーが知らないブランチにコミットが積み上がる**
+- サブエージェントの結果は**必ずメインで差分確認**してからコミットする。**ビルド成功 ≠ 正しい実装**
+- **プロジェクト固有の用語を増やすときは `glossary-keeper` へ申請する。** 自分で用語集へ追記しない
+  （**語を使いたい人が可否を決めてはいけない** — 目の前の文書を通したい動機で判断が歪む）。
+  却下されたら、示された一般語へ言い換える
+- **重い読み込みを伴う作業はサブエージェントへ委譲する。** 実装は `coding-specialist`、
+  設計書の更新は `documentation-manager`。**いちばんの狙いはコンテキスト衛生** —
+  その作業でしか読まない文書（設計方針・ライブラリ規約・設計書一式）をメインの文脈に
+  持ち込まないこと、直前の文脈のまま作業して**成果物ではなく自分の理解に合わせて**
+  書いてしまうのを避けること
+  - **モデルはエージェント定義が持つ。起動側で上書きしない。**
+    変えたい場合はプロジェクトの `.claude/agents/` に同名で置く
+  - **その場限りの依頼でも `model` に `sonnet` を明示する**
+    （理由と例外は constitution.md §6。ここには複製しない）
+- **CLAUDE.md の肥大化防止**: 追記前に「これは方針か実態か」を自問する。実態は `docs/設計書/`、
+  汎用の規約は `.claude/rules/`、**このプロジェクトの設計方針は `.claude/01_development_docs/`**、
+  不変原則は constitution.md へ。全体で 300 行を超えたら整理対象
+- 同じ手順を将来も繰り返しそうだと気づいたら、その場でスキル化を提案する
+
+## ドキュメント構成
+
+**方針（How）と実態（What）を分離する。同じ情報を2箇所に書かない。**
+
+| 場所 | 役割 | 変更頻度 |
+|------|------|----------|
+| `constitution.md` | プロジェクトの不変原則（変更にはユーザー承認） | 極低 |
+| `.claude/rules/` | パス条件付きコーディング規約（該当ファイルを読むと自動ロード） | 低 |
+| `.claude/harness.config.json` | ハーネスの設定契約（コマンド・ゲート・設計書の軸） | 低 |
+| `.claude/00_project/` | **要件・ドメイン知識**（Stage 1 で読む）。`projectDocs.requirements` に登録する | 低 |
+| `.claude/01_development_docs/` `02_design_system/` | **このプロジェクトの設計方針**（Stage 2 で読む）。`projectDocs.policy` に登録する。書き方は [README](.claude/01_development_docs/README.md) | 低 |
+| `docs/設計書/` | **実態**の一覧・定義。軸は `harness.config.json` の `designDocs` が定義する | 高（コードと同期） |
+| `docs/features/` | 機能設計書（`yyyymmdd_機能名.md`） | 高 |
+| `docs/reviews/` | レビュー結果の記録（**手順書は置かない**） | 中 |
+| `docs/handoff/` | **セッション／担当をまたぐ引き継ぎ文書**。判断依頼・作業指示など。**受け渡し専用で、作業場所ではない**（→ 下記） | 随時 |
+
+### `docs/handoff/` は受け渡し専用（作業場所ではない）
+
+渡す側が `docs/handoff/` に置き、**受け取る側は `/harness-core:receive-handoff` を通す**
+（裏取り → ユーザー確認 → 仕分け → 所定のフォルダへ移動 → handoff を空に）。
+手順を覚えている必要はない。
+
+- **`docs/handoff/` で作業を進めない。** 受け取ったら**着手前に**行き先を決めて移す
+- **対応中のものを `docs/handoff/` に置いたままにしない。** 「受け渡し中」と「作業中」が混ざると、
+  中身を見ただけでは**どちらなのか判断できなくなる**
+- 移し終えたら handoff 側の文書は削除してよい（設計書ではない）。
+  **置き場が空になることは廃止を意味しない** — 空が正常な状態である
+
+### `docs/features/` のライフサイクル
+
+```
+/harness-core:new-feature で docs/features/ 直下に作成 → 直下に置いたまま実装
+  → 全タスク完了 → /harness-core:complete-feature
+  → 🟢完了 は completed/ へ、⏸️一部保留 は pending/ へ移動
+```
+
+- **作業中の設計書は `docs/features/` 直下に置く**（`pending/` は一部保留の置き場。作業場所ではない）
+- 命名: `yyyymmdd_機能名.md`
+- タスクステータス: 🔵未実施 / 🟡実装中 / ✅完了 / ⏸️保留（理由必須） / ❌却下（理由必須）
+- 設計書には末尾に改訂履歴テーブルを設け、コミット列に**トリガーとなった実装コミット**の短縮ハッシュ（7文字）を記入する。
+  **書けないときは `—`（`(未確定)` と書かない。埋め戻す機会が来ず永久に残る）**

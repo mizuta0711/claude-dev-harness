@@ -139,7 +139,7 @@ claude-dev-harness/
 │   └── harness-android/
 ├── templates/                         # 薄いテンプレート層
 │   ├── base/                          # 全環境共通（CLAUDE.md 共通部 / constitution.md / 設計方針層 README / docs 骨格）
-│   ├── nextjs/                        # 環境差分（CLAUDE.section.md / rules / config / 設計方針の骨格 / 設計書の枠）
+│   ├── nextjs/                        # 環境差分（.claude/harness/environment.md / rules / config / 設計方針の骨格 / 設計書の枠）
 │   ├── unity/
 │   ├── wpf/
 │   └── android/

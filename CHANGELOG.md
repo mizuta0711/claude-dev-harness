@@ -52,6 +52,52 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.25.0] — `CLAUDE.md` の所有を分ける（H53 の第2弾）
+
+**`CLAUDE.md` が、導入済み3プロジェクトすべてで「競合」だった**（実測・2026-10-08）。
+原因は**所有の境界がファイル単位しかない**こと。**テンプレートが配る `CLAUDE.md` をプロジェクトも育てる**ので、
+`A≠B` かつ `A≠C` かつ `B≠C` が常態になり、テンプレートを1行直すたびに
+`harness-update` の Step 3（査読つきの判断手続き）が起動していた。
+
+> **実測**: `templates/base/CLAUDE.md` は **131行**に対し、プロジェクトの `CLAUDE.md` は **203〜395行**。
+> しかもテンプレートの131行のうち **12〜130行はハーネスの説明**で、プロジェクト固有なのは概要だけだった。
+
+**ハーネスの説明を `CLAUDE.md` から出し、`@` で読み込む形にした。**
+
+| ファイル | 所有 | 追従での分類 |
+|---|---|---|
+| `CLAUDE.md`（**131行 → 23行**） | **プロジェクト** | `project-local`（保持）。**以後競合しない** |
+| `.claude/harness/core.md`（新規・136行） | **ハーネス**（環境非依存） | `template-improvement`（自動適用） |
+| `.claude/harness/environment.md`（新規・56〜76行） | **ハーネス**（環境ごと） | 同じ |
+
+- **`@path` import の仕様を公式ドキュメントで確認したうえで採った**。
+  **コードスパンとフェンスは走査から除外される**ので、バッククォートでパスを大量に書いても誤 import が起きない。
+  **作業ディレクトリ内なので承認ダイアログも出ない**（外部パスのときだけ出る）
+- **合成の特別扱いが1つ消えた。** `templates/<env>/CLAUDE.section.md` を
+  `templates/<env>/.claude/harness/environment.md` へ移したので、
+  **`create-project.mjs` の `ENV_SECTION` 置換（9行）を削除**できた
+  — 既にある「env が base を上書きする」規則にそのまま乗る
+- **プロジェクト固有の上書きは `CLAUDE.md` の末尾に書く。** import は書いた位置に展開されるので、
+  後ろの記述が後に読まれる。骨組みに「このプロジェクトだけの規律」の節を置いた
+- ハーネス所有のファイルの冒頭に**「プロジェクト側では編集しない」と所有の一覧**を書いた（競合の原因を先に潰す）
+- **`tests/create-project.smoke.test.mjs` に4環境分の検査を足した**（import がバッククォートの外にあること・
+  読み込み先が実在すること・環境セクションが env 版に置き換わっていること・ハーネスの説明が `CLAUDE.md` に残っていないこと）
+
+> ⚠️ **0.25.0 より前に生成したプロジェクトは、一度だけ `CLAUDE.md` が競合する。** これは移行作業で、
+> 手順は `harness-update/SKILL.md`「`CLAUDE.md` の競合は 0.25.0 で一度だけ」にある。**払うのは1回だけ。**
+>
+> ⚠️ **import は分量の問題を解かない。** 公式に
+> 「**Imports help you organize a long file but don't reduce its context cost, because imported files also load at launch**」
+> と明記がある。**解くのはマージのコストだけ**で、コンテキストの総量は変わらない
+> （0.22.3 の「300行目安」とは別の問題。分量を下げるのは `.claude/rules/` の `paths` 条件）。
+
+docs 影響: あり（harness-update/SKILL.md — 移行の節を新設 / templates/README.md — 合成規則と環境差分の一覧 /
+guide/既存プロジェクト移行指示書.md — 起動時に要るものの置き場 / diagrams/01_全体アーキテクチャ図.md — 環境差分のノード /
+background/01_統合前後の差異.md — 分離先 / README.md — ディレクトリ構成）
+
+> 据え置き: `guide/セットアップガイド.md`（`CLAUDE.md` の `<!-- TODO -->` を埋める案内は変わらない）。
+> `diagrams/03`・`04`（スラッシュコマンドの解決の話で、`CLAUDE.md` の構成には触れていない）。
+
 ## [0.24.0] — `settings.json` をキー単位で統合する（H53 の第1弾）
 
 **テンプレートを直したときの、導入済みプロジェクトへの適用が重かった。**
