@@ -124,7 +124,13 @@ test("配布するエージェントには、コメント外からの呼び出�
  * §2-1 の表に無いまま通っていた。0.22.3 で表に足した）。節の切り出しまで機械化するより、
  * スキルを増減したときに §2-1 を目で見る運用で足りると判断している。
  */
-const SKILL_LISTINGS = ["docs/guide/運用ガイド.md", "templates/base/CLAUDE.md"];
+// `templates/base/CLAUDE.md` は 0.25.0 でハーネスの説明を `.claude/harness/core.md` へ出したので、
+// **スキル名を1つも持たなくなった。** 網を1本に減らさないよう core.md を対象に足している。
+const SKILL_LISTINGS = [
+  "docs/guide/運用ガイド.md",
+  "templates/base/CLAUDE.md",
+  "templates/base/.claude/harness/core.md",
+];
 
 test("配布するスキルは利用者から見えるところに名前空間つきで列挙されている", () => {
   const listings = SKILL_LISTINGS.concat(walk("templates").filter((f) => f.endsWith(".claude/harness/environment.md")));

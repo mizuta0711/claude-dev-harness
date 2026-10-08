@@ -80,23 +80,47 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 - **プロジェクト固有の上書きは `CLAUDE.md` の末尾に書く。** import は書いた位置に展開されるので、
   後ろの記述が後に読まれる。骨組みに「このプロジェクトだけの規律」の節を置いた
 - ハーネス所有のファイルの冒頭に**「プロジェクト側では編集しない」と所有の一覧**を書いた（競合の原因を先に潰す）
-- **`tests/create-project.smoke.test.mjs` に4環境分の検査を足した**（import がバッククォートの外にあること・
-  読み込み先が実在すること・環境セクションが env 版に置き換わっていること・ハーネスの説明が `CLAUDE.md` に残っていないこと）
+- **`tests/create-project.smoke.test.mjs` に4環境分の検査を足した。** import がバッククォートの外にあること・
+  読み込み先が実在すること・環境セクションが env 版に置き換わっていること・ハーネスの説明が `CLAUDE.md` に残っていないこと・
+  **所有の注記が `core.md` と `environment.md` の両方にあること**・**許可した2本以外の行頭 `@` が無いこと**
+  （パス別名の説明で `@/features/...` を行頭に書くと黙って import 扱いになる）・
+  **`.claude/harness/` からの相対リンク先が生成物に実在すること**（切り出しで2階層ずれる）。
+  **後の2つは実際に壊して検査が働くことを確かめた**
+- **`tests/wiring.test.mjs` の網を1本に減らさなかった。** `templates/base/CLAUDE.md` はスキル名を1つも持たなくなったので、
+  スキルの列挙検査の対象に `core.md` を足した
 
 > ⚠️ **0.25.0 より前に生成したプロジェクトは、一度だけ `CLAUDE.md` が競合する。** これは移行作業で、
 > 手順は `harness-update/SKILL.md`「`CLAUDE.md` の競合は 0.25.0 で一度だけ」にある。**払うのは1回だけ。**
+>
+> ⚠️ **「`CLAUDE.md` の末尾に書けば後に読まれる」は仕様ではない。** 公式は展開位置しか定めておらず、
+> 矛盾については「**if two instructions contradict each other, Claude may pick one arbitrarily**」と明記している。
+> **位置で優先は決まらない**ので、二重に決めないこと（指示文もそう書き直した）。
+>
+> ⚠️ **なぜ `.claude/rules/` に置かず import にしたか。** `paths` を持たない `rules/` は起動時に読まれるので、
+> それでも同じ効果は出る（import の落とし穴がすべて消え、「読み込み先が無いと無言で落ちる」失敗も構造的に起きない）。
+> **採らなかったのは、`rules/` を「`paths` 条件で必要なときだけ読まれる置き場」と既に定義しているから** —
+> そこへ常時ロードのものを混ぜると、読み手がこの層の意味を取り違える。**次に同じ問題を見た人が rules 案へ差し戻さないよう記録する。**
 >
 > ⚠️ **import は分量の問題を解かない。** 公式に
 > 「**Imports help you organize a long file but don't reduce its context cost, because imported files also load at launch**」
 > と明記がある。**解くのはマージのコストだけ**で、コンテキストの総量は変わらない
 > （0.22.3 の「300行目安」とは別の問題。分量を下げるのは `.claude/rules/` の `paths` 条件）。
 
-docs 影響: あり（harness-update/SKILL.md — 移行の節を新設 / templates/README.md — 合成規則と環境差分の一覧 /
-guide/既存プロジェクト移行指示書.md — 起動時に要るものの置き場 / diagrams/01_全体アーキテクチャ図.md — 環境差分のノード /
-background/01_統合前後の差異.md — 分離先 / README.md — ディレクトリ構成）
+docs 影響: あり（harness-update/SKILL.md — 移行の節を新設 / **guide/既存プロジェクト移行指示書.md — §4 の移植表と §8 を書き換え（1.16）** /
+**guide/セットアップガイド.md — §7 のテンプレート層の一覧（1.10）** / templates/README.md — 合成規則と環境差分の一覧 /
+diagrams/01_全体アーキテクチャ図.md — 環境差分のノード / **diagrams/03_役割比較図.md — 所有の表** /
+background/01_統合前後の差異.md — 分離先 / README.md — ディレクトリ構成 /
+**plugins の create-project・new-feature の SKILL.md — 環境セクションの置き場**）
 
-> 据え置き: `guide/セットアップガイド.md`（`CLAUDE.md` の `<!-- TODO -->` を埋める案内は変わらない）。
-> `diagrams/03`・`04`（スラッシュコマンドの解決の話で、`CLAUDE.md` の構成には触れていない）。
+> **当初の据え置き判断を2件取り下げた。**
+> `guide/セットアップガイド.md` は「`<!-- TODO -->` を埋める案内は変わらない」として据え置いたが、
+> **§7（既存プロジェクトへの後付け）のテンプレート層の一覧を覆っていなかった** —
+> あの手順どおりに後付けすると `.claude/harness/` を置き忘れ、**`CLAUDE.md` に import を書いても
+> ハーネスの規律が1つも読まれない**（読み込みの失敗は警告が出ない）。同じ理由で移行指示書 §4・§8 も書き換えた。
+> `diagrams/03` は「スラッシュコマンドの解決の話」として据え置いたが、**所有の表に「`CLAUDE.md` 共通部」の行があった** —
+> まさに今回変えた中身である。
+>
+> 据え置き: `diagrams/04`（起動するエージェントの表）。`guide/入門ガイド.md`（ゲート数は不変）。
 
 ## [0.24.0] — `settings.json` をキー単位で統合する（H53 の第1弾）
 

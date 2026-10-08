@@ -1,3 +1,11 @@
+<!--
+  このファイルはハーネス（claude-dev-harness）が所有する。
+  `CLAUDE.md` から `@.claude/harness/environment.md` で読み込まれ、起動時に展開される。
+
+  **プロジェクト側では編集しない。** 編集するとハーネス更新のたびに「競合」になる。
+  **このプロジェクトだけの規律は `CLAUDE.md` に書く**（所有の一覧は `core.md` の冒頭）。
+-->
+
 ## 環境: Next.js
 
 **Stack:** Next.js 16 (App Router) + React 19 + TypeScript (strict) + TailwindCSS 4 + Zustand 5 + Prisma 6 (PostgreSQL) + NextAuth 4
@@ -7,7 +15,7 @@
 > **Next.js 16 注意**: このバージョンには破壊的変更がある。
 > コードを書く前に `node_modules/next/dist/docs/` のガイドを参照し、非推奨 API に注意すること。
 
-**初回のセットアップ（プラグイン導入・`create-next-app` の落とし穴）は [SETUP.md](SETUP.md) にある。**
+**初回のセットアップ（プラグイン導入・`create-next-app` の落とし穴）は [SETUP.md](../../SETUP.md) にある。**
 
 ### ディレクトリ構成
 
@@ -41,7 +49,7 @@ src/
 ### DB スキーマ変更時の必須ルール
 
 **バックアップ実行 / `///` コメント付与 / 3点同期**の3点が必須。
-スキーマ変更前に必ず [.claude/rules/prisma.md](.claude/rules/prisma.md) を読むこと。
+スキーマ変更前に必ず [.claude/rules/prisma.md](../rules/prisma.md) を読むこと。
 **1つでも更新漏れがあると、バックアップが不完全になる。**
 
 <!-- 「同じ情報を2箇所に書かない」に対する意図的な例外。

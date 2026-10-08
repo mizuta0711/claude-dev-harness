@@ -34,7 +34,7 @@ allowed-tools: "Bash(git status:*), Bash(git log:*), Grep, Glob, Read, Write, Ed
 そのため規模は L と判断します（環境構築 + 新規データ構造 + 新規画面）。
 ```
 
-初期化の具体的な手順は**環境側の責務**である。`CLAUDE.md` の環境セクションと
+初期化の具体的な手順は**環境側の責務**である。`.claude/harness/environment.md`（`CLAUDE.md` から展開される）と
 `.claude/rules/` に注意点が書かれていれば必ず読むこと（既存ファイルを壊す足場ツールがある）。
 
 > ユーザーが「初期化は別でやる」と明示した場合のみ、初期化を含めずに進める。

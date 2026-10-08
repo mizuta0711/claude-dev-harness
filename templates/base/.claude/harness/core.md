@@ -1,19 +1,13 @@
 <!--
-  このファイルはハーネス（claude-dev-harness）が所有する。
-  CLAUDE.md から `@` で読み込まれ、起動時に展開される。
+  このファイルはハーネスが所有する。`CLAUDE.md` から `@` で読み込まれ、起動時に展開される。
+  **プロジェクト側では編集しない**（編集するとハーネス更新のたびに「競合」になる）。
+  **このプロジェクトだけの規律は `CLAUDE.md` に書く。**
+  ただし**同じことを二重に決めない** — 矛盾した指示があると、どちらが採られるかは決まっていない。
+  上書きしたいなら、ハーネス側の記述と矛盾しない形で書くこと。
 
-  **プロジェクト側では編集しない。** ハーネスを更新すると
-  `/harness-core:harness-update` が差分を自動で当てる（分類は template-improvement）。
-  ここを編集すると「競合」になり、更新のたびに判断を求められる。
-
-  **このプロジェクトだけの規律・ハーネスの規律への上書きは、CLAUDE.md の末尾に書く。**
-  （import は書いた位置に展開されるので、CLAUDE.md の末尾＝このファイルより後に読まれる）
-
-  ファイルごとに所有が分かれている:
-  - CLAUDE.md                      … プロジェクトが育てる
-  - .claude/harness/core.md        … ハーネスが所有（このファイル。環境非依存）
-  - .claude/harness/environment.md … ハーネスが所有（環境ごと）
-  - .claude/rules/*.md             … ハーネスが所有。**paths 条件で必要なときだけ読まれる**
+  所有: CLAUDE.md = プロジェクト ／ .claude/harness/*.md = ハーネス（常時展開）
+      ／ .claude/rules/*.md = ハーネス（**paths 条件で必要なときだけ読まれる**）
+  詳しくは templates/README.md。
 -->
 
 ## 開発フロー
@@ -39,7 +33,7 @@
 
 - **素の `/code-review` は Claude Code 組み込みスキルが起動する。** 本ハーネスのレビューは
   必ず `/harness-core:code-review` と**名前空間付き**で呼ぶこと
-- 環境固有のスキルは `/harness-<環境>:...`（本ファイル末尾の「環境」セクションを参照）
+- 環境固有のスキルは `/harness-<環境>:...`（`.claude/harness/environment.md`（`CLAUDE.md` から展開される）を参照）
 - **スラッシュコマンドが解決しないクライアントでも、スキルは実行できる**（★エージェント向け）。
   実体は `SKILL.md` という手順書なので、**読んで従えば同じことができる。「使えません」と返さない。**
   導入済みの版のパスは次で引く（`${CLAUDE_PLUGIN_ROOT}` の読み替えと報告の作法は
@@ -55,7 +49,7 @@
 
 ## 原則
 
-不変原則は [constitution.md](constitution.md) に集約している。**変更にはユーザー承認が必要**。
+不変原則は [constitution.md](../../constitution.md) に集約している。**変更にはユーザー承認が必要**。
 ここには複製しない — 判断に迷ったら constitution.md を読むこと。
 
 ## 運用ルール
@@ -88,9 +82,10 @@
     変えたい場合はプロジェクトの `.claude/agents/` に同名で置く
   - **その場限りの依頼でも `model` に `sonnet` を明示する**
     （理由と例外は constitution.md §6。ここには複製しない）
-- **CLAUDE.md の肥大化防止**: 追記前に「これは方針か実態か」を自問する。実態は `docs/設計書/`、
-  汎用の規約は `.claude/rules/`、**このプロジェクトの設計方針は `.claude/01_development_docs/`**、
-  不変原則は constitution.md へ。全体で 300 行を超えたら整理対象
+- **常時読まれる指示の肥大化防止**: 追記前に「これは方針か実態か」を自問する。実態は `docs/設計書/`、
+  汎用の規約は `.claude/rules/`（**paths 条件で必要なときだけ読まれる**ので、ここへ出すと総量が下がる）、
+  **このプロジェクトの設計方針は `.claude/01_development_docs/`**、不変原則は `constitution.md` へ。
+  **目安は1ファイル200行**（`CLAUDE.md` と `.claude/harness/*.md` のそれぞれ。**`@` の読み込みは総量を下げない**）
 - 同じ手順を将来も繰り返しそうだと気づいたら、その場でスキル化を提案する
 
 ## ドキュメント構成
@@ -103,7 +98,7 @@
 | `.claude/rules/` | パス条件付きコーディング規約（該当ファイルを読むと自動ロード） | 低 |
 | `.claude/harness.config.json` | ハーネスの設定契約（コマンド・ゲート・設計書の軸） | 低 |
 | `.claude/00_project/` | **要件・ドメイン知識**（Stage 1 で読む）。`projectDocs.requirements` に登録する | 低 |
-| `.claude/01_development_docs/` `02_design_system/` | **このプロジェクトの設計方針**（Stage 2 で読む）。`projectDocs.policy` に登録する。書き方は [README](.claude/01_development_docs/README.md) | 低 |
+| `.claude/01_development_docs/` `02_design_system/` | **このプロジェクトの設計方針**（Stage 2 で読む）。`projectDocs.policy` に登録する。書き方は [README](../01_development_docs/README.md) | 低 |
 | `docs/設計書/` | **実態**の一覧・定義。軸は `harness.config.json` の `designDocs` が定義する | 高（コードと同期） |
 | `docs/features/` | 機能設計書（`yyyymmdd_機能名.md`） | 高 |
 | `docs/reviews/` | レビュー結果の記録（**手順書は置かない**） | 中 |

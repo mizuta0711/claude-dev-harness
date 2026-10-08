@@ -250,8 +250,32 @@ for (const { env, set } of ENVS) {
       );
 
       // ハーネス所有のファイルには「編集しない」が書かれている（競合の原因を先に潰す）
-      const core = fs.readFileSync(path.join(dest, ".claude/harness/core.md"), "utf-8");
-      assert.match(core, /プロジェクト側では編集しない/);
+      for (const rel of [".claude/harness/core.md", ".claude/harness/environment.md"]) {
+        const body = fs.readFileSync(path.join(dest, rel), "utf-8");
+        assert.match(body, /プロジェクト側では編集しない/, `${rel} に所有の注記が無い`);
+      }
+
+      // **意図しない行頭 `@` は import として展開される。** 許可した2本以外を禁じる。
+      // （パス別名の説明などで `@/features/...` を行頭に書くと、黙って import 扱いになる）
+      for (const rel of ["CLAUDE.md", ".claude/harness/core.md", ".claude/harness/environment.md"]) {
+        const body = fs.readFileSync(path.join(dest, rel), "utf-8");
+        const strays = body
+          .split("\n")
+          .filter((l) => /^@/.test(l))
+          .filter((l) => !/^@\.claude\/harness\/(core|environment)\.md$/.test(l));
+        assert.deepEqual(strays, [], `${rel} に意図しない行頭 @ がある`);
+      }
+
+      // **`.claude/harness/` からの相対リンクは2階層深い。** 切り出しで壊れやすいので実在を見る。
+      for (const rel of [".claude/harness/core.md", ".claude/harness/environment.md"]) {
+        const body = fs.readFileSync(path.join(dest, rel), "utf-8");
+        for (const m of body.matchAll(/\]\(([^)]+)\)/g)) {
+          const target = m[1];
+          if (/^(https?:|#)/.test(target)) continue;
+          const resolved = path.resolve(path.dirname(path.join(dest, rel)), target.split("#")[0]);
+          assert.ok(fs.existsSync(resolved), `${rel} のリンク先が無い: ${target}`);
+        }
+      }
     } finally {
       fs.rmSync(dest, { recursive: true, force: true });
     }

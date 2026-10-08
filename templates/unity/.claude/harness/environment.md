@@ -1,3 +1,11 @@
+<!--
+  このファイルはハーネス（claude-dev-harness）が所有する。
+  `CLAUDE.md` から `@.claude/harness/environment.md` で読み込まれ、起動時に展開される。
+
+  **プロジェクト側では編集しない。** 編集するとハーネス更新のたびに「競合」になる。
+  **このプロジェクトだけの規律は `CLAUDE.md` に書く**（所有の一覧は `core.md` の冒頭）。
+-->
+
 ## 環境: Unity
 
 ### 開発環境
@@ -8,7 +16,7 @@
 | Namespace | `{{PROJECT_NAME}}` |
 | レンダーパイプライン | <!-- TODO: URP / HDRP / Built-in --> |
 
-**初回のセットアップ（プラグイン導入・Unity MCP の接続）は [SETUP.md](SETUP.md) にある。**
+**初回のセットアップ（プラグイン導入・Unity MCP の接続）は [SETUP.md](../../SETUP.md) にある。**
 
 ### フォルダ構成
 
