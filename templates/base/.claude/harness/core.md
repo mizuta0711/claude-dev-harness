@@ -100,6 +100,7 @@
 | `.claude/00_project/` | **要件・ドメイン知識**（Stage 1 で読む）。`projectDocs.requirements` に登録する | 低 |
 | `.claude/01_development_docs/` `02_design_system/` | **このプロジェクトの設計方針**（Stage 2 で読む）。`projectDocs.policy` に登録する。書き方は [README](../01_development_docs/README.md) | 低 |
 | `docs/設計書/` | **実態**の一覧・定義。軸は `harness.config.json` の `designDocs` が定義する | 高（コードと同期） |
+| **`docs/backlog.md`** | **残作業の唯一の正。** マイルストーンの順序と、機能をまたいだ残作業。**他の文書に残作業表を作らない** | 随時 |
 | `docs/features/` | 機能設計書（`yyyymmdd_機能名.md`） | 高 |
 | `docs/reviews/` | レビュー結果の記録（**手順書は置かない**） | 中 |
 | `docs/handoff/` | **セッション／担当をまたぐ引き継ぎ文書**。判断依頼・作業指示など。**受け渡し専用で、作業場所ではない**（→ 下記） | 随時 |
@@ -122,9 +123,16 @@
 /harness-core:new-feature で docs/features/ 直下に作成 → 直下に置いたまま実装
   → 全タスク完了 → /harness-core:complete-feature
   → 🟢完了 は completed/ へ、⏸️一部保留 は pending/ へ移動
+                               → 台帳（docs/backlog.md）のその行は消える
+
+大きい依頼をマイルストーンに分けた場合:
+  /harness-core:plan-milestones が台帳に順序を置く
+  → まだ着手しない分は planned/ に作る → 着手するとき直下へ git mv
 ```
 
-- **作業中の設計書は `docs/features/` 直下に置く**（`pending/` は一部保留の置き場。作業場所ではない）
+- **作業中の設計書は `docs/features/` 直下に置く**（`planned/` は着手前、`pending/` は一部保留の置き場。どちらも作業場所ではない）
+- **順序は台帳（`docs/backlog.md`）だけが持つ。** 設計書のタスクの「依存」列は**設計書をまたがせない**
+- **台帳に進捗を書かない。** 各機能の進捗はその設計書のメタ情報と置き場が正（書くと必ず腐る）
 - 命名: `yyyymmdd_機能名.md`
 - タスクステータス: 🔵未実施 / 🟡実装中 / ✅完了 / ⏸️保留（理由必須） / ❌却下（理由必須）
 - 設計書には末尾に改訂履歴テーブルを設け、コミット列に**トリガーとなった実装コミット**の短縮ハッシュ（7文字）を記入する。

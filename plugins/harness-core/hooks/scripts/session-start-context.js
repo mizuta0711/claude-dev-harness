@@ -4,7 +4,7 @@
  * matcher: startup|resume|clear|compact（`hooks.json` と一致させること）
  *
  * 毎回ユーザーが「今どこまで進んでいるか」を説明しなくて済むように、
- * ブランチ・未プッシュ数・未コミット数・進行中の機能設計書を additionalContext に載せる。
+ * ブランチ・未プッシュ数・未コミット数・進行中の機能設計書・次のマイルストーンを additionalContext に載せる。
  *
  * harness-core は .claude/harness.config.json を契約として動くため、
  * **このフックだけは config 不在・不正を警告する**（他の hook は黙って素通りする / 04仕様 §4-1）。
@@ -37,6 +37,34 @@ function pendingHandoffs() {
   } catch {
     return [];
   }
+}
+
+/**
+ * 台帳（docs/backlog.md）の「マイルストーン」の表の先頭行＝**次に進めるもの**。
+ *
+ * **台帳は読まれないと意味が無い。** 大きい依頼をマイルストーンに分けると
+ * フェーズ間で必ず区切りが入るので、セッションをまたぐと「次は何か」が分からなくなる。
+ * 表の1行目だけを出す（全部出すと長い。詳細は台帳を読む）。
+ */
+function nextMilestone() {
+  try {
+    const text = fs.readFileSync(path.join(lib.projectDir(), "docs", "backlog.md"), "utf-8");
+    const lines = text.split("\n");
+    const head = lines.findIndex((l) => /^#{1,3}\s*マイルストーン/.test(l));
+    if (head < 0) return null;
+    for (let i = head + 1; i < lines.length && i < head + 40; i++) {
+      const l = lines[i];
+      if (/^#{1,3}\s/.test(l)) break; // 次の見出しまで
+      const m = l.match(/^\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|/);
+      if (!m) continue;
+      if (/^-+$/.test(m[1]) || m[1] === "#" || !m[2]) continue; // 区切り行・ヘッダ行
+      if (!m[2].trim()) continue; // 空行
+      return `${m[1] ? m[1] + ". " : ""}${m[2]}`;
+    }
+  } catch {
+    /* 台帳が無ければ何も出さない（fail-open） */
+  }
+  return null;
 }
 
 function activeFeatureDocs() {
@@ -238,6 +266,9 @@ if (docs.length) {
     lines.push(`  - ${d.file}${d.status ? ` (${d.status})` : ""}`);
   }
 }
+
+const next = nextMilestone();
+if (next) lines.push(`[次のマイルストーン] ${next}（順序は docs/backlog.md が正）`);
 
 // コンパクト直後は、退避しておいた文脈を復元する
 if (input.source === "compact") {
