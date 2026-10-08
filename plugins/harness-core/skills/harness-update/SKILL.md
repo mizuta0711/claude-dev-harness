@@ -158,7 +158,7 @@ node "${DIFF}" analyze \
 |---|---|---|
 | `CLAUDE.md` | **プロジェクト** | `project-local`（保持）。骨組みは安定なので競合しない |
 | `.claude/harness/core.md` | **ハーネス**（環境非依存） | `template-improvement`（自動適用） |
-| `.claude/harness/environment.md` | **ハーネス**（環境ごと） | 同じ |
+| `.claude/harness/environment.md` | **プロジェクト**（雛形を環境ごとに配るだけ） | **追従しない**（`NEVER_TOUCH`。0.28.0 以降） |
 | `.claude/rules/*.md` | **ハーネス**。**`paths` 条件で必要なときだけ読まれる** | 同じ |
 
 **0.25.0 より前に生成したプロジェクトは、一度だけ `CLAUDE.md` が競合する。** これは移行作業である:

@@ -249,11 +249,17 @@ for (const { env, set } of ENVS) {
         `base の予備が配られている（templates/${env}/.claude/harness/environment.md が無い）`
       );
 
-      // ハーネス所有のファイルには「編集しない」が書かれている（競合の原因を先に潰す）
-      for (const rel of [".claude/harness/core.md", ".claude/harness/environment.md"]) {
-        const body = fs.readFileSync(path.join(dest, rel), "utf-8");
-        assert.match(body, /プロジェクト側では編集しない/, `${rel} に所有の注記が無い`);
-      }
+      // **所有の注記は2本で逆向きである。** core.md はハーネスが持ち追従する／
+      // environment.md はプロジェクトが実態を記入し追従しない（0.28.0）。
+      // 取り違えると、記入した事実を雛形で上書きする事故に戻る。
+      const coreMd = fs.readFileSync(path.join(dest, ".claude/harness/core.md"), "utf-8");
+      assert.match(coreMd, /プロジェクト側では編集しない/, "core.md に所有の注記が無い");
+      assert.match(envMd, /このファイルは\*\*プロジェクトが育てる\*\*/, "environment.md に記入の指示が無い");
+      assert.doesNotMatch(
+        envMd,
+        /プロジェクト側では編集しない/,
+        "environment.md に「編集しない」が残っている（追従しないので記入してよい）"
+      );
 
       // **意図しない行頭 `@` は import として展開される。** 許可した2本以外を禁じる。
       // （パス別名の説明などで `@/features/...` を行頭に書くと、黙って import 扱いになる）

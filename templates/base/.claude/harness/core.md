@@ -5,7 +5,8 @@
   ただし**同じことを二重に決めない** — 矛盾した指示があると、どちらが採られるかは決まっていない。
   上書きしたいなら、ハーネス側の記述と矛盾しない形で書くこと。
 
-  所有: CLAUDE.md = プロジェクト ／ .claude/harness/*.md = ハーネス（常時展開）
+  所有: CLAUDE.md = プロジェクト ／ .claude/harness/core.md = ハーネス（常時展開・追従する）
+      ／ .claude/harness/environment.md = **プロジェクト**（常時展開・雛形だけ配り追従しない）
       ／ .claude/rules/*.md = ハーネス（**paths 条件で必要なときだけ読まれる**）
   詳しくは templates/README.md。
 -->

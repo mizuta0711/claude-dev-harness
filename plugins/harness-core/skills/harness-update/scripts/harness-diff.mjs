@@ -58,6 +58,13 @@ const NEVER_TOUCH = [
   /^docs\/設計書\/(?!\.doc-sync\.md$)/, // 台帳以外の設計書は実態なので触らない
   // 設計方針層。骨格は初回生成時のみ配り、以後の中身はプロジェクトが育てる。
   // README.md だけはテンプレ所有（運用ルールと推奨軸メニュー）なので追従させる。
+  // `core.md` はハーネスが持つ規律そのものなので追従させる。
+  // **`environment.md` は追従させない** — あれは**プロジェクトの実態**（スタックの版・
+  // ディレクトリ構成・コマンド・固有の注意点）を書く場所で、テンプレートが配るのは
+  // `<!-- TODO: … -->` 入りの雛形である。追従させると、**プロジェクトが記入した事実を
+  // 雛形で上書きする**か、記入するたびに競合になる（0.25.0 でそれを実際にやってしまった:
+  // Next.js 15.3 のプロジェクトへ「Next.js 16」と書いた雛形を自動適用した）。
+  /^\.claude\/harness\/environment\.md$/,
   /^\.claude\/01_development_docs\/(?!README\.md$)/,
   /^\.claude\/02_design_system\//,
   /^\.claude\/00_project\//,
@@ -1036,4 +1043,14 @@ try {
 }
 }
 
-export { classify, mergeJson3, mergeArray3, tryJsonMerge, tryTextMerge, lineChanges, JSON_MERGE_FILES, TEXT_MERGE_FILES };
+export {
+  classify,
+  isNeverTouch,
+  mergeJson3,
+  mergeArray3,
+  tryJsonMerge,
+  tryTextMerge,
+  lineChanges,
+  JSON_MERGE_FILES,
+  TEXT_MERGE_FILES,
+};
