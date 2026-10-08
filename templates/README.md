@@ -45,7 +45,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 |------|---------|
 | `CLAUDE.md` | **base のまま配る**（0.25.0）。ハーネスの説明は `.claude/harness/core.md`、環境セクションは `.claude/harness/environment.md` に分かれ、CLAUDE.md が `@` で読み込む。**合成の特別扱いは無くなった** |
 | `.claude/settings.json` | deep-merge（オブジェクトは再帰マージ、配列は連結 + 重複除去） |
-| `.gitignore` | base + env の連結 |
+| `.gitignore` | base + env の連結。**追従では `git merge-file` で行単位に3方向マージする**（harness-core 0.26.0）。⚠️ **末尾に行を足さないこと** — 末尾は利用側も足す場所なので、**同じ位置への別々の追加は衝突**になる。**節の中（コメント見出しの下）に足す** |
 | その他 | env が base を上書きする |
 
 生成先へは**コピーされない**テンプレート層のメタファイル:

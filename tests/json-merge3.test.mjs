@@ -23,7 +23,7 @@ const { mergeJson3, mergeArray3, tryJsonMerge, JSON_MERGE_FILES } = await import
  * テンプレートを1行直すたびに重い手続きが走っていた。
  *
  * この関数は**所有の境界をファイルからキーへ下げる**。実測では
- * **3プロジェクトすべてが `conflict` → `json-merge`（自動適用可）になった**。
+ * **3プロジェクトすべてが `conflict` → `auto-merge`（自動適用可）になった**。
  */
 
 const A = {
@@ -193,13 +193,14 @@ test("C が A と同じオブジェクトでも降りる（中で何が消えた
 
 // --- 配線（tryJsonMerge） ---
 
-test("tryJsonMerge: 統合できたら json-merge を返し、統合結果をファイルへ書く", () => {
+test("tryJsonMerge: 統合できたら auto-merge を返し、統合結果をファイルへ書く", () => {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "h53-"));
   const A = JSON.stringify({ gone: 1, keep: 1 });
   const B = JSON.stringify({ keep: 1 });
   const C = JSON.stringify({ gone: 1, keep: 1, mine: 1 });
   const v = tryJsonMerge(".claude/settings.json", A, B, C, work);
-  assert.equal(v.kind, "json-merge");
+  assert.equal(v.kind, "auto-merge");
+  assert.equal(v.how, "json");
   assert.match(v.note, /削除: gone/);
   const written = JSON.parse(fs.readFileSync(path.join(work, "merged", ".claude/settings.json"), "utf-8"));
   assert.deepEqual(written, { keep: 1, mine: 1 });

@@ -1,0 +1,135 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const { tryTextMerge, lineChanges, TEXT_MERGE_FILES } = await import(
+  pathToFileURL(
+    path.join(ROOT, "plugins", "harness-core", "skills", "harness-update", "scripts", "harness-diff.mjs")
+  ).href
+);
+
+/**
+ * `.gitignore` の行単位3方向マージ（harness-update §0-4c）
+ *
+ * ## なぜ自前で行をマージしないのか
+ *
+ * `.gitignore` は**後の行が勝つ**（`*.log` の後の `!keep.log`）。
+ * 集合として足し引きして末尾へ足すと、**テンプレートが足した無視パターンが
+ * プロジェクトの打ち消しを上書きしてしまう**。順序を保つ3方向マージは git が持っているので、
+ * `git merge-file` に任せている。**ここで守るのは「任せ方」である。**
+ */
+
+const NL = String.fromCharCode(10);
+const withWork = (fn) => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), "h53-text-"));
+  try {
+    return fn(work);
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+};
+
+test("テンプレートが足した行を、元の節の中へ入れる（末尾へ流さない）", () =>
+  withWork((work) => {
+    const A = ["# 秘密", ".env*", "", "# OS", ".DS_Store"].join(NL) + NL;
+    const B = ["# 秘密", ".env*", "secrets/", "", "# OS", ".DS_Store"].join(NL) + NL;
+    const C = ["# 秘密", ".env*", "", "# OS", ".DS_Store", "", "# 独自", "dist/"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "auto-merge");
+    assert.equal(v.how, "text");
+    const merged = fs.readFileSync(path.join(work, "merged", ".gitignore"), "utf-8");
+    const lines = merged.split(NL);
+    // secrets/ は .env* の直後（「秘密」の節の中）に入る
+    assert.equal(lines[2], "secrets/");
+    // プロジェクト独自の行は残る
+    assert.ok(merged.includes("dist/"));
+  }));
+
+test("打ち消し（`!`）の順序を壊さない", () =>
+  withWork((work) => {
+    // プロジェクトが `!keep.log` で打ち消している。テンプレートが別の節に行を足す。
+    const A = ["*.log", "", "# OS", ".DS_Store"].join(NL) + NL;
+    const B = ["*.log", "", "# OS", ".DS_Store", "Thumbs.db"].join(NL) + NL;
+    const C = ["*.log", "!keep.log", "", "# OS", ".DS_Store"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "auto-merge");
+    const lines = fs.readFileSync(path.join(work, "merged", ".gitignore"), "utf-8").split(NL);
+    // `!keep.log` は `*.log` の後ろのまま（打ち消しが効く位置）
+    assert.equal(lines.indexOf("!keep.log"), lines.indexOf("*.log") + 1);
+    // 足された行は OS の節の中（打ち消しより後ろへ回り込んでいない）
+    assert.ok(lines.indexOf("Thumbs.db") > lines.indexOf("!keep.log"));
+  }));
+
+test("テンプレートが消した行は消える", () =>
+  withWork((work) => {
+    const A = ["a", "b", "c"].join(NL) + NL;
+    const B = ["a", "c"].join(NL) + NL;
+    const C = ["a", "b", "c", "mine"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "auto-merge");
+    const merged = fs.readFileSync(path.join(work, "merged", ".gitignore"), "utf-8");
+    assert.ok(!merged.split(NL).includes("b"));
+    assert.ok(merged.split(NL).includes("mine"));
+  }));
+
+test("同じ行を両方が別々に変えたら衝突にする（自動適用しない）", () =>
+  withWork((work) => {
+    const A = ["x", "target", "y"].join(NL) + NL;
+    const B = ["x", "template-side", "y"].join(NL) + NL;
+    const C = ["x", "project-side", "y"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    assert.match(v.note, /行の衝突が 1 箇所/);
+    // 衝突したときは統合結果を書かない（マーカー入りのファイルを配らない）
+    assert.ok(!fs.existsSync(path.join(work, "merged", ".gitignore")));
+  }));
+
+test("テンプレートの変更が既に入っていれば already-applied", () =>
+  withWork((work) => {
+    const A = ["a"].join(NL) + NL;
+    const B = ["a", "b"].join(NL) + NL;
+    const C = ["a", "b"].join(NL) + NL;
+    assert.equal(tryTextMerge(".gitignore", A, B, C, work).kind, "already-applied");
+  }));
+
+test("note に行の増減が載る（自動適用の説明責任）", () =>
+  withWork((work) => {
+    const A = ["a", "", "# 末尾の節", "z"].join(NL) + NL;
+    const B = ["a", "b", "", "# 末尾の節", "z"].join(NL) + NL;
+    const C = ["a", "", "# 末尾の節", "z", "mine"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "auto-merge");
+    assert.deepEqual(v.changes.added, ["b"]);
+    assert.deepEqual(v.changes.deleted, []);
+    assert.match(v.note, /追加: b/);
+  }));
+
+test("⚠️ 両方がファイルの末尾に足すと衝突する（これが正しい挙動）", () =>
+  withWork((work) => {
+    // git merge-file は「同じ位置への別々の追加」を衝突として扱う。**勝手に並べない方が安全**。
+    // 実務上の含み: **テンプレート側は `.gitignore` の末尾に足さず、節の中に足す。**
+    // 末尾に足すと、末尾へ足しているプロジェクトすべてが競合になる（templates/README.md に明記）。
+    const v = tryTextMerge(".gitignore", "a" + NL, "a" + NL + "b" + NL, "a" + NL + "mine" + NL, work);
+    assert.equal(v.kind, "conflict");
+    assert.match(v.note, /行の衝突が 1 箇所/);
+  }));
+
+test("lineChanges は空行と前後の空白を数えない", () => {
+  const c = lineChanges(["a", "", "  b  "].join(NL), ["a", "b", "", "c"].join(NL));
+  assert.deepEqual(c.added, ["c"]);
+  assert.deepEqual(c.deleted, []);
+});
+
+test("対象ファイルの一覧は .gitignore だけ（増やすときは順序依存を確かめる）", () => {
+  assert.deepEqual([...TEXT_MERGE_FILES], [".gitignore"]);
+});
+
+test("一時ファイルを残さない", () =>
+  withWork((work) => {
+    tryTextMerge(".gitignore", "a" + NL, "a" + NL + "b" + NL, "a" + NL, work);
+    assert.ok(!fs.existsSync(path.join(work, "merged", ".3way")), "3way の一時ディレクトリが残っている");
+  }));
