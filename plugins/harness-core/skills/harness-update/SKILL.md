@@ -128,7 +128,8 @@ node "${DIFF}" analyze \
 | `template-improvement` | テンプレート側だけが変わった（A≠B かつ A=C） | **自動適用**（→ Step 4） |
 | `project-local` | プロジェクト側だけが変わった（A=B かつ A≠C） | **保持**（触らない） |
 | `already-applied` | 同じ変更が既に入っている（B=C） | 対応不要 |
-| `conflict` | 両方が同じファイルを変更した | **査読 → 推奨 → ユーザー判断**（→ Step 3） |
+| **`json-merge`** | **JSON をキー単位で統合できた**（`.claude/settings.json`） | **自動適用**（→ Step 4）。統合結果は `{workDir}/merged/<path>` |
+| `conflict` | 両方が同じファイルを変更した | **査読 → 推奨 → ユーザー判断**（→ Step 3）。**JSON なら note に食い違うキーが載る** |
 | `template-removed` | テンプレートから消えたファイル | **査読 → 推奨 → ユーザー判断**。**既定は残す**（→ Step 3） |
 
 > **`template-removed` は「消せ」という指示ではない。**
@@ -145,6 +146,32 @@ node "${DIFF}" analyze \
 
 **この時点ではまだ何も適用しない。** 判断が要るもの（`conflict` / `template-removed` /
 `schemaVersion`）があれば Step 3 へ、無ければ Step 4 へ進む。
+
+### `json-merge` — 所有の境界をファイルからキーへ下げる
+
+**テンプレートが配るファイルをプロジェクトも育てるので、`.claude/settings.json` は
+`A≠B` かつ `A≠C` かつ `B≠C` が常態になり、ファイル単位では `conflict` が既定になる。**
+
+> **実測（2026-10-08・導入済み3プロジェクト）**: `settings.json` は **3/3 で `conflict`**。
+> キー単位のマージを入れて **3/3 が `json-merge`（自動適用可）**になり、
+> **競合の総数は 11 → 8 件**に減った。
+
+スクリプトが A→B の変更を**キーごとに** C へ当て、**食い違うキーだけ**を `conflict` に残す。
+
+- **食い違うキーがゼロ** → `json-merge`。統合結果が `{workDir}/merged/<path>` に書かれ、`apply` はそれを書く
+- **食い違うキーがある** → `conflict` のまま。**note に「食い違うキー: xxx」が載る**ので、
+  Step 3 の査読にはそのキーだけを渡せばよい（ファイル全体を突き合わせない）
+- **JSON がパースできない** → 従来どおり `conflict`（壊れた JSON は人が見る）
+
+**規則と前提は `harness-diff.mjs` の `mergeJson3` の冒頭コメントが正。** 要点は3つ:
+
+1. **テンプレートが触っていないキーは C のまま**（プロジェクトの改変を保持する）
+2. **配列は集合として扱う**（`permissions.allow` が代表例）。**順序が意味を持つ配列には使えない**ので、
+   `JSON_MERGE_FILES` に対象を増やすときは必ず確かめる
+3. **テンプレートが削除したキーは、C の値が空の入れ物（`{}` / `[]`）なら消す。**
+   中身があれば消さずに競合にする（実測で要った — 0.18.0 の展開がキーを消さず空にしていた）
+
+**`tests/json-merge3.test.mjs` が規則を守っている。** 規則を変えるときは期待値を直す（ケースを消さない）。
 
 ## Step 3: 判断が要るものを別エージェントの査読に通す
 
@@ -209,6 +236,11 @@ grep -rn "<そのファイルが持つ固有の語>" --include=*.md .claude/ doc
 **ユーザーが決めてから** Edit で書く。`apply` は使わない（統合が正解のことが多いため）。
 
 ## Step 4: 適用
+
+### json-merge — **自動適用する**（統合結果を書く）
+
+`apply` は `{workDir}/merged/<path>` の内容を書く（**B で上書きしない**）。
+`template-improvement` と同じ扱いでよい。**finalize の未適用の警告も統合結果と比べる。**
 
 ### template-improvement — **自動適用する**
 

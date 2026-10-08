@@ -301,6 +301,149 @@ function classify(a, b, c) {
     : { kind: "conflict", note: "両方が同じファイルを変更している" };
 }
 
+/**
+ * JSON を「キー単位」で3方向マージする対象（§0-4b）
+ *
+ * ## なぜファイル単位では足りないのか
+ *
+ * `classify` の単位はファイルである。ところが**テンプレートが配るファイルを
+ * プロジェクトも育てる**ので、`.claude/settings.json` は `A≠B` かつ `A≠C` かつ `B≠C` が
+ * 常態になり、**`conflict` が既定になる**（実測: 導入済み3プロジェクトすべてで競合）。
+ *
+ * 競合1件につき `harness-update` の Step 3（材料集め → 査読 → 裏取り → 提示）が起動するため、
+ * **テンプレートを1行直すたびに重い手続きが走る**。これが「最新化しても気軽に適用できない」の正体だった。
+ *
+ * ## 何をするか
+ *
+ * **所有の境界をファイルからキーへ下げる。** A→B の変更を**キーごとに** C へ当て、
+ * **本当に食い違うキーだけ**をユーザー判断に残す。
+ *
+ * | A→B | C | 結果 |
+ * |---|---|---|
+ * | 削除 | A と同じ／空の入れ物 | **C からも削除**（育てた値ではない。`isEmptyContainer` を参照） |
+ * | 削除 | A と違い中身がある | **そのキーだけ競合**（プロジェクトが育てたものを消さない） |
+ * | 追加 | 無い | **C へ追加** |
+ * | 追加 | B と同じ | 何もしない（既に入っている） |
+ * | 追加 | B と違う | **そのキーだけ競合** |
+ * | 変更 | A と同じ | **B の値にする** |
+ * | 変更 | B と同じ | 何もしない（適用済み） |
+ * | 変更 | A とも B とも違う | **中がオブジェクト／配列なら1段下へ降りる**。降りられなければ競合 |
+ * | 不変 | — | **C のまま**（プロジェクトの改変を保持） |
+ *
+ * **配列は集合として扱う**（`permissions.allow` が代表例）。
+ * A から B で**消えた要素は C からも消し、増えた要素は C の末尾へ足す**。
+ * C が独自に足した要素・独自に消した要素はそのまま残る。
+ * これは `create-project.mjs` の `deepMerge`（配列は連結＋重複除去）と同じ向きである。
+ *
+ * **順序が意味を持つ配列には使えない。** 現在の対象（`permissions.allow` / `deny` /
+ * `enabledMcpjsonServers`）はいずれも集合なので成り立つ。**対象を増やすときはここを確かめること。**
+ */
+const JSON_MERGE_FILES = new Set([".claude/settings.json"]);
+const MERGED_REL = "merged";
+
+/** 比較用に正規化する（キーの順序の違いを差分として数えない） */
+function canon(v) {
+  if (Array.isArray(v)) return v.map(canon);
+  if (v && typeof v === "object") {
+    const out = {};
+    for (const k of Object.keys(v).sort()) out[k] = canon(v[k]);
+    return out;
+  }
+  return v;
+}
+
+const same = (x, y) => JSON.stringify(canon(x)) === JSON.stringify(canon(y));
+const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * 空の入れ物（`{}` / `[]`）。**テンプレートがキーを削除した場合に限り**、不在と同じに扱う。
+ *
+ * **実測で要った**（2026-10-08・導入済み3プロジェクト）。0.18.0 で `enabledPlugins` を
+ * テンプレートから削除したあと、各プロジェクトへの展開が**キーを消さずに空にしていた**（`"enabledPlugins": {}`）。
+ * これを「プロジェクトが育てた値」と見なすと**3件とも永久に競合に残る**が、
+ * 中身の無い入れ物は育てた値ではなく残骸である。
+ *
+ * **削除の場合だけに限る。** 追加・変更では空を特別扱いしない（意図して空にしたのかもしれない）。
+ */
+const isEmptyContainer = (v) =>
+  (isPlainObject(v) && Object.keys(v).length === 0) || (Array.isArray(v) && v.length === 0);
+
+/** 配列を集合として3方向マージする */
+function mergeArray3(a, b, c) {
+  const key = (e) => JSON.stringify(canon(e));
+  const aKeys = new Set(a.map(key));
+  const bKeys = new Set(b.map(key));
+  const removed = new Set([...aKeys].filter((k) => !bKeys.has(k)));
+  const out = c.filter((e) => !removed.has(key(e)));
+  const present = new Set(out.map(key));
+  for (const e of b) {
+    if (!aKeys.has(key(e)) && !present.has(key(e))) {
+      out.push(e);
+      present.add(key(e));
+    }
+  }
+  return out;
+}
+
+/**
+ * JSON の3方向マージ。
+ * @returns {{merged: unknown, conflicts: string[]}} conflicts は食い違ったキーのパス
+ */
+function mergeJson3(a, b, c, at = "", conflicts = []) {
+  if (isPlainObject(a) && isPlainObject(b) && isPlainObject(c)) {
+    const out = { ...c };
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      const p = at ? `${at}.${k}` : k;
+      const inA = k in a;
+      const inB = k in b;
+      const inC = k in out;
+
+      if (inA && !inB) {
+        if (!inC) continue;
+        if (same(out[k], a[k]) || isEmptyContainer(out[k])) delete out[k];
+        else conflicts.push(p);
+        continue;
+      }
+      if (!inA && inB) {
+        if (!inC) out[k] = b[k];
+        else if (!same(out[k], b[k])) conflicts.push(p);
+        continue;
+      }
+      // inA && inB
+      if (same(a[k], b[k])) continue; // テンプレートは変えていない → C のまま
+      if (!inC) {
+        conflicts.push(p); // テンプレートが変えたキーをプロジェクトが消している
+        continue;
+      }
+      if (same(out[k], a[k])) {
+        out[k] = b[k];
+        continue;
+      }
+      if (same(out[k], b[k])) continue; // 適用済み
+      // 三者すべて違う → 1段下へ降りられるか
+      if (isPlainObject(a[k]) && isPlainObject(b[k]) && isPlainObject(out[k])) {
+        out[k] = mergeJson3(a[k], b[k], out[k], p, conflicts).merged;
+      } else if (Array.isArray(a[k]) && Array.isArray(b[k]) && Array.isArray(out[k])) {
+        out[k] = mergeArray3(a[k], b[k], out[k]);
+      } else {
+        conflicts.push(p);
+      }
+    }
+    return { merged: out, conflicts };
+  }
+
+  if (Array.isArray(a) && Array.isArray(b) && Array.isArray(c)) {
+    return { merged: mergeArray3(a, b, c), conflicts };
+  }
+
+  // 型が揃っていない／スカラー
+  if (same(a, b)) return { merged: c, conflicts };
+  if (same(c, a)) return { merged: b, conflicts };
+  if (same(c, b)) return { merged: c, conflicts };
+  conflicts.push(at || "(ルート)");
+  return { merged: c, conflicts };
+}
+
 /** harness.config.json は「値」ではなく「スキーマ」の差分として扱う（§0-4） */
 function schemaDiff(baselineJson, latestJson, currentJson) {
   const keysOf = (obj, prefix = "", out = new Set()) => {
@@ -332,6 +475,36 @@ function schemaDiff(baselineJson, latestJson, currentJson) {
 // ============================================================
 // コマンド
 // ============================================================
+
+/**
+ * JSON のキー単位マージを試す。
+ * マージできたら `json-merge`（適用可）を返し、結果を work/merged/<rel> へ書く。
+ * 食い違うキーが残れば `conflict` のまま、**どのキーか**を note に載せて返す。
+ * パースできなければ null（従来の分類にまかせる）。
+ */
+function tryJsonMerge(rel, aText, bText, cText, work, projectDir) {
+  let a, b, c;
+  try {
+    a = JSON.parse(aText);
+    b = JSON.parse(bText);
+    c = JSON.parse(cText);
+  } catch {
+    return null; // 壊れた JSON は人が見る
+  }
+  const { merged, conflicts } = mergeJson3(a, b, c);
+  if (conflicts.length) {
+    return {
+      kind: "conflict",
+      note: `食い違うキー: ${conflicts.join(" / ")}（他のキーは自動で統合できる）`,
+    };
+  }
+  if (same(merged, c)) return { kind: "already-applied", note: "同じ変更が既に入っている" };
+
+  const dest = path.join(work, MERGED_REL, rel);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  return { kind: "json-merge", note: "キー単位で統合した（適用を提案）" };
+}
 
 function cmdAnalyze(opts) {
   const { environment, baseline } = loadProjectState(opts.project);
@@ -387,8 +560,14 @@ function cmdAnalyze(opts) {
     const b = readText(path.join(latestDir, rel));
     const c = readText(path.join(opts.project, rel));
 
-    const verdict = classify(a, b, c);
+    let verdict = classify(a, b, c);
     if (!verdict || verdict.kind === "unchanged") continue;
+
+    // JSON はキー単位で3方向マージする（§0-4b）。baseline が無いときは従来どおり。
+    if (JSON_MERGE_FILES.has(rel) && verdict.kind === "conflict" && a !== null) {
+      const merged = tryJsonMerge(rel, a, b, c, work, opts.project);
+      if (merged) verdict = merged;
+    }
     // 競合は finalize で「解決されたか」を判定する必要がある。
     // 判定に使うため、analyze 時点の現物のハッシュを控えておく（下の cmdFinalize を参照）
     const entry = { file: rel, ...verdict };
@@ -412,6 +591,7 @@ function cmdAnalyze(opts) {
     warnings,
     workDir: path.relative(opts.project, work).split(path.sep).join("/"),
     idealDir: path.relative(opts.project, latestDir).split(path.sep).join("/"),
+    mergedDir: path.relative(opts.project, path.join(work, MERGED_REL)).split(path.sep).join("/"),
     baselineDir: baseDir ? path.relative(opts.project, baseDir).split(path.sep).join("/") : null,
     configSchemaDiff: configDiff,
     files: results,
@@ -428,6 +608,7 @@ function cmdAnalyze(opts) {
 
 const LABEL = {
   "template-improvement": "テンプレート側の改善（適用を提案）",
+  "json-merge": "キー単位で統合済み（適用を提案）",
   "project-local": "プロジェクト固有の改変（保持）",
   conflict: "競合（ユーザー判断）",
   "already-applied": "適用済み（対応不要）",
@@ -447,7 +628,7 @@ function printHuman(r) {
   const groups = {};
   for (const f of r.files) (groups[f.kind] ||= []).push(f);
 
-  for (const kind of ["template-improvement", "conflict", "template-removed", "project-local", "already-applied"]) {
+  for (const kind of ["template-improvement", "json-merge", "conflict", "template-removed", "project-local", "already-applied"]) {
     const list = groups[kind];
     if (!list?.length) continue;
     console.log(`\n## ${LABEL[kind]}（${list.length} 件）`);
@@ -502,7 +683,11 @@ function cmdApply(opts) {
       );
     }
 
-    const src = path.join(idealDir, rel);
+    // json-merge は「B で上書き」ではなく「キー単位で統合した結果」を書く（§0-4b）
+    const src =
+      byFile.get(rel) === "json-merge" && report.mergedDir
+        ? path.join(opts.project, report.mergedDir, rel)
+        : path.join(idealDir, rel);
     const content = readText(src);
     if (content === null) fail(`${rel} は「あるべき姿」に存在しません。パスを確認してください。`);
     const dest = path.join(opts.project, rel);
@@ -562,10 +747,23 @@ function cmdFinalize(opts) {
     );
   }
 
-  const unappliedImprovements = report.files
-    .filter((f) => f.kind === "template-improvement")
-    .map((f) => f.file)
-    .filter(stillDiffers);
+  // json-merge は「統合結果」と比べる（B とは意図的に一致しないため stillDiffers では判定できない）
+  const mergedDiffers = (rel) => {
+    if (!report.mergedDir) return true;
+    const m = readText(path.join(opts.project, report.mergedDir, rel));
+    if (m === null) return true;
+    const c = readText(path.join(opts.project, rel));
+    try {
+      return !same(JSON.parse(m), JSON.parse(c));
+    } catch {
+      return m !== c;
+    }
+  };
+
+  const unappliedImprovements = [
+    ...report.files.filter((f) => f.kind === "template-improvement").map((f) => f.file).filter(stillDiffers),
+    ...report.files.filter((f) => f.kind === "json-merge").map((f) => f.file).filter(mergedDiffers),
+  ];
 
   if (unappliedImprovements.length) {
     console.warn(`⚠️  未適用のテンプレート改善が ${unappliedImprovements.length} 件あります:`);
@@ -623,4 +821,4 @@ try {
 }
 }
 
-export { classify };
+export { classify, mergeJson3, mergeArray3, JSON_MERGE_FILES };
