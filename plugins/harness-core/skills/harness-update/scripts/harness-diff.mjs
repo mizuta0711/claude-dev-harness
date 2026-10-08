@@ -358,6 +358,10 @@ const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArr
 /**
  * 空の入れ物（`{}` / `[]`）。**テンプレートがキーを削除した場合に限り**、不在と同じに扱う。
  *
+ * **判定は C の値だけを見る**（A に中身があっても、C が空なら消す）。
+ * `settings.json` では `{}` / `[]` は不在と同じ意味なので実害が無い。
+ * **`JSON_MERGE_FILES` に「空に意味がある」ファイルを足すときはここを絞ること。**
+ *
  * **実測で要った**（2026-10-08・導入済み3プロジェクト）。0.18.0 で `enabledPlugins` を
  * テンプレートから削除したあと、各プロジェクトへの展開が**キーを消さずに空にしていた**（`"enabledPlugins": {}`）。
  * これを「プロジェクトが育てた値」と見なすと**3件とも永久に競合に残る**が、
@@ -387,9 +391,16 @@ function mergeArray3(a, b, c) {
 
 /**
  * JSON の3方向マージ。
- * @returns {{merged: unknown, conflicts: string[]}} conflicts は食い違ったキーのパス
+ *
+ * @returns {{merged: unknown, conflicts: string[], changes: {added: string[], updated: string[], deleted: string[]}}}
+ *   `conflicts` は食い違ったキーのパス。`changes` は**実際に動かしたキーのパス**。
+ *
+ * **`changes` は飾りではない。** この分類は承認を求めずに適用するので、
+ * **「何が消えたか」を利用者へ出せないと説明責任が果たせない**
+ * （`template-improvement` が承認不要なのは A=C ＝ 守るべきローカルの意図が無いからで、
+ * この分類は A≠C なので同じ論法が使えない。SKILL.md「なぜ全ファイル承認をやめたのか」を参照）。
  */
-function mergeJson3(a, b, c, at = "", conflicts = []) {
+function mergeJson3(a, b, c, at = "", conflicts = [], changes = { added: [], updated: [], deleted: [] }) {
   if (isPlainObject(a) && isPlainObject(b) && isPlainObject(c)) {
     const out = { ...c };
     for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
@@ -400,13 +411,27 @@ function mergeJson3(a, b, c, at = "", conflicts = []) {
 
       if (inA && !inB) {
         if (!inC) continue;
-        if (same(out[k], a[k]) || isEmptyContainer(out[k])) delete out[k];
-        else conflicts.push(p);
+        if (same(out[k], a[k]) || isEmptyContainer(out[k])) {
+          delete out[k];
+          changes.deleted.push(p);
+        } else conflicts.push(p);
         continue;
       }
       if (!inA && inB) {
-        if (!inC) out[k] = b[k];
-        else if (!same(out[k], b[k])) conflicts.push(p);
+        if (!inC) {
+          out[k] = b[k];
+          changes.added.push(p);
+        } else if (!same(out[k], b[k])) {
+          // テンプレートもプロジェクトも新しく足した。**降りられるなら降りる** —
+          // 降りないとキー丸ごと競合になり、生成時の deepMerge（配列は union）と向きが食い違う。
+          // A を「空」と見なして同じ規則を当てる。
+          if (isPlainObject(b[k]) && isPlainObject(out[k])) {
+            out[k] = mergeJson3({}, b[k], out[k], p, conflicts, changes).merged;
+          } else if (Array.isArray(b[k]) && Array.isArray(out[k])) {
+            out[k] = mergeArray3([], b[k], out[k]);
+            changes.updated.push(p);
+          } else conflicts.push(p);
+        }
         continue;
       }
       // inA && inB
@@ -416,32 +441,48 @@ function mergeJson3(a, b, c, at = "", conflicts = []) {
         continue;
       }
       if (same(out[k], a[k])) {
-        out[k] = b[k];
+        // プロジェクトは触っていないので B を採ればよい。**ただしオブジェクトは降りる** —
+        // 丸ごと置き換えると `changes` が「permissions を変更」としか言えず、
+        // **中で何が消えたのか（例: permissions.ask）が利用者に見えない**。
+        // C==A なので、降りた結果は B と同じ内容になる。
+        if (isPlainObject(a[k]) && isPlainObject(b[k]) && isPlainObject(out[k])) {
+          out[k] = mergeJson3(a[k], b[k], out[k], p, conflicts, changes).merged;
+        } else {
+          out[k] = b[k];
+          changes.updated.push(p);
+        }
         continue;
       }
       if (same(out[k], b[k])) continue; // 適用済み
       // 三者すべて違う → 1段下へ降りられるか
       if (isPlainObject(a[k]) && isPlainObject(b[k]) && isPlainObject(out[k])) {
-        out[k] = mergeJson3(a[k], b[k], out[k], p, conflicts).merged;
+        out[k] = mergeJson3(a[k], b[k], out[k], p, conflicts, changes).merged;
       } else if (Array.isArray(a[k]) && Array.isArray(b[k]) && Array.isArray(out[k])) {
+        const before = out[k];
         out[k] = mergeArray3(a[k], b[k], out[k]);
+        if (!same(before, out[k])) changes.updated.push(p);
       } else {
         conflicts.push(p);
       }
     }
-    return { merged: out, conflicts };
+    return { merged: out, conflicts, changes };
   }
 
   if (Array.isArray(a) && Array.isArray(b) && Array.isArray(c)) {
-    return { merged: mergeArray3(a, b, c), conflicts };
+    const merged = mergeArray3(a, b, c);
+    if (!same(c, merged)) changes.updated.push(at || "(ルート)");
+    return { merged, conflicts, changes };
   }
 
   // 型が揃っていない／スカラー
-  if (same(a, b)) return { merged: c, conflicts };
-  if (same(c, a)) return { merged: b, conflicts };
-  if (same(c, b)) return { merged: c, conflicts };
+  if (same(a, b)) return { merged: c, conflicts, changes };
+  if (same(c, a)) {
+    changes.updated.push(at || "(ルート)");
+    return { merged: b, conflicts, changes };
+  }
+  if (same(c, b)) return { merged: c, conflicts, changes };
   conflicts.push(at || "(ルート)");
-  return { merged: c, conflicts };
+  return { merged: c, conflicts, changes };
 }
 
 /** harness.config.json は「値」ではなく「スキーマ」の差分として扱う（§0-4） */
@@ -482,7 +523,7 @@ function schemaDiff(baselineJson, latestJson, currentJson) {
  * 食い違うキーが残れば `conflict` のまま、**どのキーか**を note に載せて返す。
  * パースできなければ null（従来の分類にまかせる）。
  */
-function tryJsonMerge(rel, aText, bText, cText, work, projectDir) {
+function tryJsonMerge(rel, aText, bText, cText, work) {
   let a, b, c;
   try {
     a = JSON.parse(aText);
@@ -491,11 +532,21 @@ function tryJsonMerge(rel, aText, bText, cText, work, projectDir) {
   } catch {
     return null; // 壊れた JSON は人が見る
   }
-  const { merged, conflicts } = mergeJson3(a, b, c);
+  const { merged, conflicts, changes } = mergeJson3(a, b, c);
+  const summary = () => {
+    const parts = [];
+    // **削除を先に出す。** 自動適用で一番知りたいのは「何が消えるか」である。
+    if (changes.deleted.length) parts.push(`削除: ${changes.deleted.join(" / ")}`);
+    if (changes.updated.length) parts.push(`変更: ${changes.updated.join(" / ")}`);
+    if (changes.added.length) parts.push(`追加: ${changes.added.join(" / ")}`);
+    return parts.join("、") || "変更なし";
+  };
   if (conflicts.length) {
     return {
       kind: "conflict",
-      note: `食い違うキー: ${conflicts.join(" / ")}（他のキーは自動で統合できる）`,
+      note: `食い違うキー: ${conflicts.join(" / ")}（他は自動で統合できる — ${summary()}）`,
+      changes,
+      conflictKeys: conflicts,
     };
   }
   if (same(merged, c)) return { kind: "already-applied", note: "同じ変更が既に入っている" };
@@ -503,7 +554,7 @@ function tryJsonMerge(rel, aText, bText, cText, work, projectDir) {
   const dest = path.join(work, MERGED_REL, rel);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, JSON.stringify(merged, null, 2) + "\n", "utf-8");
-  return { kind: "json-merge", note: "キー単位で統合した（適用を提案）" };
+  return { kind: "json-merge", note: `キー単位で統合した — ${summary()}`, changes };
 }
 
 function cmdAnalyze(opts) {
@@ -514,6 +565,8 @@ function cmdAnalyze(opts) {
 
   const work = path.join(opts.project, WORK_REL);
   fs.mkdirSync(work, { recursive: true });
+  // 前回の統合結果を残さない（別のコミットに対する結果がディスクに居座るのを避ける）
+  fs.rmSync(path.join(work, MERGED_REL), { recursive: true, force: true });
 
   const repo = prepareRepo(opts, work);
   const latestCommit = git(["rev-parse", "HEAD"], repo.dir);
@@ -564,14 +617,16 @@ function cmdAnalyze(opts) {
     if (!verdict || verdict.kind === "unchanged") continue;
 
     // JSON はキー単位で3方向マージする（§0-4b）。baseline が無いときは従来どおり。
-    if (JSON_MERGE_FILES.has(rel) && verdict.kind === "conflict" && a !== null) {
-      const merged = tryJsonMerge(rel, a, b, c, work, opts.project);
+    if (JSON_MERGE_FILES.has(rel) && verdict.kind === "conflict" && a !== null && c !== null) {
+      const merged = tryJsonMerge(rel, a, b, c, work);
       if (merged) verdict = merged;
     }
     // 競合は finalize で「解決されたか」を判定する必要がある。
     // 判定に使うため、analyze 時点の現物のハッシュを控えておく（下の cmdFinalize を参照）
     const entry = { file: rel, ...verdict };
-    if (verdict.kind === "conflict") entry.currentHash = hashOf(c);
+    // conflict は finalize で「解決されたか」を、json-merge は apply で
+    // 「analyze 以降に現物が変わっていないか」を見るために控える。
+    if (verdict.kind === "conflict" || verdict.kind === "json-merge") entry.currentHash = hashOf(c);
     results.push(entry);
   }
 
@@ -656,14 +711,14 @@ function cmdApply(opts) {
   if (!report) fail("先に analyze を実行してください（report.json がありません）。");
 
   const idealDir = path.join(opts.project, report.idealDir);
-  const byFile = new Map(report.files.map((f) => [f.file, f.kind]));
+  const byFile = new Map(report.files.map((f) => [f.file, f]));
   const applied = [];
   for (const rel of opts.files) {
     if (isNeverTouch(rel)) fail(`${rel} は追従対象外です（プロジェクトの資産）。`);
 
     // 競合をまとめて上書きさせない（「ローカル改変の無断上書き禁止」の機械的な担保）。
     // 競合は A/B/C を突き合わせてハンク単位で解決し、Edit で書くこと。
-    if (byFile.get(rel) === "conflict") {
+    if (byFile.get(rel)?.kind === "conflict") {
       fail(
         `${rel} は「競合」に分類されています。apply では上書きしません。\n` +
           `  A（前回適用時）: ${report.baselineDir ? report.baselineDir + "/" + rel : "(baseline 無し)"}\n` +
@@ -676,18 +731,30 @@ function cmdApply(opts) {
     // ローカル改変の上書きも既定で拒否する（apply は B の内容で上書きするため、
     // project-local に対して実行するとローカルの変更が失われる = テンプレートへの巻き戻し）。
     // 意図的に巻き戻す場合のみ --force。
-    if (byFile.get(rel) === "project-local" && !opts.force) {
+    if (byFile.get(rel)?.kind === "project-local" && !opts.force) {
       fail(
         `${rel} は「プロジェクト固有の改変」に分類されています。apply するとローカルの変更が` +
           `テンプレートの内容で失われます。テンプレートへ意図的に戻す場合のみ --force を付けてください。`
       );
     }
 
-    // json-merge は「B で上書き」ではなく「キー単位で統合した結果」を書く（§0-4b）
-    const src =
-      byFile.get(rel) === "json-merge" && report.mergedDir
-        ? path.join(opts.project, report.mergedDir, rel)
-        : path.join(idealDir, rel);
+    // json-merge は「B で上書き」ではなく「キー単位で統合した結果」を書く（§0-4b）。
+    // 統合結果は analyze 時点の現物から作ったものなので、**その後に現物が変わっていたら書かない**
+    // （project-local を --force で守っているのと同じ理由。ここだけ無検査で上書きしていた）。
+    const entry = byFile.get(rel);
+    const isJsonMerge = entry?.kind === "json-merge" && report.mergedDir;
+    if (isJsonMerge && entry.currentHash) {
+      const now = hashOf(readText(path.join(opts.project, rel)));
+      if (now !== entry.currentHash) {
+        fail(
+          `${rel} は analyze 以降に変更されています。統合結果は analyze 時点の内容から作ったものなので、` +
+            `そのまま書くと今の変更が失われます。\nanalyze をやり直してください。`
+        );
+      }
+    }
+    const src = isJsonMerge
+      ? path.join(opts.project, report.mergedDir, rel)
+      : path.join(idealDir, rel);
     const content = readText(src);
     if (content === null) fail(`${rel} は「あるべき姿」に存在しません。パスを確認してください。`);
     const dest = path.join(opts.project, rel);
@@ -821,4 +888,4 @@ try {
 }
 }
 
-export { classify, mergeJson3, mergeArray3, JSON_MERGE_FILES };
+export { classify, mergeJson3, mergeArray3, tryJsonMerge, JSON_MERGE_FILES };

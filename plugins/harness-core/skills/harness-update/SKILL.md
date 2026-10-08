@@ -53,6 +53,7 @@ allowed-tools: "Bash(node:*), Bash(claude plugin update:*), Bash(git log:*), Bas
 | 分類 | 人は何を判断できるか | 扱い |
 |---|---|---|
 | `template-improvement` | **何もできない**（ローカル改変が無い） | **自動適用**。一覧で報告し、戻し方を示す |
+| **`json-merge`** | **消えるキーだけ判断できる。** この分類は **A≠C**（プロジェクトも育てている）なので上の論法は使えない。だから**何が消え・変わり・増えたかを `analyze` が必ず出す**（`note` と `report.json` の `changes`） | **自動適用**。**削除を先に挙げて**報告し、戻し方を示す |
 | `conflict` | **できる** —「このプロジェクトは意図的にこうしている。戻す／残す／統合する」 | **査読 → 推奨 → 人が決める** |
 | `template-removed` | **できる** —「今も使っているか」 | 同上。**既定は残す** |
 | `schemaVersion` の引き上げ | **できる** — 実際のマイグレーション | 同上 |
@@ -158,7 +159,10 @@ node "${DIFF}" analyze \
 
 スクリプトが A→B の変更を**キーごとに** C へ当て、**食い違うキーだけ**を `conflict` に残す。
 
-- **食い違うキーがゼロ** → `json-merge`。統合結果が `{workDir}/merged/<path>` に書かれ、`apply` はそれを書く
+- **食い違うキーがゼロ** → `json-merge`。統合結果が `{workDir}/merged/<path>` に書かれ、`apply` はそれを書く。
+  **`note` と `report.json` の `changes` に「削除／変更／追加」したキーのパスが載る**ので、**削除を先に挙げて報告する**
+  （例: `削除: enabledPlugins / permissions.ask`）。**承認を求めない分類なので、ここを省略しない**
+- **`apply` は analyze 以降に現物が変わっていたら拒否する**（統合結果は analyze 時点の内容から作ったもの。再 analyze を促す）
 - **食い違うキーがある** → `conflict` のまま。**note に「食い違うキー: xxx」が載る**ので、
   Step 3 の査読にはそのキーだけを渡せばよい（ファイル全体を突き合わせない）
 - **JSON がパースできない** → 従来どおり `conflict`（壊れた JSON は人が見る）

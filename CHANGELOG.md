@@ -79,7 +79,15 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 - **新しい分類 `json-merge`**（自動適用）。統合結果は `{workDir}/merged/<path>` に書かれ、
   `apply` は**B で上書きせずそれを書く**。`finalize` の未適用の警告も統合結果と比べる
 - **競合が残る場合も note に「食い違うキー」が載る**ので、Step 3 の査読には**そのキーだけ**を渡せる
-- **`tests/json-merge3.test.mjs`（11件）が規則を守っている**
+- **`analyze` は「何が消え・変わり・増えたか」をキーのパスで出す**（`note` と `report.json` の `changes`。**削除を先に挙げる**）。
+  **承認を求めない分類なので、ここは省略できない** — `template-improvement` が承認不要なのは
+  **A=C ＝ 守るべきローカルの意図が無いから**で、`json-merge` は **A≠C** なので同じ論法が使えない
+  （実例: `削除: enabledPlugins / permissions.ask`）
+- **`apply` は analyze 以降に現物が変わっていたら拒否する。** 統合結果は analyze 時点の内容から作ったものなので、
+  そのまま書くと間に入った編集が失われる（`project-local` を `--force` で守っているのと同じ理由）
+- **テンプレートもプロジェクトも新しく足したキーは、降りて両方を残す。**
+  降りないとキー丸ごと競合になり、**生成時の `deepMerge`（配列は union）と向きが食い違う**
+- **`tests/json-merge3.test.mjs`（23件）が規則を守っている**（`tryJsonMerge` の4経路・非破壊・型の入れ替わり・`null` を含む）
 
 **効果（同じ3プロジェクトで再測）**: `settings.json` は **3/3 が `conflict` → `json-merge`**。
 **競合の総数は 11 → 8 件**。
@@ -89,9 +97,14 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 作業ディレクトリ内なら承認ダイアログも出ない。**ただし import はコンテキストコストを下げない**）、
 `.gitignore`（行ベースなのでマーカー区切り）。
 
-docs 影響: あり（guide/セットアップガイド.md — §6-2 の分類表に `json-merge`・改訂履歴 1.9 / diagrams/06_改善還元フロー図.md — 自動適用の対象）
+docs 影響: あり（guide/セットアップガイド.md — §6-2 の分類表・改訂履歴 1.9 / diagrams/06_改善還元フロー図.md — **図のノードと表の両方** / background/01_統合前後の差異.md — 差分の分類と `apply` の説明 / harness-update/SKILL.md — 分類表と**「なぜ全ファイル承認をやめたのか」の表**）
 
-> 据え置き: `docs/background/01`・`02`（経緯の記録）。`docs/reference/harness設定契約.md`（`settings.json` は config の契約ではない）。
+> **`background/01` は当初「経緯の記録」として据え置くと書いたが、取り下げた。** あの節は現行挙動の表で、
+> 0.17.0 の挙動変更も取り込んでいる（0.22.3 の `docs 影響` にも入っていた）。**据え置きの理由が立たない。**
+>
+> 据え置き: `docs/background/02`（SpecKit との比較）。`docs/reference/harness設定契約.md`（`settings.json` は config の契約ではない）。
+> `docs/reference/permissionsベースライン.md` と `hooks/scripts/guarded-command-ask.js` は
+> **0.21.0 の時点でこの挙動を先に前提していた**ので当て直し不要（この版で記述が正になった）。
 
 ## [0.23.0] — Stage 2 をフェーズごとに書けるようにする（H52 の c1）
 
