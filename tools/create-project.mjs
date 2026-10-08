@@ -418,7 +418,9 @@ async function main() {
         出なければハーネスが載っていない。
   5. /harness-core:new-feature <機能名>   # 規模判定から開発を始める
 
-  CLAUDE.md の <!-- TODO --> 箇所も忘れずに記入してください。${
+  CLAUDE.md と .claude/harness/environment.md の <!-- TODO --> 箇所を記入してください。
+  （environment.md はハーネス更新で上書きされないので、実態を書いてよい。
+   版や構成を断定形で書いた雛形が常時展開されるため、放置すると嘘が残る）${
     fs.existsSync(path.join(envDir, "SETUP.md")) ? "\n  環境固有のセットアップは SETUP.md を参照してください。" : ""
   }
 `);

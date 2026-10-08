@@ -99,6 +99,8 @@ hooks / skills は **fail-open** で実装する。
   設計方針層の骨格 / docs 骨格）の追従は `/harness-core:harness-update` で行う
   - **設計方針層（`.claude/01_development_docs/` `02_design_system/` `00_project/`）の中身は追従対象外**。
     骨格だけが初回に配られ、以後はプロジェクトが育てる
+  - **`.claude/harness/environment.md` も追従対象外**（配り切り）。雛形が一度だけ配られ、
+    以後はプロジェクトがこのプロジェクトの実態を書く。**隣の `core.md` は所有が逆**（ハーネスが持つ）
   - **③→② の昇格**: 設計方針として書いた規約が「同じ環境の別プロジェクトにもそのまま貼れる」と
     分かったら、`.claude/rules/` 相当としてハーネスへ還元する
 

@@ -59,12 +59,7 @@ const NEVER_TOUCH = [
   // 設計方針層。骨格は初回生成時のみ配り、以後の中身はプロジェクトが育てる。
   // README.md だけはテンプレ所有（運用ルールと推奨軸メニュー）なので追従させる。
   // `core.md` はハーネスが持つ規律そのものなので追従させる。
-  // **`environment.md` は追従させない** — あれは**プロジェクトの実態**（スタックの版・
-  // ディレクトリ構成・コマンド・固有の注意点）を書く場所で、テンプレートが配るのは
-  // `<!-- TODO: … -->` 入りの雛形である。追従させると、**プロジェクトが記入した事実を
-  // 雛形で上書きする**か、記入するたびに競合になる（0.25.0 でそれを実際にやってしまった:
-  // Next.js 15.3 のプロジェクトへ「Next.js 16」と書いた雛形を自動適用した）。
-  /^\.claude\/harness\/environment\.md$/,
+  // `environment.md` は **SEED_ONCE**（下を見ること）。
   /^\.claude\/01_development_docs\/(?!README\.md$)/,
   /^\.claude\/02_design_system\//,
   /^\.claude\/00_project\//,
@@ -135,6 +130,22 @@ function walk(root, base = root, out = []) {
     else out.push(path.relative(base, full).split(path.sep).join("/"));
   }
   return out;
+}
+
+// **配り切り（無ければ配る・あれば触らない）。**
+// `NEVER_TOUCH` との違いは「初回は配る」こと。**プロジェクトが実態を記入する雛形**が対象で、
+// 記入後は追従させない。追従させると、**記入した事実を雛形で上書きする**か、
+// 記入するたびに競合になる（0.25.0 でそれを実際にやってしまった:
+// Next.js 15.3 のプロジェクトへ「Next.js 16」と書いた雛形を自動適用した）。
+//
+// **`NEVER_TOUCH` に入れてはいけない** — 除外すると analyze のレポートに出ず
+// apply もできないので、**まだ持っていないプロジェクトへ初回を配る経路が消える**。
+// `CLAUDE.md` が `@` で読み込むため、**無いとハーネスの環境節が無言で消える**
+// （読み込みの失敗は警告が出ない）。
+const SEED_ONCE = [/^\.claude\/harness\/environment\.md$/];
+
+function isSeedOnce(rel) {
+  return SEED_ONCE.some((re) => re.test(rel));
 }
 
 function isNeverTouch(rel) {
@@ -739,6 +750,9 @@ function cmdAnalyze(opts) {
     const a = baseDir ? readText(path.join(baseDir, rel)) : null;
     const b = readText(path.join(latestDir, rel));
     const c = readText(path.join(opts.project, rel));
+    // 配り切り: **現物があれば以後は一切触らない**（記入済みの実態を雛形で上書きしない）。
+    // 無いときだけ比較に乗せる = 初回は `template-improvement` として配られる。
+    if (isSeedOnce(rel) && c !== null) continue;
 
     let verdict = classify(a, b, c);
     if (!verdict || verdict.kind === "unchanged") continue;
@@ -847,6 +861,15 @@ function cmdApply(opts) {
   const applied = [];
   for (const rel of opts.files) {
     if (isNeverTouch(rel)) fail(`${rel} は追従対象外です（プロジェクトの資産）。`);
+    if (isSeedOnce(rel) && fs.existsSync(path.join(opts.project, rel))) {
+      fail(
+        `${rel} は配り切りのファイルで、既にプロジェクトが持っています。
+` +
+          `ここはプロジェクトの実態を書く場所なので、テンプレートで上書きしません。
+` +
+          `構成そのものを見直したいときは、テンプレートの同名ファイルを見て手で取り込んでください。`
+      );
+    }
 
     // 競合をまとめて上書きさせない（「ローカル改変の無断上書き禁止」の機械的な担保）。
     // 競合は A/B/C を突き合わせてハンク単位で解決し、Edit で書くこと。
@@ -1046,6 +1069,7 @@ try {
 export {
   classify,
   isNeverTouch,
+  isSeedOnce,
   mergeJson3,
   mergeArray3,
   tryJsonMerge,

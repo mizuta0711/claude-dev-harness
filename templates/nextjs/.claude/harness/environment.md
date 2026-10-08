@@ -14,12 +14,20 @@
 
 ## 環境: Next.js
 
-**Stack:** Next.js 16 (App Router) + React 19 + TypeScript (strict) + TailwindCSS 4 + Zustand 5 + Prisma 6 (PostgreSQL) + NextAuth 4
+<!-- TODO: 実際に採用した版・ライブラリを記入する（`package.json` が正典）。
+     **版を断定形で書いたまま放置しないこと** — この節は全セッションで常時展開されるので、
+     実際と食い違うと嘘が常に読まれる（実際にやった: 15.3 のプロジェクトに「16」と書いた雛形を配った）。
 
-<!-- TODO: 実際に採用したバージョン・ライブラリに合わせて更新する -->
+     雛形の例（create-next-app の既定に近い構成。合っていなければ書き換える）:
+     Next.js <版> (App Router) + React 19 + TypeScript (strict) + TailwindCSS 4
+     + Zustand 5 + Prisma 6 (PostgreSQL) + NextAuth 4 -->
 
-> **Next.js 16 注意**: このバージョンには破壊的変更がある。
-> コードを書く前に `node_modules/next/dist/docs/` のガイドを参照し、非推奨 API に注意すること。
+**Stack:** <!-- TODO: 上の例を参考に、このプロジェクトの実際の構成を書く -->
+
+<!-- TODO: 採用した版に破壊的変更があるなら、その注意を書く（無ければこのコメントを消す）。
+     例（Next.js 16 の場合）:
+     > **Next.js 16 注意**: このバージョンには破壊的変更がある。
+     > コードを書く前に `node_modules/next/dist/docs/` のガイドを参照し、非推奨 API に注意すること。 -->
 
 **初回のセットアップ（プラグイン導入・`create-next-app` の落とし穴）は [SETUP.md](../../SETUP.md) にある。**
 

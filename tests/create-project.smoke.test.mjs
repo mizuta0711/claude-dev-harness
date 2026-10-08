@@ -261,6 +261,21 @@ for (const { env, set } of ENVS) {
         "environment.md に「編集しない」が残っている（追従しないので記入してよい）"
       );
 
+      // **雛形は雛形の形で配る。** 配り切りで以後追従しないので、
+      // 断定形で書いた版や構成は**そのまま常時展開され続ける**。
+      // 実際にやった: Next.js 15.3 のプロジェクトへ「Next.js 16」と書いた雛形を配った。
+      assert.match(envMd, /<!--\s*TODO/, "environment.md に TODO が無い（断定形で配っている）");
+      const envBody = envMd.replace(/<!--[\s\S]*?-->/g, "");
+      const assertive = envBody
+        .split(/\r?\n/)
+        .filter((l) => /^\s*\*\*(Stack|技術スタック)/.test(l))
+        .filter((l) => /\d/.test(l));
+      assert.deepEqual(
+        assertive,
+        [],
+        "environment.md が TODO の外でスタックの版を断定している（記入されずに残ると嘘になる）"
+      );
+
       // **意図しない行頭 `@` は import として展開される。** 許可した2本以外を禁じる。
       // （パス別名の説明などで `@/features/...` を行頭に書くと、黙って import 扱いになる）
       for (const rel of ["CLAUDE.md", ".claude/harness/core.md", ".claude/harness/environment.md"]) {

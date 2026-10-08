@@ -4,28 +4,37 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { isNeverTouch } = await import(
+const { isNeverTouch, isSeedOnce } = await import(
   pathToFileURL(
     path.join(ROOT, "plugins", "harness-core", "skills", "harness-update", "scripts", "harness-diff.mjs")
   ).href
 );
 
-// `NEVER_TOUCH` に載ったパスは**追従の対象から外れる**（差分を出さない）。
-// ここを間違えると、**プロジェクトが育てたファイルを雛形で無断上書きする**。
+// 追従の対象から外す仕掛けは2つあり、**意味が違う**。
+//   NEVER_TOUCH … 比較にも apply にも出さない（初回も配らない）
+//   SEED_ONCE   … 現物が無ければ配り、**あれば以後触らない**
+// 取り違えると、①プロジェクトが育てたファイルを雛形で無断上書きする
+// ②まだ持っていないプロジェクトへ初回を配る経路が消える、のどちらかになる。
 
-test("environment.md は追従しない（プロジェクトが実態を記入する）", () => {
-  // 0.25.0 で誤ってハーネス所有と宣言し、Next.js 15.3 のプロジェクトへ
-  // 「Next.js 16」と書いた雛形を自動適用した。その再発防止。
-  assert.ok(isNeverTouch(".claude/harness/environment.md"));
+test("environment.md は配り切り（NEVER_TOUCH ではない）", () => {
+  // 0.25.0 で追従対象と宣言し、Next.js 15.3 のプロジェクトへ「Next.js 16」と
+  // 書いた雛形を自動適用した。0.28.0 でいったん NEVER_TOUCH に入れたが、
+  // それだと **0.25.0 未満のプロジェクトへ初回を配れない**（`CLAUDE.md` が
+  // `@` で読み込むので、無いと環境節が無言で消える）。配り切りが正しい。
+  assert.ok(isSeedOnce(".claude/harness/environment.md"));
+  assert.ok(!isNeverTouch(".claude/harness/environment.md"));
 });
 
 test("core.md は追従する（ハーネスが持つ規律そのもの）", () => {
   assert.ok(!isNeverTouch(".claude/harness/core.md"));
+  assert.ok(!isSeedOnce(".claude/harness/core.md"));
 });
 
-test("CLAUDE.md は追従の対象に残る（project-local として保持される）", () => {
-  // 除外ではなく分類で守る。除外すると新規プロジェクトへ配れなくなる。
+test("CLAUDE.md はどちらの仕掛けにも載せない（分類で守る）", () => {
+  // 除外や配り切りにすると、骨組みの改善をプロジェクトへ運べなくなる。
+  // 0.25.0 以降は `project-local` として保持されるので、分類だけで足りる。
   assert.ok(!isNeverTouch("CLAUDE.md"));
+  assert.ok(!isSeedOnce("CLAUDE.md"));
 });
 
 test("設計方針層の中身は追従しないが README は追従する", () => {
@@ -33,7 +42,73 @@ test("設計方針層の中身は追従しないが README は追従する", () 
   assert.ok(!isNeverTouch(".claude/01_development_docs/README.md"));
 });
 
-test("似た名前に広がらない", () => {
-  assert.ok(!isNeverTouch(".claude/harness/environment.md.bak"));
-  assert.ok(!isNeverTouch("docs/.claude/harness/environment.md"));
+test("設計書は台帳だけ追従する", () => {
+  assert.ok(isNeverTouch("docs/設計書/API一覧.md"));
+  assert.ok(!isNeverTouch("docs/設計書/.doc-sync.md"));
+});
+
+test("配り切りは完全一致で、似た名前に広がらない", () => {
+  assert.ok(!isSeedOnce(".claude/harness/environment.md.bak"));
+  assert.ok(!isSeedOnce("docs/.claude/harness/environment.md"));
+  assert.ok(!isSeedOnce(".claude/harness/environment.local.md"));
+});
+
+// ---- apply の経路を実際に通す（単体テストでは担保できない） ----
+// `isSeedOnce` が真でも、**apply が止めなければ上書きは起きる**。
+// 0.28.0 の初版は「NEVER_TOUCH に入れる」で、apply は止まるが
+// **初回を配る経路も消えていた**。両方を1本で押さえる。
+
+import fs from "node:fs";
+import os from "node:os";
+import { spawnSync } from "node:child_process";
+
+const SCRIPT = path.join(
+  ROOT, "plugins", "harness-core", "skills", "harness-update", "scripts", "harness-diff.mjs"
+);
+
+const runApply = (project, rel) =>
+  spawnSync(process.execPath, [SCRIPT, "apply", "--project", project, rel], { encoding: "utf-8" });
+
+test("apply は、現物がある配り切りファイルを上書きしない", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "seed-once-"));
+  try {
+    const rel = ".claude/harness/environment.md";
+    fs.mkdirSync(path.join(dir, ".claude/harness"), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), "# このプロジェクトが記入した実態\n");
+    // report.json はあえて「適用してよい」と言っている状態にする。
+    // ガードが report より先に効くことを見るため。
+    fs.mkdirSync(path.join(dir, ".claude/.harness-update"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".claude/.harness-update/report.json"),
+      JSON.stringify({ idealDir: ".claude/.harness-update/latest", files: [{ file: rel, kind: "template-improvement" }] })
+    );
+
+    const r = runApply(dir, rel);
+    assert.notEqual(r.status, 0, "現物があるのに apply が通ってしまった");
+    assert.match(r.stderr + r.stdout, /配り切り/);
+    assert.equal(
+      fs.readFileSync(path.join(dir, rel), "utf-8"),
+      "# このプロジェクトが記入した実態\n",
+      "現物が書き換わっている"
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("NEVER_TOUCH のファイルは apply が拒否する", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "never-touch-"));
+  try {
+    // report.json は apply の入口で必須。ガードはその後に効く。
+    fs.mkdirSync(path.join(dir, ".claude/.harness-update"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".claude/.harness-update/report.json"),
+      JSON.stringify({ idealDir: ".claude/.harness-update/latest", files: [] })
+    );
+    const r = runApply(dir, ".claude/01_development_docs/01_architecture.md");
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr + r.stdout, /追従対象外/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
