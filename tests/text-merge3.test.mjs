@@ -118,6 +118,34 @@ test("⚠️ 両方がファイルの末尾に足すと衝突する（これが�
     assert.match(v.note, /行の衝突が 1 箇所/);
   }));
 
+test("⚠️ 同じ行の再掲を見落とさない（集合ではなく出現回数で数える）", () =>
+  withWork((work) => {
+    // `!.env.example` の後ろに `.env*` が足されると `.env.example` が無視対象に変わる。
+    // 集合で比べると「その行は既にある」ので増分として報告されず、黙って適用されていた（査読で再現）。
+    const A = [".env*", "!.env.example", "", "# OS", ".DS_Store"].join(NL) + NL;
+    const B = [".env*", "!.env.example", "", "# OS", ".DS_Store", "", "# 追加節", ".env*"].join(NL) + NL;
+    const C = [".env*", "!.env.example", "", "# OS", ".DS_Store"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "auto-merge");
+    assert.ok(v.changes.added.includes(".env*"), `再掲が報告されていない: ${v.note}`);
+    assert.match(v.note, /\.env\*/);
+  }));
+
+test("増減が無いのに中身が違う（並べ替えだけ）なら自動適用しない", () =>
+  withWork((work) => {
+    const A = ["*.log", "!keep.log"].join(NL) + NL;
+    const B = ["!keep.log", "*.log"].join(NL) + NL;
+    const C = ["*.log", "!keep.log"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+  }));
+
+test("lineChanges は出現回数で数える", () => {
+  const c = lineChanges(["a", "b"].join(NL), ["a", "b", "b"].join(NL));
+  assert.deepEqual(c.added, ["b"]);
+  assert.deepEqual(c.deleted, []);
+});
+
 test("lineChanges は空行と前後の空白を数えない", () => {
   const c = lineChanges(["a", "", "  b  "].join(NL), ["a", "b", "", "c"].join(NL));
   assert.deepEqual(c.added, ["c"]);

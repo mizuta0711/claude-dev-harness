@@ -592,21 +592,41 @@ function gitMergeFile(curFile, baseFile, otherFile) {
     return { merged: out, conflicts: 0 };
   } catch (e) {
     // 終了コードは衝突の数。stdout にはマーカー入りの結果が入っている
-    if (typeof e.status === "number" && e.status > 0 && typeof e.stdout === "string") {
+    // 終了コードは**衝突の数**（git は 127 で打ち切る）。**エラーは負値**で、
+    // プロセスの終了コードとしては 255 などになる。それを「衝突 255 箇所」と報告すると、
+    // 存在しない競合の突き合わせを人に求めることになる。
+    if (typeof e.status === "number" && e.status >= 1 && e.status <= 127 && typeof e.stdout === "string") {
       return { merged: e.stdout, conflicts: e.status };
     }
     return null; // git が無い・使えない
   }
 }
 
-/** 行の増減を数える（自動適用の説明責任。`mergeJson3` の `changes` と同じ役目） */
+/**
+ * 行の増減を数える（自動適用の説明責任。`mergeJson3` の `changes` と同じ役目）
+ *
+ * **集合ではなく出現回数で数える。** `.gitignore` では**同じ行の再掲が意味を変える** —
+ * `!.env.example` の後ろに `.env*` がもう1つ足されると、`.env.example` が無視対象に変わる。
+ * 集合で比べると「その行は既にある」ので**増分として報告されず、黙って適用される**（実測で再現）。
+ */
 function lineChanges(before, after) {
-  const b = new Set(before.split("\n").map((l) => l.trim()).filter(Boolean));
-  const a = new Set(after.split("\n").map((l) => l.trim()).filter(Boolean));
-  return {
-    added: [...a].filter((l) => !b.has(l)),
-    deleted: [...b].filter((l) => !a.has(l)),
+  const count = (text) => {
+    const m = new Map();
+    for (const l of text.split("\n").map((x) => x.trim()).filter(Boolean)) {
+      m.set(l, (m.get(l) || 0) + 1);
+    }
+    return m;
   };
+  const b = count(before);
+  const a = count(after);
+  const added = [];
+  const deleted = [];
+  for (const l of new Set([...b.keys(), ...a.keys()])) {
+    const d = (a.get(l) || 0) - (b.get(l) || 0);
+    for (let i = 0; i < d; i++) added.push(l);
+    for (let i = 0; i < -d; i++) deleted.push(l);
+  }
+  return { added, deleted };
 }
 
 /**
@@ -615,15 +635,20 @@ function lineChanges(before, after) {
  * 衝突が残れば `conflict` のまま、**何箇所か**を note に載せて返す。
  */
 function tryTextMerge(rel, aText, bText, cText, work) {
-  const tmp = path.join(work, MERGED_REL, ".3way");
-  fs.mkdirSync(tmp, { recursive: true });
-  const w = (name, text) => {
-    const f = path.join(tmp, name);
-    fs.writeFileSync(f, text, "utf-8");
-    return f;
-  };
-  const r = gitMergeFile(w("current", cText), w("base", aText), w("latest", bText));
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // 一意な名前にする（このリポジトリは複数セッションが同時に触る。固定名だと並行実行が壊し合う）
+  fs.mkdirSync(path.join(work, MERGED_REL), { recursive: true });
+  const tmp = fs.mkdtempSync(path.join(work, MERGED_REL, ".3way-"));
+  let r;
+  try {
+    const w = (name, text) => {
+      const f = path.join(tmp, name);
+      fs.writeFileSync(f, text, "utf-8");
+      return f;
+    };
+    r = gitMergeFile(w("current", cText), w("base", aText), w("latest", bText));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
   if (!r) return null;
 
   if (r.conflicts > 0) {
@@ -632,6 +657,11 @@ function tryTextMerge(rel, aText, bText, cText, work) {
   if (r.merged === cText) return { kind: "already-applied", note: "同じ変更が既に入っている" };
 
   const ch = lineChanges(cText, r.merged);
+  // **増減が無いのに中身が違う ＝ 並べ替えだけ。** `.gitignore` では順序こそが意味なので
+  // （後の行が勝つ）、何が変わったかを言えないまま自動適用しない。
+  if (!ch.added.length && !ch.deleted.length) {
+    return { kind: "conflict", note: "行の順序だけが変わる（何が変わるか言えないので自動適用しない）" };
+  }
   const parts = [];
   if (ch.deleted.length) parts.push(`削除: ${ch.deleted.join(" / ")}`);
   if (ch.added.length) parts.push(`追加: ${ch.added.join(" / ")}`);
@@ -758,7 +788,7 @@ function cmdAnalyze(opts) {
 
 const LABEL = {
   "template-improvement": "テンプレート側の改善（適用を提案）",
-  "auto-merge": "キー単位で統合済み（適用を提案）",
+  "auto-merge": "ファイルより細かい単位で統合済み（適用を提案）",
   "project-local": "プロジェクト固有の改変（保持）",
   conflict: "競合（ユーザー判断）",
   "already-applied": "適用済み（対応不要）",
@@ -813,6 +843,29 @@ function cmdApply(opts) {
 
     // 競合をまとめて上書きさせない（「ローカル改変の無断上書き禁止」の機械的な担保）。
     // 競合は A/B/C を突き合わせてハンク単位で解決し、Edit で書くこと。
+    // **未知の分類は拒否する（既定拒否）。** 分類名は report.json というディスク上の契約で、
+    // 古い版の report を新しい版の apply に食わせると、**どのガードにも当たらず
+    // 「あるべき姿（B）」で上書きしてしまう** — プロジェクト固有の値が無警告で消える。
+    // 実際に `json-merge` → `auto-merge` の改名（0.26.0）でこの穴が開いた。
+    const KNOWN_KINDS = new Set([
+      "template-improvement",
+      "auto-merge",
+      "project-local",
+      "already-applied",
+      "conflict",
+      "template-removed",
+    ]);
+    const kind = byFile.get(rel)?.kind;
+    if (kind === undefined) {
+      fail(`${rel} は report.json にありません。先に analyze を実行してください。`);
+    }
+    if (!KNOWN_KINDS.has(kind)) {
+      fail(
+        `${rel} の分類 "${kind}" は、この版の apply が知らないものです。\n` +
+          `report.json が古い版で作られている可能性があります。analyze をやり直してください。`
+      );
+    }
+
     if (byFile.get(rel)?.kind === "conflict") {
       fail(
         `${rel} は「競合」に分類されています。apply では上書きしません。\n` +
@@ -833,12 +886,12 @@ function cmdApply(opts) {
       );
     }
 
-    // auto-merge は「B で上書き」ではなく「キー単位で統合した結果」を書く（§0-4b）。
+    // auto-merge は「B で上書き」ではなく「細かい単位で統合した結果」を書く（§0-4b・§0-4c）。
     // 統合結果は analyze 時点の現物から作ったものなので、**その後に現物が変わっていたら書かない**
     // （project-local を --force で守っているのと同じ理由。ここだけ無検査で上書きしていた）。
     const entry = byFile.get(rel);
-    const isJsonMerge = entry?.kind === "auto-merge" && report.mergedDir;
-    if (isJsonMerge && entry.currentHash) {
+    const isAutoMerge = entry?.kind === "auto-merge" && report.mergedDir;
+    if (isAutoMerge && entry.currentHash) {
       const now = hashOf(readText(path.join(opts.project, rel)));
       if (now !== entry.currentHash) {
         fail(
@@ -847,7 +900,7 @@ function cmdApply(opts) {
         );
       }
     }
-    const src = isJsonMerge
+    const src = isAutoMerge
       ? path.join(opts.project, report.mergedDir, rel)
       : path.join(idealDir, rel);
     const content = readText(src);
