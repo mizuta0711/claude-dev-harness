@@ -109,6 +109,13 @@ docs 影響: あり（guide/運用ガイド.md — §3-2b を新設・§2-1 に 
 > 据え置き: `diagrams/04_スキル実行シーケンス図.md`（表の軸は**起動するエージェント**で、`tech Phase{n}` も `code-reviewer` のみ）。
 > `guide/セットアップガイド.md:229`・`guide/入門ガイド.md`（ゲート数は不変）・`docs/background/`（経緯の記録）。
 > `templates/base/CLAUDE.md:22`・`:32`・`README.md:183` は上記のとおりテンプレート層・公開面の据え置き。
+>
+> **フックの変更（`session-start-context.js`）も据え置き。** `session-start-context` を
+> `docs/` `README.md` `templates/` で grep して当たった6箇所を確かめたが、
+> **出力の内容を列挙している文書は無かった**（`diagrams/05` は発火条件と止められるかの表、
+> `reference/harness設定契約` は設定キーの消費者、`guide/セットアップガイド:136` は
+> 「ブランチ・未プッシュ数・**進行中の設計書**」という粒度）。
+> **今回の追加はその「進行中の設計書」の状態欄に1項目足すもの**なので、どの記述も古くならない。
 
 ## [0.22.3] — テンプレートの `CLAUDE.md` を 300 行目安の内側へ戻す（H54）
 
