@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { isNeverTouch, isSeedOnce } = await import(
+const { isNeverTouch, isSeedOnce, seedOnceVerdict, classify } = await import(
   pathToFileURL(
     path.join(ROOT, "plugins", "harness-core", "skills", "harness-update", "scripts", "harness-diff.mjs")
   ).href
@@ -68,12 +68,62 @@ test("docs の置き場（.gitkeep）は配り切りで、中身は触らない"
   assert.ok(isNeverTouch("docs/reviews/20261010_x.md"));
 });
 
+// ---- 配り切りが「本当に配られるか」を classify ごしに押さえる ----
+// **述語（isSeedOnce）が真でも、配られるとは限らない。**
+// 0.31.1 の初版は述語だけをテストしており、`classify` が
+// `project-local`（＝プロジェクトが消した・保持）を返すことを見逃した。
+// その結果 baseline が 0.27.0 以降の**5プロジェクトで1つも配られなかった**。
+
+test("baseline に入っている配り切りは、現物が無ければ配られる（project-local にしない）", () => {
+  // A（baseline）に有り・B（最新）に有り・C（現物）に無し。
+  // classify はこれを「プロジェクト側で削除された」と読むので、通してはいけない。
+  assert.equal(classify("", "", null).kind, "project-local");
+
+  // 置き場そのものが無ければ配る
+  const v = seedOnceVerdict("docs/features/planned/.gitkeep", path.join(ROOT, "tests", "__no_such_project__"));
+  assert.equal(v.kind, "template-improvement");
+});
+
+test("置き場が実在するなら .gitkeep は配らない（消したものを再提案しない）", () => {
+  // `.gitkeep` は「空ディレクトリを git に載せる」ためのもの。
+  // 中身があって消したプロジェクト（実測: engineer-potal / skillup_mock）へ出し続けない。
+  // ROOT/tests は実在するディレクトリなので、その .gitkeep は不要と判定されるべき。
+  assert.equal(seedOnceVerdict("tests/.gitkeep", ROOT), null);
+});
+
+test("配り切りで .gitkeep 以外は、置き場の有無を見ずに配る", () => {
+  // environment.md はファイルそのものが要る（CLAUDE.md が @ で読み込む）。
+  // 「ディレクトリがあるから不要」にはならない。
+  const v = seedOnceVerdict(".claude/harness/environment.md", ROOT);
+  assert.equal(v.kind, "template-improvement");
+});
+
 test("配り切りの .gitkeep は docs 配下だけ", () => {
   // `.gitkeep` ならどこでも配る、にはしない（他の層の所有境界を崩す）。
   assert.ok(!isSeedOnce(".claude/01_development_docs/.gitkeep"));
   assert.ok(!isSeedOnce(".gitkeep"));
   // 似た名前へ広がらない
   assert.ok(!isSeedOnce("docs/features/planned/.gitkeep.bak"));
+  // **`.gitkeep` はファイル名の全体でなければならない。**
+  // 初版は `/^docs\/.*\.gitkeep$/` で、`foo.gitkeep` 型にも当たっていた。
+  for (const rel of [
+    "docs/features/foo.gitkeep",
+    "docs/reviews/sub/not.gitkeep",
+    "docs/features/pending/x_.gitkeep",
+  ]) {
+    assert.ok(!isSeedOnce(rel), `${rel} は配り切りではない`);
+  }
+  // 逆に、除外からも漏れていてはいけない
+  assert.ok(isNeverTouch("docs/features/foo.gitkeep"));
+  assert.ok(isNeverTouch("docs/reviews/sub/not.gitkeep"));
+});
+
+test("除外と配り切りの両方に当たるときは、除外が勝つ", () => {
+  // `docs/設計書/.gitkeep` は NEVER_TOUCH（台帳以外の設計書）と SEED_ONCE の両方に当たる。
+  // analyze も apply も `isNeverTouch` を先に見るので除外が勝つ。
+  // **テンプレートには存在しないので実害は無いが、取り決めが無いと次に触る人が迷う。**
+  assert.ok(isNeverTouch("docs/設計書/.gitkeep"));
+  assert.ok(isSeedOnce("docs/設計書/.gitkeep"));
 });
 
 test("配り切りは完全一致で、似た名前に広がらない", () => {

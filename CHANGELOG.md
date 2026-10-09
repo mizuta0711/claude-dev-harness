@@ -52,6 +52,40 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.31.2] — 0.31.1 の修正が5プロジェクトで効いていなかった（査読で差し戻し）
+
+**0.31.1 は push していない。** 別セッションの査読が**差し戻しを出した**ので、同じ H62 の続きとして直した。
+
+**何が足りなかったか。** 除外（`NEVER_TOUCH`）から `.gitkeep` を外しただけでは配られない。
+`classify` は **baseline（A）に入っていて現物（C）が無いと `project-local`
+（「プロジェクト側で削除された」＝保持）を返す**ため、
+**配り始めた版以降の baseline を持つプロジェクトには永久に届かない**。
+
+実測（7プロジェクトの `harness-baseline.json` の `templatesCommit` を `merge-base` で判定）:
+**5プロジェクトが baseline 0.27.0 以降**（appcraft / engineer-potal / skillup_mock / CommSim /
+SimplePhone）で、`docs/features/planned/.gitkeep` が `project-local` になり**1件も配られなかった**。
+届いていたのは RunningGame（baseline 無し＝2点比較）と bookmark-app（baseline 0.27.0 未満）の2つだけ。
+
+**テストが見逃した理由。** 0.31.1 のテストは**述語（`isSeedOnce` / `isNeverTouch`）しか見ていなかった**。
+**述語が真でも配られるとは限らない。** `classify` を A=B・C=null で通すケースが無かった。
+
+### 直したこと
+
+- **配り切りは `classify` を通さない。** 現物が無い配り切りは `seedOnceVerdict()` が決める
+- **`.gitkeep` は「置き場が実在するなら配らない」。** あれは空ディレクトリを git に載せるための
+  ものなので、**中身があるプロジェクトは消しているのが正しい**（実測: engineer-potal と
+  skillup_mock が該当）。無条件に配り直すと**再提案が止まらなくなる**
+- **`.gitkeep` の正規表現にファイル名の境界を入れた** — 初版は `foo.gitkeep` 型にも当たっていた
+  （`/^docs\/.*\.gitkeep$/` → `/^docs\/(?:.*\/)?\.gitkeep$/`）
+- `environment.md` にあった同じ潜在欠陥（プロジェクトが消すと配り直せない）も同時に解消した
+- **テスト4件追加（計297件合格）** — `classify` ごしの実走・置き場が実在する場合・
+  `.gitkeep` 以外の配り切り・除外と配り切りの両方に当たるときの優先（除外が勝つ）
+
+**実測で確認した**: 修正後は**7プロジェクトすべてに `docs/features/planned/.gitkeep` が配られ**、
+置き場が実在するプロジェクトへの再提案は出ない。
+
+docs 影響: あり（harness-update/SKILL.md — 追従対象外と配り切りの表が実装と食い違っていた ／ background/01_統合前後の差異.md — 「届かない（意図的）」が `.gitkeep` について誤りになった ／ templates/README.md ／ diagrams/03_役割比較図.md）
+
 ## [0.31.1] — `docs/` の置き場が既存プロジェクトへ永久に届かなかった（H62）
 
 `harness-diff.mjs` の `NEVER_TOUCH` が `docs/features/` と `docs/reviews/` を

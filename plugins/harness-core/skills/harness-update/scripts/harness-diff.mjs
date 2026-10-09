@@ -56,8 +56,8 @@ const NEVER_TOUCH = [
   // **`.gitkeep` は除外しない。** あれはプロジェクトの資産ではなく、
   // **ハーネスが規定する置き場そのもの（骨格）**である。ディレクトリを丸ごと除外すると、
   // 後から足した置き場が**既存プロジェクトへ永久に届かない** → 下の `SEED_ONCE` で配り切る。
-  /^docs\/features\/(?!.*\.gitkeep$)/,
-  /^docs\/reviews\/(?!.*\.gitkeep$)/,
+  /^docs\/features\/(?!(?:.*\/)?\.gitkeep$)/,
+  /^docs\/reviews\/(?!(?:.*\/)?\.gitkeep$)/,
   /^docs\/設計書\/(?!\.doc-sync\.md$)/, // 台帳以外の設計書は実態なので触らない
   // 設計方針層。骨格は初回生成時のみ配り、以後の中身はプロジェクトが育てる。
   // README.md だけはテンプレ所有（運用ルールと推奨軸メニュー）なので追従させる。
@@ -151,10 +151,34 @@ function walk(root, base = root, out = []) {
 // 0.27.0 で `docs/features/planned/` を足したのに、`NEVER_TOUCH` が
 // `docs/features/` を丸ごと除外していたため、**既存7プロジェクトの 0/7 に届いていなかった**
 // （`plan-milestones` / `new-feature` / `design-review` の3スキルが指示する置き場が無い状態）。
-const SEED_ONCE = [/^\.claude\/harness\/environment\.md$/, /^docs\/.*\.gitkeep$/];
+const SEED_ONCE = [/^\.claude\/harness\/environment\.md$/, /^docs\/(?:.*\/)?\.gitkeep$/];
 
 function isSeedOnce(rel) {
   return SEED_ONCE.some((re) => re.test(rel));
+}
+
+/**
+ * 配り切りのファイルが**プロジェクトに無い**ときの扱いを決める。
+ *
+ * **`classify` には任せられない。** あれは baseline（A）に入っていて現物（C）が無いと
+ * `project-local`（「プロジェクト側で削除された」＝保持）を返すため、
+ * **baseline が「配り始めた版」以降のプロジェクトには永久に届かない**
+ * （0.31.1 の初版がこれを踏んだ。`docs/features/planned/.gitkeep` は
+ * baseline 0.27.0 以降の5プロジェクトで `project-local` になり、1つも配られなかった）。
+ * **配り切りの意味は「現物が無ければ配る」**であって、A の有無とは関係しない。
+ *
+ * ただし**消したものを無条件に配り直すと再提案が止まらない**。`.gitkeep` は
+ * 「空ディレクトリを git に載せる」ためのものなので、**置き場が実在するなら不要**である
+ * （実測: engineer-potal と skillup_mock は中身があるので `.gitkeep` を消している）。
+ *
+ * @returns 配るときは verdict、配らないときは null
+ */
+function seedOnceVerdict(rel, projectDir) {
+  if (/(?:^|\/)\.gitkeep$/.test(rel)) {
+    if (fs.existsSync(path.join(projectDir, path.dirname(rel)))) return null;
+    return { kind: "template-improvement", note: "配り切り: 置き場そのものが無いので配る" };
+  }
+  return { kind: "template-improvement", note: "配り切り: 現物が無いので配る" };
 }
 
 function isNeverTouch(rel) {
@@ -771,7 +795,9 @@ function cmdAnalyze(opts) {
     // 無いときだけ比較に乗せる = 初回は `template-improvement` として配られる。
     if (isSeedOnce(rel) && c !== null) continue;
 
-    let verdict = classify(a, b, c);
+    // 現物が無い配り切りは **`classify` を通さない**（通すと `project-local` になり配られない）。
+    let verdict =
+      isSeedOnce(rel) && c === null ? seedOnceVerdict(rel, opts.project) : classify(a, b, c);
     if (!verdict || verdict.kind === "unchanged") continue;
 
     // JSON はキー単位で3方向マージする（§0-4b）。baseline が無いときは従来どおり。
@@ -1087,6 +1113,7 @@ export {
   classify,
   isNeverTouch,
   isSeedOnce,
+  seedOnceVerdict,
   mergeJson3,
   mergeArray3,
   tryJsonMerge,
