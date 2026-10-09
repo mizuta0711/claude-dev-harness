@@ -3,14 +3,17 @@ paths:
   - "prisma/**"
   - "tools/export-to-sql.ts"
   - "tools/scripts/generate-table-docs.ts"
-  - "src/lib/**"
-  - "src/app/api/**"
+  - "src/lib/db.ts"
+  - "src/lib/services/**"
   - "src/features/**/services/**"
 ---
 
 <!-- paths を `prisma/schema.prisma` だけにすると、**DB を触るコードを書くときに発火しない**
-     （スキーマを変えずにクエリだけ足す場面・新しい Service を一から作る場面）。
-     実際に `new PrismaClient()` を各所で書く取りこぼしが出たため、DB に触る層まで広げている。 -->
+     （スキーマを変えずにクエリだけ足す場面）。そこで **DB に触る層**（クライアントの定義と Service）
+     まで広げている。**`src/lib/**` や `src/app/api/**` のように層をまたぐ glob は置かない** —
+     DB と関係のない編集で 60行超の手順がロードされる。
+     API Route は Service を経由する規約なので、route から直接 Prisma は触らない。
+     一から作るときの案内は `typescript.md`（`src/**` で必ず発火する）に置いてある。 -->
 
 # Prisma / DB のルール
 

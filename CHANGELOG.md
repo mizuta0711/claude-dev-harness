@@ -111,14 +111,25 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 Next.js 側は `new PrismaClient()`）。**各プロジェクトの `CLAUDE.md` へ1行ずつ逃がすのは場当たり**なので、
 `paths` 側を広げた。
 
-| ファイル | 追加した glob |
-|---|---|
-| `templates/android/.claude/rules/compose-ui.md` | `{{MODULE_NAME}}/src/main/**/*.kt` |
-| `templates/android/.claude/rules/android-data.md` | `{{MODULE_NAME}}/src/main/**/*.kt` |
-| `templates/nextjs/.claude/rules/prisma.md` | `prisma/**` / `src/lib/**` / `src/app/api/**` / `src/features/**/services/**` |
+**ただし、層ごとのルールの glob を広げるのは誤りだった**（査読 A-1・A-4）。
+`compose-ui.md` と `android-data.md` に同じ `src/main/**/*.kt` を入れると、
+**`.kt` を1本触るだけで層の規約が全部ロードされ、`paths` 条件の意味が無くなる**
+（しかも同じコミットの `core.md` が「`paths` 条件で必要なときだけ読まれるので総量が下がる」と書いており自己矛盾だった）。
+
+**採った形: 穴は「常時発火するルール」から案内して埋める。**
+
+| | 常時発火する側 | 置いたもの |
+|---|---|---|
+| android | `kotlin.md`（`src/**/*.kt`） | 「画面なら `compose-ui.md`、データ層なら `android-data.md` を**自分で開く**」の対応表 |
+| nextjs | `typescript.md`（`src/**/*.{ts,tsx}`） | 同じ形の対応表（**DB に触るなら `prisma.md`**） |
+
+層ごとのルールの `paths` は元のまま（`**/ui/**` / `**/data/**`）。`prisma.md` だけは
+**DB に触る層**（`src/lib/db.ts` / `*/services/**`）へ広げた — 層をまたぐ `src/lib/**` や
+`src/app/api/**` は置かない（DB と関係のない編集で 60行超の手順がロードされる。
+API Route は Service を経由する規約なので route から Prisma を直接触らない）。
 
 `prisma.md` には **`new PrismaClient()` をあちこちで書かない**（`src/lib/db.ts` の1インスタンスを使う）を足した。
-**広げるだけでは、そもそも書いていない規約は拾えない。**
+**広げるだけでは、そもそも書いていない規約は拾えない**（android には同趣旨の節が既にあり、**Next.js 側だけ欠けていた**）。
 
 ### 副作用の追跡
 
@@ -127,9 +138,25 @@ Next.js 側は `new PrismaClient()`）。**各プロジェクトの `CLAUDE.md` 
 （**遷移先・エンドポイントは差分に現れない**）。`design-review` の観点にしかなく、
 **実装を委譲する時点では読まれていなかった**。
 
-docs 影響: なし（`pre-adb-uninstall-guard` の `deny` は `diagrams/05` と
-`reference/harness設定契約.md` が既に正しく書いており、誤っていたのはテンプレートと SKILL.md の側だけ。
-`core.md` の運用ルールを列挙している文書は無い）
+### 査読で直した3件
+
+このコミットは**別エージェントの査読を通してから push した**（指摘9件・中3／低6）。
+**中3件はすべて「直したコミットが別の誤りを残した」形**だった。
+
+| | 指摘 | 直したこと |
+|---|---|---|
+| A-1 | 層ごとのルールの `paths` 拡張が過剰（上記） | 常時発火する側からの案内に変えた |
+| A-2 | **`docs/diagrams/04` が「`.claude/rules/` は手動で読まない」のまま**で、このコミットと正面衝突 | あの行を2つの穴つきに書き換えた。**`docs 影響: なし` の申告が誤っていた** |
+| A-3 | **`post-edit-lint` は `npx` を使っていない**（`node_modules/.bin/eslint` を直叩き。`npx` 経由は毎編集に約0.9秒乗る）。**`post-edit-lint` の対象を直す行で、同じ行の別の誤りを残した** | `environment.md` の記述を実装に合わせた |
+
+**`docs 影響` の申告は、直した対象だけを grep しても足りない。** A-2 は
+`post-edit-lint` / `uninstall` / `00_project` では当たらず、**`自動ロード` で当たった**。
+**変えた「主張」の言葉で grep する**必要がある。
+
+docs 影響: あり（`diagrams/04_スキル実行シーケンス図.md` — `.claude/rules/` の自動ロードの
+説明がこのコミットと矛盾するため。対応ハーネス版も 0.31.0 へ上げた）／
+`pre-adb-uninstall-guard` の `deny` は `diagrams/05` と `reference/harness設定契約.md` が
+既に正しく、誤っていたのはテンプレートと SKILL.md の側だけだった
 
 ## [0.30.0] — 台帳に「設計書を伴う作業すべて」を載せる
 

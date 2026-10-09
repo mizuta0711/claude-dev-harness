@@ -86,6 +86,7 @@ src/
 - **`/harness-nextjs:browser-test` は UI 変更を含む場合に実施する**（M / L フローの「動作確認」に相当）
 - **`pre-migrate-backup` フックは `prisma migrate` の前にバックアップを取り、
   失敗・未設定なら migrate をブロックする**（`tools/export-to-sql.ts`）
-- `post-edit-lint` フックが編集直後に `npx eslint --fix` を走らせる（非ブロッキング）。
+- `post-edit-lint` フックが編集直後に `eslint --fix` を走らせる（非ブロッキング。
+  **`npx` は使わず `node_modules/.bin/eslint` を直叩きする** — 解決処理のぶん毎編集に約0.9秒乗るため）。
   **対象を決めるのは `harness.config.json` の `paths.source` の glob**
   （キーが無いときだけ `src/**` を既定とする）。**固定の範囲だと思わないこと**

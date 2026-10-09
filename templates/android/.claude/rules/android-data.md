@@ -1,11 +1,9 @@
 ---
 paths:
   - "{{MODULE_NAME}}/src/main/**/data/**"
-  - "{{MODULE_NAME}}/src/main/**/*.kt"
 ---
 
-<!-- paths を `**/data/**` だけにすると、**リポジトリを一から作るときに発火しない**。
-     理由は compose-ui.md の同じコメントにある。 -->
+<!-- paths を広げて発火範囲を稼がないこと。理由は compose-ui.md の同じコメントにある。 -->
 
 # データ層（永続化・同期）のルール
 

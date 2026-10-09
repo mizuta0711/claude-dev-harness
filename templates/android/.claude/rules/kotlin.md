@@ -5,6 +5,19 @@ paths:
 
 # Kotlin 実装のルール
 
+<!-- このファイルは `src/**/*.kt` で**必ず発火する**。層ごとの規約（compose-ui / android-data）は
+     `**/ui/**` `**/data/**` 条件なので、**その層を一から作るときは発火しない**。
+     だから下の案内をここに置いている（層の規約をここへ写すのではなく、開かせる）。 -->
+
+## 層ごとの規約は別ファイルにある — 触る層のものを開く
+
+| 書くもの | 開くファイル |
+|---|---|
+| 画面・Composable・ViewModel・テーマ | `.claude/rules/compose-ui.md` |
+| リポジトリ・DataSource・Room・DataStore | `.claude/rules/android-data.md` |
+
+**新しいパッケージを切って一から作るときは、自動ロードされないので自分で開く。**
+
 ## レイヤ分離（最重要）
 
 - **依存の向きは `ui` → `domain` ← `data` の一方向。** `domain` から `ui` / `data` を参照しない
