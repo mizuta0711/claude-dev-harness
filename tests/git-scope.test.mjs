@@ -177,3 +177,84 @@ test("H47: 行継続（`git \<改行> add -A`）を読む", () => {
   const ps = ["git `", "  add -A"].join("\n");
   assert.equal(scope.isBlockedAdd(ps, { shell: "powershell" }), true);
 });
+
+
+// ---- H50: ヒアドキュメント／ヒアストリングの本文で走査を誤る ----
+// **本文はデータであってコマンドではない。** ところが本文の `"` が奇数個あると
+// 引用符の判定が反転し、**後続の `&& git add -A` を見失って deny がすり抜けた**（実測）。
+// 逆に本文を飛ばしすぎると `-- <path>` を見失い、**正常なコミットで警告が鳴る**。
+// **どちらの方向にも間違う**ので、すり抜けと誤警報を対にして押さえる。
+
+// Claude Code 標準のコミット形。`<<` が**二重引用符の内側**（コマンド置換の中）に現れる。
+const HEREDOC_ODD_QUOTES = [
+  `git commit -m "$(cat <<'EOF'`,
+  `fix: "a" と " を含む本文`,
+  "EOF",
+  `)" -- docs/x.md && git add -A`,
+].join("\n");
+
+test("H50: 本文の奇数個の `\"` で後続の `git add -A` を見失わない（bash）", () => {
+  assert.equal(scope.isBlockedAdd(HEREDOC_ODD_QUOTES), true);
+  assert.equal(guard.isBlockedAdd(HEREDOC_ODD_QUOTES), true);
+});
+
+test("H50: 同じ形で `add` が無ければ鳴らない（誤警報を出さない）", () => {
+  const cmd = [`git commit -m "$(cat <<'EOF'`, `本文に " が1つ`, "EOF", `)" -- docs/x.md`].join("\n");
+  assert.equal(scope.isBlockedAdd(cmd), false);
+  assert.equal(guard.isBlockedAdd(cmd), false);
+  // `-- <path>` を見失っていないこと（見失うと「パス指定なし」の警告が鳴る）
+  assert.equal(scope.isUnscopedCommit(cmd), false);
+  assert.equal(guard.isUnscopedCommit(cmd), false);
+});
+
+test("H50: 本文に書かれた禁止コマンドは拾わない（本文はデータ）", () => {
+  const cmd = [`git commit -m "$(cat <<'EOF'`, "git add -A は使わない", "EOF", `)" -- a.md`].join("\n");
+  assert.equal(scope.isBlockedAdd(cmd), false);
+  assert.equal(guard.isBlockedAdd(cmd), false);
+});
+
+test("H50: 終わりの行は区切り語そのものでなければならない", () => {
+  // 字下げした `EOF` はシェルでも終端ではない。終端と誤判定すると
+  // **そこから先の本文をコマンドとして読んでしまう**。
+  const cmd = [`git commit -m "$(cat <<'EOF'`, "   EOF", "EOF", `)" -- a.md && git add -A`].join("\n");
+  assert.equal(scope.isBlockedAdd(cmd), true);
+  assert.equal(guard.isBlockedAdd(cmd), true);
+  assert.equal(scope.isUnscopedCommit(cmd), false);
+});
+
+test("H50: `<<-` はタブだけを落とす", () => {
+  const cmd = [`git commit -m "$(cat <<-'EOF'`, "\tEOF", `)" -- a.md && git add -A`].join("\n");
+  assert.equal(scope.isBlockedAdd(cmd), true);
+  assert.equal(guard.isBlockedAdd(cmd), true);
+});
+
+test("H50: 終端の次の行にある `git add -A` は別のコマンドとして読む", () => {
+  // 本文を潰すときに終端行の改行まで消すと、前後のコマンドが1つに融合して見落とす。
+  const cmd = [`git commit -F - -- a.md <<'EOF'`, "msg", "EOF", "git add -A"].join("\n");
+  assert.equal(scope.isBlockedAdd(cmd), true);
+  assert.equal(guard.isBlockedAdd(cmd), true);
+});
+
+test("H50: PowerShell のヒアストリングでも同じ（すり抜けと誤警報の両方）", () => {
+  const ps = { shell: "powershell" };
+  // 本文の `"` が奇数個 ＋ 閉じた後ろに `; git add -A`
+  const leak = [`git commit -m @"`, `本文に " が奇数`, `"@ -- a.md; git add -A`].join("\n");
+  assert.equal(scope.isBlockedAdd(leak, ps), true);
+  assert.equal(guard.isBlockedAdd(leak, ps), true);
+  assert.equal(scope.isUnscopedCommit(leak, ps), false);
+
+  // 本文の禁止語は拾わない
+  const body = [`git commit -m @'`, "git add -A と書いた", `'@ -- a.md`].join("\n");
+  assert.equal(scope.isBlockedAdd(body, ps), false);
+  assert.equal(guard.isBlockedAdd(body, ps), false);
+  assert.equal(scope.isUnscopedCommit(body, ps), false);
+
+  // 行の**途中**の `"@` では終わらない（行頭だけが終端）
+  const mid = [`git commit -m @"`, `あと "@ は本文`, `"@ -- a.md; git add -A`].join("\n");
+  assert.equal(scope.isBlockedAdd(mid, ps), true);
+  assert.equal(guard.isBlockedAdd(mid, ps), true);
+
+  // パス指定が無ければ、ヒアストリングでも警告は出る（安全弁を殺していない）
+  const unscoped = [`git commit -m @'`, "msg", `'@`].join("\n");
+  assert.equal(scope.isUnscopedCommit(unscoped, ps), true);
+});

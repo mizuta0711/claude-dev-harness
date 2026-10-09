@@ -57,9 +57,126 @@ function dialect(opts) {
  * @param {{shell?: "bash"|"powershell"}} [opts]
  * @returns {{index: number, text: string}[]} index はコマンド語の開始位置
  */
+/**
+ * ヒアドキュメント（`<<EOF`）と PowerShell のヒアストリング（`@"…"@`）の**本文を空白へ潰す**。
+ * **長さは変えない**（インデックスが呼び出し側の契約なので、位置をずらせない）。改行は残す。
+ *
+ * **なぜ本文を消すのか**（H50）。本文は**データであってコマンドではない**。
+ * このリポジトリでは CLAUDE.md / CHANGELOG / コミットメッセージをヒアドキュメントで書くのが
+ * 常態で、そこには禁止コマンド名が頻出する。
+ *
+ * **なぜ走査の途中で飛ばすのではなく、先に潰すのか。**
+ * Claude Code 標準のコミットは `git commit -m "$(cat <<'EOF' … EOF\n)" -- <path>` の形で、
+ * **`<<` が二重引用符の内側（コマンド置換の中）に現れる**。走査の途中で見ると
+ * 「引用符の中なので `<<` を見ない」か「コマンドを途中で切る」の二択になり、
+ * 前者は**本文の `"` が奇数個あるだけで引用符の判定が反転して後続を見失い**
+ * （実測: `… && git add -A` が deny をすり抜けた）、
+ * 後者は `git commit -m "$(cat` だけが1コマンドに見えて**正しい `-- <path>` を見失う**
+ * （誤警報。§8「安全弁は正常な操作で鳴らないことが要件」に触れる）。
+ * **先に潰せばどちらも起きない** — 引用符の数も区切り記号も本文から消える。
+ */
+function maskHereBodies(s, ps) {
+  const out = s.split("");
+  const blank = (from, to) => {
+    for (let k = from; k < to && k < out.length; k++) if (out[k] !== "\n") out[k] = " ";
+  };
+  let sq = false; // シングルクォートの中（展開されないので `<<` はヒアドキュメントではない）
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+
+    // PowerShell のヒアストリング。`@"` / `@'` の直後が改行のときだけ。
+    if (ps && !sq && c === "@" && (s[i + 1] === '"' || s[i + 1] === "'")) {
+      const q = s[i + 1];
+      const nl = s.indexOf("\n", i + 2);
+      if (nl >= 0 && s.slice(i + 2, nl).trim() === "") {
+        // **終端規則はヒアドキュメントと違う。** PowerShell は `"@` が**行頭にあれば終端**で、
+        // **後ろに文字が続いてよい**（`"@ -- a.md; git add -A` のように同じ行で式が続く）。
+        // 行全体の一致で探すと終端を見失い、**本文が文字列の終わりまで伸びて
+        // 後続の `; git add -A` ごと消える**（実測: deny がすり抜けた）。
+        //
+        // **開き（`@"`）と閉じ（`"@`）は残す。** ヒアドキュメントと違って残す方が正しい ——
+        // 引用符が開いたままになるので、**潰した本文の改行がコマンドの区切りとして読まれない**。
+        // 両方潰すと改行が区切りになり、`git commit -m` と `-- a.md` が別のコマンドへ割れて
+        // **パス指定を見失う**（誤警報）。**片方だけ残すのが最悪**で、引用符の数が合わず
+        // **後続の `; git add -A` ごと飲み込む**。どちらも実測で踏んだ。
+        const closeAt = findHereStringEnd(s, nl + 1, q + "@");
+        blank(nl + 1, closeAt);
+        i = closeAt + 1;
+        continue;
+      }
+    }
+
+    if (c === "'" && !ps) {
+      sq = !sq;
+      continue;
+    }
+    if (sq) continue;
+
+    if (c === "<" && s[i + 1] === "<") {
+      const m = /^<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\w]*))/.exec(s.slice(i));
+      if (m) {
+        const delim = m[2] || m[3] || m[4];
+        const bodyStart = s.indexOf("\n", i + m[0].length);
+        if (bodyStart < 0) return out.join("");
+        // **導入部（`<<'EOF'`）も潰す。** 残すとコマンド文に `<<'EOF'` が居座り、
+        // `-- <path>` の後ろに来たときに**パス指定として読まれうる**
+        // （`git commit -F - -- CLAUDE.md <<'EOF'` のパス指定が2つに見える）。
+        const end = findTerminator(s, bodyStart + 1, delim, m[1] === "-");
+        blank(i, end);
+        i = end - 1;
+      }
+    }
+  }
+  return out.join("");
+}
+
+/**
+ * 区切り語の行の**終わり**（次の行の先頭）を返す。見つからなければ文字列の終わり。
+ *
+ * **終わりの行は区切り語そのものでなければならない。**
+ * 以前は `line.trim() === delim` で前後の空白をすべて許していたが、
+ * シェルは**行頭から区切り語だけ**の行しか終端と見ない（`<<-` はタブだけを落とす。
+ * 空白は落とさない）。許しすぎると、本文の中の字下げした `EOF` で
+ * **本文が早く終わったと誤判定し、そこから先の本文をコマンドとして読んでしまう**。
+ */
+/**
+ * PowerShell のヒアストリングの本文の**終わり**を返す。
+ *
+ * **行頭の `"@` / `'@` が終端**で、その**2文字の開始位置**を返す
+ * （後ろに式が続くため、行末まで飛ばしてはいけない）。見つからなければ文字列の終わり。
+ */
+function findHereStringEnd(s, from, closer) {
+  let pos = from;
+  while (pos <= s.length) {
+    if (s.startsWith(closer, pos)) return pos;
+    const nl = s.indexOf("\n", pos);
+    if (nl < 0) break;
+    pos = nl + 1;
+  }
+  return s.length;
+}
+
+function findTerminator(s, from, delim, stripTabs) {
+  let pos = from;
+  while (pos <= s.length) {
+    let nl = s.indexOf("\n", pos);
+    const last = nl < 0;
+    if (last) nl = s.length;
+    let line = s.slice(pos, nl).replace(/\r$/, "");
+    if (stripTabs) line = line.replace(/^\t+/, "");
+    if (line === delim) return last ? s.length : nl + 1;
+    if (last) break;
+    pos = nl + 1;
+  }
+  return s.length;
+}
+
 function scanCommands(cmd, opts) {
   const { escape, separators } = dialect(opts);
-  const s = String(cmd || "");
+  // **ヒアドキュメント／ヒアストリングの本文は先に空白へ潰す**（H50。長さは変わらない）。
+  // 走査の途中で飛ばすと、引用符の中に現れた `<<` を扱えない。理由は `maskHereBodies` を見ること。
+  const s = maskHereBodies(String(cmd || ""), (opts && opts.shell) === "powershell");
   const out = [];
   let start = 0;
   let quote = null;
@@ -86,36 +203,6 @@ function scanCommands(cmd, opts) {
     if (c === "'" || c === '"') {
       quote = c;
       continue;
-    }
-    // ヒアドキュメントの本文は**データであってコマンドではない**。
-    // このリポジトリでは CLAUDE.md / CHANGELOG / コミットメッセージを
-    // ヒアドキュメントで書くのが常態で、そこには禁止コマンド名が頻出する。
-    // （実際、本ガードの導入コミット自身がこれで止まった）
-    if (c === "<" && s[i + 1] === "<") {
-      const m = /^<<-?\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\w]*))/.exec(s.slice(i));
-      if (m) {
-        const delim = m[1] || m[2] || m[3];
-        const bodyStart = s.indexOf("\n", i + m[0].length);
-        if (bodyStart < 0) {
-          flush(s.length);
-          return out;
-        }
-        // 終端行（前後の空白を除いて区切り語と一致する行）まで飛ばす
-        const lines = s.slice(bodyStart + 1).split("\n");
-        let consumed = 0;
-        let found = false;
-        for (const line of lines) {
-          consumed += line.length + 1;
-          if (line.trim() === delim) {
-            found = true;
-            break;
-          }
-        }
-        flush(i);
-        start = bodyStart + 1 + (found ? consumed : s.length);
-        i = start - 1;
-        continue;
-      }
     }
     if (c === "#") {
       // 行コメント。行末までは読まない
