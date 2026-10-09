@@ -4,7 +4,7 @@
  * matcher: startup|resume|clear|compact（`hooks.json` と一致させること）
  *
  * 毎回ユーザーが「今どこまで進んでいるか」を説明しなくて済むように、
- * ブランチ・未プッシュ数・未コミット数・進行中の機能設計書・次のマイルストーンを additionalContext に載せる。
+ * ブランチ・未プッシュ数・未コミット数・進行中の機能設計書・次にやることを additionalContext に載せる。
  *
  * harness-core は .claude/harness.config.json を契約として動くため、
  * **このフックだけは config 不在・不正を警告する**（他の hook は黙って素通りする / 04仕様 §4-1）。
@@ -85,11 +85,6 @@ function nextMilestone() {
     live.push(hidden ? "" : l);
   }
 
-  const head = live.findIndex(
-    (l) => /^#{1,6} /.test(l) && (l.includes("計画") || l.includes("マイルストーン"))
-  );
-  if (head < 0) return null;
-
   const isSeparator = (l) =>
     /^\s*\|/.test(l) &&
     l
@@ -98,7 +93,31 @@ function nextMilestone() {
       .split("|")
       .every((c) => /^\s*:?-+:?\s*$/.test(c));
 
-  // 見出しから次の見出しまでの間で、区切り行を探し、その後の最初の中身のある行を返す
+  // **候補の見出しを全部試す。** 最初の1つだけを見ると2つの壊れ方をする（査読で実測）:
+  //   ①`## 今後の計画` のような**別の見出しを誤って拾い**、間違った行を自信たっぷりに出す
+  //   ②テンプレート追従の途中で「計画」（空）と「マイルストーン」（行あり）が併存すると、
+  //     空の方だけを見て**黙って何も出さなくなる**
+  //
+  // **「計画」は行頭に錨を打つ。** 日本語の台帳には `## 今後の計画` `## リリース計画` が
+  // 普通に出てくるので、部分一致にすると**本物の表より先にそちらを拾う**（実測で再現）。
+  // 一方 `マイルストーン` は 0.27.0 から前置修飾（`## 開発マイルストーン`）を許しており、
+  // **既存プロジェクトがそう書いている可能性がある**ので緩いままにする。
+  // 錨を打った方を先に試し、見つからなければ緩い方へ落ちる。
+  const strict = (l) => /^#{1,6} +(計画|マイルストーン)(\s|（|\(|:|：|$)/.test(l);
+  const loose = (l) => /^#{1,6} /.test(l) && l.includes("マイルストーン");
+  const pick = (f) => live.map((l, i) => (f(l) ? i : -1)).filter((i) => i >= 0);
+  const heads = [...pick(strict), ...pick(loose).filter((i) => !strict(live[i]))];
+  if (!heads.length) return null;
+
+  for (const head of heads) {
+    const row = firstRowAfter(live, head, isSeparator);
+    if (row) return row;
+  }
+  return null;
+}
+
+/** 見出し `head` の節にある表の、区切り行より後の最初の中身のある行。無ければ null。 */
+function firstRowAfter(live, head, isSeparator) {
   let sep = -1;
   for (let i = head + 1; i < live.length; i++) {
     if (/^#{1,6} /.test(live[i])) break; // 次の見出しまで

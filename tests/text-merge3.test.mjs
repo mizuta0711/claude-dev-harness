@@ -152,12 +152,45 @@ test("lineChanges は空行と前後の空白を数えない", () => {
   assert.deepEqual(c.deleted, []);
 });
 
-test("対象ファイルの一覧は .gitignore だけ（増やすときは順序依存を確かめる）", () => {
-  assert.deepEqual([...TEXT_MERGE_FILES], [".gitignore"]);
+test("対象ファイルの一覧は明示する（増やすときは順序依存を確かめる）", () => {
+  // **この検査は門である。** 行の意味が順序に依存するファイルだけを入れること。
+  //   .gitignore     … 後の行が前を打ち消す
+  //   docs/backlog.md … 行の順序が優先順位そのもの
+  // どちらも `git merge-file` が位置を保つので通る（下の実測テスト）。
+  // 衝突したら自動適用せず `conflict` のまま人へ返すので、壊れ方は安全側。
+  assert.deepEqual([...TEXT_MERGE_FILES], [".gitignore", "docs/backlog.md"]);
 });
 
 test("一時ファイルを残さない", () =>
   withWork((work) => {
     tryTextMerge(".gitignore", "a" + NL, "a" + NL + "b" + NL, "a" + NL, work);
     assert.ok(!fs.existsSync(path.join(work, "merged", ".3way")), "3way の一時ディレクトリが残っている");
+  }));
+
+// ---- 台帳（docs/backlog.md）も行単位でマージする（0.30.0・査読 F16） ----
+//
+// テンプレートが骨格を配り、**プロジェクトが行を足して育てる**ファイル。
+// 行が1本でも入ると A≠B かつ A≠C になり `conflict` が既定になり、
+// **競合解決でテンプレート側を採ると残作業の行が丸ごと消える**（生きた台帳なので実害が大きい）。
+
+test("台帳は行単位マージの対象に入っている", () => {
+  assert.ok(TEXT_MERGE_FILES.has("docs/backlog.md"));
+});
+
+test("骨格の見出しを改名しても、プロジェクトが足した行は残る", () =>
+  withWork((work) => {
+    const head = (h) => ["# 残作業（backlog）", "", h, "", "| # | やること | 狙い | 設計書 |", "|---|---|---|---|"];
+    const A = [...head("## マイルストーン（この順で進める）"), "| | | | |", "", "## 残作業"].join(NL) + NL;
+    const B = [...head("## 計画（この順で進める）"), "| | | | |", "", "## 残作業"].join(NL) + NL;
+    // プロジェクトは骨格のまま行を足している
+    const C =
+      [...head("## マイルストーン（この順で進める）"), "| 1 | 一覧画面 | 出る | `a.md` |", "", "## 残作業"].join(NL) +
+      NL;
+
+    const v = tryTextMerge("docs/backlog.md", A, B, C, work);
+    assert.equal(v.kind, "auto-merge");
+    const merged = fs.readFileSync(path.join(work, "merged", "docs", "backlog.md"), "utf-8");
+    assert.ok(merged.includes("## 計画（この順で進める）"), "骨格の改名が入っていない");
+    assert.ok(merged.includes("| 1 | 一覧画面 | 出る | `a.md` |"), "プロジェクトの行が消えた");
+    assert.ok(!merged.includes("マイルストーン"), "旧い見出しが残っている");
   }));

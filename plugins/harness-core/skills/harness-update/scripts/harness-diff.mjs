@@ -594,7 +594,15 @@ function tryJsonMerge(rel, aText, bText, cText, work) {
  * **衝突したら自動適用しない**（`conflict` のまま人へ返す）。実測では、
  * テンプレート層を持たない旧世代の `.gitignore` が正しく衝突した。
  */
-const TEXT_MERGE_FILES = new Set([".gitignore"]);
+//
+// **`docs/backlog.md`（台帳）も行単位でマージする**（0.30.0）。あれは
+// **テンプレートが骨格を配り、プロジェクトが行を足して育てる**ファイルで、
+// 行が1本でも入ると A≠B かつ A≠C になり `conflict` が既定になる。
+// **競合解決でテンプレート側を採ると、残作業の行が丸ごと消える** — 生きた台帳なので実害が大きい。
+// 骨格の変更（見出しの改名・コメントの差し替え）とプロジェクトの行は**別の位置にある**ので、
+// `git merge-file` が素直に通る（`.gitignore` で実証済みの経路）。
+// `SEED_ONCE` にしない理由: 以後の骨格の改善が永久に届かなくなるため。
+const TEXT_MERGE_FILES = new Set([".gitignore", "docs/backlog.md"]);
 
 /**
  * `git merge-file` を呼ぶ。衝突しても stdout の結果は使えるので、終了コードと一緒に返す。
