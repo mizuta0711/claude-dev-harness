@@ -53,8 +53,11 @@ const WORK_REL = ".claude/.harness-update";
 
 /** 追従の対象外（プロジェクトの資産であり、テンプレートが上書きしてはいけない） */
 const NEVER_TOUCH = [
-  /^docs\/features\//,
-  /^docs\/reviews\//,
+  // **`.gitkeep` は除外しない。** あれはプロジェクトの資産ではなく、
+  // **ハーネスが規定する置き場そのもの（骨格）**である。ディレクトリを丸ごと除外すると、
+  // 後から足した置き場が**既存プロジェクトへ永久に届かない** → 下の `SEED_ONCE` で配り切る。
+  /^docs\/features\/(?!.*\.gitkeep$)/,
+  /^docs\/reviews\/(?!.*\.gitkeep$)/,
   /^docs\/設計書\/(?!\.doc-sync\.md$)/, // 台帳以外の設計書は実態なので触らない
   // 設計方針層。骨格は初回生成時のみ配り、以後の中身はプロジェクトが育てる。
   // README.md だけはテンプレ所有（運用ルールと推奨軸メニュー）なので追従させる。
@@ -142,7 +145,13 @@ function walk(root, base = root, out = []) {
 // apply もできないので、**まだ持っていないプロジェクトへ初回を配る経路が消える**。
 // `CLAUDE.md` が `@` で読み込むため、**無いとハーネスの環境節が無言で消える**
 // （読み込みの失敗は警告が出ない）。
-const SEED_ONCE = [/^\.claude\/harness\/environment\.md$/];
+//
+// **`docs/` 配下の `.gitkeep` も配り切りである。** 置き場（`docs/features/planned/` 等）は
+// ハーネスが規定するが、**中身はプロジェクトの資産**なので、配った後は触らない。
+// 0.27.0 で `docs/features/planned/` を足したのに、`NEVER_TOUCH` が
+// `docs/features/` を丸ごと除外していたため、**既存7プロジェクトの 0/7 に届いていなかった**
+// （`plan-milestones` / `new-feature` / `design-review` の3スキルが指示する置き場が無い状態）。
+const SEED_ONCE = [/^\.claude\/harness\/environment\.md$/, /^docs\/.*\.gitkeep$/];
 
 function isSeedOnce(rel) {
   return SEED_ONCE.some((re) => re.test(rel));

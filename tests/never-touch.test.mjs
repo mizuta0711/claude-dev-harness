@@ -47,6 +47,35 @@ test("設計書は台帳だけ追従する", () => {
   assert.ok(!isNeverTouch("docs/設計書/.doc-sync.md"));
 });
 
+test("docs の置き場（.gitkeep）は配り切りで、中身は触らない", () => {
+  // 0.27.0 で `docs/features/planned/` を足したが、`NEVER_TOUCH` が
+  // `docs/features/` を丸ごと除外していたため、**既存7プロジェクトの 0/7 に届かなかった**。
+  // `plan-milestones` / `new-feature` / `design-review` の3スキルが
+  // 指示する置き場が無い状態で、`plan-milestones` は実際に空振りする。
+  // 骨格（置き場）は配り、中身（設計書・レビュー記録）は触らない。
+  for (const rel of [
+    "docs/features/planned/.gitkeep",
+    "docs/features/pending/.gitkeep",
+    "docs/features/completed/.gitkeep",
+    "docs/reviews/.gitkeep",
+  ]) {
+    assert.ok(isSeedOnce(rel), `${rel} は配り切りであるべき`);
+    assert.ok(!isNeverTouch(rel), `${rel} は除外してはいけない（初回が配られない）`);
+  }
+  // 中身は従来どおり触らない
+  assert.ok(isNeverTouch("docs/features/planned/20261010_x.md"));
+  assert.ok(isNeverTouch("docs/features/20261010_x.md"));
+  assert.ok(isNeverTouch("docs/reviews/20261010_x.md"));
+});
+
+test("配り切りの .gitkeep は docs 配下だけ", () => {
+  // `.gitkeep` ならどこでも配る、にはしない（他の層の所有境界を崩す）。
+  assert.ok(!isSeedOnce(".claude/01_development_docs/.gitkeep"));
+  assert.ok(!isSeedOnce(".gitkeep"));
+  // 似た名前へ広がらない
+  assert.ok(!isSeedOnce("docs/features/planned/.gitkeep.bak"));
+});
+
 test("配り切りは完全一致で、似た名前に広がらない", () => {
   assert.ok(!isSeedOnce(".claude/harness/environment.md.bak"));
   assert.ok(!isSeedOnce("docs/.claude/harness/environment.md"));

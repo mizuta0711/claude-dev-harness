@@ -142,6 +142,13 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 > 0.25.0 ではこれを取り違えて「ハーネス所有」と宣言し、**Next.js 15.3 のプロジェクトへ
 > 「Next.js 16」と書いた雛形を自動適用した**。隣の `core.md` とは所有が逆であることに注意。
 
+> **`docs/` の置き場（`.gitkeep`）も配り切りである**（0.31.1）。
+> `docs/features/` と `docs/reviews/` は中身がプロジェクトの資産なので `NEVER_TOUCH` だが、
+> **ディレクトリを丸ごと除外すると、後から足した置き場が既存プロジェクトへ永久に届かない**。
+> 0.27.0 で `docs/features/planned/` を足したのに**既存7プロジェクトの 0/7 に届いておらず**、
+> `plan-milestones` / `new-feature` / `design-review` の3スキルが
+> **存在しない置き場を指示する状態**になっていた。`.gitkeep` だけを除外から外して配り切る。
+
 ### 2. リポジトリ側の波及（**ここが抜ける**）
 
 | # | 直す場所 | 抜けると |

@@ -52,6 +52,28 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.31.1] — `docs/` の置き場が既存プロジェクトへ永久に届かなかった（H62）
+
+`harness-diff.mjs` の `NEVER_TOUCH` が `docs/features/` と `docs/reviews/` を
+**ディレクトリごと除外していた**。中身（設計書・レビュー記録）はプロジェクトの資産なので
+除外が正しいが、**同時に `.gitkeep`（＝ハーネスが規定する置き場そのもの）の配達も止めていた**。
+
+**実害。** 0.27.0 で開発計画層とともに `docs/features/planned/` を足したのに、
+**既存7プロジェクトの 0/7 に届いていなかった**（appcraft / engineer-potal / skillup_mock /
+CommSim / SimplePhone / RunningGame / bookmark-app を実測）。
+`plan-milestones`（`SKILL.md:81,95,107`）・`new-feature`（`:155`）・`design-review`（`:56`）の
+**3スキルが、存在しない置き場を指示する状態**だった。`plan-milestones` は実際に空振りする。
+
+**原因は H55 と同型である。** あのとき `environment.md` で「除外すると初回を配る経路も消える」と
+学んで `SEED_ONCE` を作ったが、**`docs/` 配下の除外は見直していなかった**。
+
+- `NEVER_TOUCH` の `docs/features/` と `docs/reviews/` を `(?!.*\.gitkeep$)` で絞った
+- `SEED_ONCE` に `/^docs\/.*\.gitkeep$/` を追加（**配り切り**: 無ければ配り、あれば触らない）
+- **`.gitkeep` ならどこでも配る、にはしていない**（`docs/` 配下だけ。他の層の所有境界を崩さないため）
+- `tests/never-touch.test.mjs` に2件追加（置き場は配る／中身は触る、の両方を1本で押さえる）。**293件合格**
+
+docs 影響: あり（templates/README.md — 配り切りの対象が増えたため ／ diagrams/03_役割比較図.md — 所有権の表に追記）
+
 ## [0.31.0] — 棚卸しで見つかった「ハーネス側が薄い／間違っている」16件をまとめて直す
 
 利用側4プロジェクト（Next.js 2件 / WPF / Android）の `CLAUDE.md` 棚卸しで、
