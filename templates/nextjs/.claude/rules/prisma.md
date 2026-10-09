@@ -1,11 +1,29 @@
 ---
 paths:
-  - "prisma/schema.prisma"
+  - "prisma/**"
   - "tools/export-to-sql.ts"
   - "tools/scripts/generate-table-docs.ts"
+  - "src/lib/**"
+  - "src/app/api/**"
+  - "src/features/**/services/**"
 ---
 
-# DB スキーマ変更時の必須ルール
+<!-- paths を `prisma/schema.prisma` だけにすると、**DB を触るコードを書くときに発火しない**
+     （スキーマを変えずにクエリだけ足す場面・新しい Service を一から作る場面）。
+     実際に `new PrismaClient()` を各所で書く取りこぼしが出たため、DB に触る層まで広げている。 -->
+
+# Prisma / DB のルール
+
+## クライアントは必ずシングルトンにする
+
+**`new PrismaClient()` をあちこちで書かない。** `src/lib/db.ts` の1インスタンスを import して使う。
+
+- Next.js の開発サーバはモジュールを**ホットリロードで作り直す**ため、
+  ファイルごとにインスタンスを作ると**接続が積み上がって接続上限に当たる**
+- 新しく作るときは `src/lib/db.ts` が既にあるかを先に確認する（無ければ作る。
+  `globalThis` にキャッシュして開発時の再生成を防ぐ形が定石）
+
+## DB スキーマ変更時の必須ルール
 
 テーブル構造の変更（カラム追加・削除・型変更・テーブル追加/削除）を行う際は、以下を**必ず**守ること:
 

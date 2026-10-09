@@ -8,7 +8,7 @@
     {
       "name": "harness-core",
       "source": "./plugins/harness-core",
-      "version": "0.30.0",
+      "version": "0.31.0",
       "description": "環境非依存の開発ハーネス（skills / agents / hooks）。.claude/harness.config.json を契約として動作する"
     },
     {
@@ -32,7 +32,7 @@
     {
       "name": "harness-android",
       "source": "./plugins/harness-android",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "description": "Android (Kotlin + Jetpack Compose) 環境向けの拡張。adb によるスクリーンショット撮影・アンインストール事故の防止・企画レビュー。harness-core と併用する"
     }
   ]

@@ -50,9 +50,16 @@ adb pull /sdcard/window_dump.xml
 
 ```bash
 adb shell screencap -p /sdcard/screen.png
-adb pull /sdcard/screen.png ./screenshot.png
+adb pull /sdcard/screen.png screenshots/<画面名>_<yyyymmdd>.png
 adb shell rm /sdcard/screen.png
 ```
+
+> ⚠️ **リポジトリのルート直下に `./screenshot.png` のような名前で落とさない。**
+> 撮り直すたびに上書きされ、消し忘れがルートに散る。**保存先はプロジェクトが決めた
+> ディレクトリ配下に固定する**（既定は `screenshots/`。`docs/` や `assets/` 配下に
+> 決めているプロジェクトはそちらへ）。**無ければ先に作る**
+> （PowerShell では `New-Item -ItemType Directory -Force screenshots`、
+> Git Bash / WSL では `mkdir -p screenshots`）。
 
 > ⚠️ **`adb exec-out screencap -p > out.png` を PowerShell で使わない。**
 > PowerShell のリダイレクトはバイト列をテキストとして扱うため、**PNG が壊れる**。
@@ -77,12 +84,16 @@ Android の画面には**実利用者のデータがそのまま写る**。公�
 
 ## 補足
 
-- 保存先は `docs/` や `assets/` などプロジェクトで決めた場所に統一する
+- 保存先は `screenshots/`（既定）や `docs/`・`assets/` 配下など、プロジェクトで決めた場所に統一する。
+  **ルート直下に置かない**
 - **アプリをアンインストールしない。** 再インストールは上書き（`adb install -r` /
   `./gradlew installDebug`）で行う。アンインストールすると
   DataStore・SharedPreferences・Room のデータが全て消える
-  （`harness-android` のフックが `adb uninstall` を捕まえて確認を求める）
-- 画面の録画が要る場合は `adb shell screenrecord /sdcard/demo.mp4`（Ctrl+C で停止 → `adb pull`）
+  - `harness-android` のフックは `adb uninstall` / `pm uninstall` / `pm clear` /
+    `gradlew uninstall*` を **deny する**（**承認すれば通るのではない**）。
+    必要な場合は**ユーザーに確認を取り、ユーザー自身に実行してもらう**
+- 画面の録画が要る場合は `adb shell screenrecord /sdcard/demo.mp4`
+  （Ctrl+C で停止 → `adb pull /sdcard/demo.mp4 screenshots/`）
 
 ## 結果報告
 
