@@ -11,7 +11,7 @@ const HOOK = path.join(ROOT, "plugins", "harness-core", "hooks", "scripts", "ses
 const NL = String.fromCharCode(10);
 
 /**
- * 台帳（`docs/backlog.md`）の「次のマイルストーン」を SessionStart が出すこと
+ * 台帳（`docs/backlog.md`）の「次にやること」を SessionStart が出すこと
  *
  * ## なぜ要るのか
  *
@@ -44,13 +44,13 @@ const withProject = (backlog, fn) => {
   }
 };
 
-const ledger = (rows) =>
+const ledger = (rows, heading = "## 計画（この順で進める）") =>
   [
     "# 残作業（backlog）",
     "",
-    "## マイルストーン（この順で進める）",
+    heading,
     "",
-    "| # | マイルストーン | 狙い | 設計書 |",
+    "| # | やること | 狙い | 設計書 |",
     "|---|---------------|------|--------|",
     ...rows,
     "",
@@ -64,7 +64,7 @@ const ledger = (rows) =>
 test("台帳の先頭のマイルストーンだけを出す", () =>
   withProject(ledger(["| 1 | 初期化 | 通る | `a.md` |", "| 2 | 次のやつ | 動く | `b.md` |"]), (dir) => {
     const ctx = runHook(dir);
-    assert.match(ctx, /\[次のマイルストーン\] 1\. 初期化/);
+    assert.match(ctx, /\[次にやること\] 1\. 初期化/);
     assert.ok(!ctx.includes("次のやつ"), "2行目まで出している");
   }));
 
@@ -72,23 +72,23 @@ test("ヘッダ行と区切り行を拾わない", () =>
   withProject(ledger(["| 1 | 初期化 | 通る | `a.md` |"]), (dir) => {
     const ctx = runHook(dir);
     assert.ok(!ctx.includes("マイルストーン] マイルストーン"), "表のヘッダを拾っている");
-    assert.ok(!/\[次のマイルストーン\] *-+/.test(ctx), "区切り行を拾っている");
+    assert.ok(!/\[次にやること\] *-+/.test(ctx), "区切り行を拾っている");
   }));
 
 test("表が空なら何も出さない（骨格を配っただけの状態）", () =>
   withProject(ledger(["| | | | |"]), (dir) => {
-    assert.ok(!runHook(dir).includes("次のマイルストーン"));
+    assert.ok(!runHook(dir).includes("次にやること"));
   }));
 
 test("台帳が無ければ何も出さない（fail-open）", () =>
   withProject(null, (dir) => {
-    assert.ok(!runHook(dir).includes("次のマイルストーン"));
+    assert.ok(!runHook(dir).includes("次にやること"));
   }));
 
 test("「マイルストーン」の見出しが無い台帳では何も出さない", () =>
   withProject(
     ["# 残作業（backlog）", "", "## A. 進行中", "", "| # | 作業 |", "|---|------|", "| 1 | なにか |"].join(NL) + NL,
-    (dir) => assert.ok(!runHook(dir).includes("次のマイルストーン"))
+    (dir) => assert.ok(!runHook(dir).includes("次にやること"))
   ));
 
 test("「残作業」の表の行を、マイルストーンとして拾わない", () =>
@@ -117,21 +117,23 @@ for (const [label, sep] of [
   test(`位置揃えの区切り行を拾わない（${label}）`, () =>
     withProject(ledgerRaw("| # | マイルストーン | 狙い | 設計書 |", sep, ["| 1 | 初期化 | 通る | `a.md` |"]), (dir) => {
       const ctx = runHook(dir);
-      assert.match(ctx, /\[次のマイルストーン\] 1\. 初期化/);
-      assert.ok(!/[:\-]{2,}/.test(ctx.split("[次のマイルストーン]")[1].split(NL)[0]), "区切り行を出している");
+      assert.match(ctx, /\[次にやること\] 1\. 初期化/);
+      assert.ok(!/[:\-]{2,}/.test(ctx.split("[次にやること]")[1].split(NL)[0]), "区切り行を出している");
     }));
 
 test("ヘッダの列名が `#` でなくても拾わない", () =>
   withProject(ledgerRaw("| No | やること | 狙い | 設計書 |", "|---|---|---|---|", ["| 1 | 初期化 | 通る | `a.md` |"]), (dir) => {
     const ctx = runHook(dir);
     assert.match(ctx, /1\. 初期化/);
-    assert.ok(!ctx.includes("やること"), "ヘッダ行を出している");
+    // ラベル自体が「次にやること」なので、**出力行の中身**で見る
+    assert.ok(!ctx.includes("[次にやること] やること"), "ヘッダ行を出している");
+    assert.ok(!ctx.includes("狙い"), "ヘッダ行を出している");
   }));
 
 test("番号列が無い表でもヘッダを出さない", () =>
   withProject(ledgerRaw("| マイルストーン | 狙い |", "|---|---|", ["| 初期化 | 通る |"]), (dir) => {
     const ctx = runHook(dir);
-    assert.match(ctx, /\[次のマイルストーン\] 初期化/);
+    assert.match(ctx, /\[次にやること\] 初期化/);
     assert.ok(!ctx.includes("狙い"), "ヘッダ行を出している");
   }));
 
@@ -182,13 +184,37 @@ test("表の後ろに別の見出しと表があっても越えない", () =>
 test("テンプレートが配る骨格では何も出さない（行が空）", () => {
   const skeleton = fs.readFileSync(path.join(ROOT, "templates", "base", "docs", "backlog.md"), "utf-8");
   withProject(skeleton, (dir) => {
-    assert.ok(!runHook(dir).includes("次のマイルストーン"));
+    assert.ok(!runHook(dir).includes("次にやること"));
   });
 });
 
-test("テンプレートの骨格には、腐らせない規約と「マイルストーン」の見出しがある", () => {
+test("テンプレートの骨格には、腐らせない規約と「計画」の見出しがある", () => {
   const skeleton = fs.readFileSync(path.join(ROOT, "templates", "base", "docs", "backlog.md"), "utf-8");
-  assert.match(skeleton, /^#{1,3}\s*マイルストーン/m, "見出しが無いとフックもスキルも見つけられない");
+  assert.match(skeleton, /^#{1,3}\s*計画/m, "見出しが無いとフックもスキルも見つけられない");
   assert.match(skeleton, /完了したものは行ごと消す/, "腐らせない規約が無い");
   assert.match(skeleton, /残作業の唯一の正/, "唯一の正の宣言が無い");
+  // **単発の設計書も載る**ことを骨格が言っていないと、書く側が「分割のときだけ」と読む。
+  assert.match(skeleton, /設計書を伴う作業はすべてここに1行ある/, "単発も載ることが書かれていない");
+  assert.match(skeleton, /進捗を書かない/, "進捗の二重管理を止める歯止めが無い");
 });
+
+// ---- 見出しの互換（0.30.0） ----
+// 表の役割を「設計書を伴う作業すべての順序」へ広げ、見出しを「計画」に改めた。
+// **既存プロジェクトの台帳は「マイルストーン」のまま**なので、両方を拾う。
+// 片方しか見ないと、追従していないプロジェクトで**次の一手が黙って出なくなる**。
+
+test("旧い見出し「マイルストーン」の台帳も拾う（移行を強いない）", () =>
+  withProject(
+    ledger(["| 1 | 初期化 | 通る | `a.md` |"], "## マイルストーン（この順で進める）"),
+    (dir) => assert.match(runHook(dir), /\[次にやること\] 1\. 初期化/)
+  ));
+
+test("新しい見出し「計画」の台帳を拾う", () =>
+  withProject(ledger(["| 1 | 一覧画面 | 出る | `a.md` |"]), (dir) =>
+    assert.match(runHook(dir), /\[次にやること\] 1\. 一覧画面/)
+  ));
+
+test("どちらの見出しも無ければ何も出さない（fail-open）", () =>
+  withProject(ledger(["| 1 | 初期化 | 通る | `a.md` |"], "## やること一覧"), (dir) =>
+    assert.ok(!runHook(dir).includes("次にやること"))
+  ));

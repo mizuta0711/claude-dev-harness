@@ -40,11 +40,16 @@ function pendingHandoffs() {
 }
 
 /**
- * 台帳（docs/backlog.md）の「マイルストーン」の表の先頭行＝**次に進めるもの**。
+ * 台帳（docs/backlog.md）の「計画」の表の先頭行＝**次に進めるもの**。
  *
- * **台帳は読まれないと意味が無い。** 大きい依頼をマイルストーンに分けると
- * フェーズ間で必ず区切りが入るので、セッションをまたぐと「次は何か」が分からなくなる。
+ * **台帳は読まれないと意味が無い。** セッションをまたぐと「次は何か」が分からなくなる。
  * 表の1行目だけを出す（全部出すと長い。詳細は台帳を読む）。
+ *
+ * ## 見出しは「計画」と「マイルストーン」の両方を受け付ける
+ *
+ * 0.30.0 で表の役割を広げ（**設計書を伴う作業すべての順序**。単発の1本も載る）、
+ * 見出しを「計画」に改めた。**既存プロジェクトの台帳は「マイルストーン」のまま**なので、
+ * 両方を見る。移行を強いない（fail-open と同じ方針）。
  *
  * ## 走査は「区切り行の直後」から始める
  *
@@ -80,7 +85,9 @@ function nextMilestone() {
     live.push(hidden ? "" : l);
   }
 
-  const head = live.findIndex((l) => /^#{1,6} /.test(l) && l.includes("マイルストーン"));
+  const head = live.findIndex(
+    (l) => /^#{1,6} /.test(l) && (l.includes("計画") || l.includes("マイルストーン"))
+  );
   if (head < 0) return null;
 
   const isSeparator = (l) =>
@@ -319,7 +326,7 @@ if (docs.length) {
 }
 
 const next = nextMilestone();
-if (next) lines.push(`[次のマイルストーン] ${next}（順序は docs/backlog.md が正）`);
+if (next) lines.push(`[次にやること] ${next}（順序＝優先順位。docs/backlog.md が正）`);
 
 // コンパクト直後は、退避しておいた文脈を復元する
 if (input.source === "compact") {
