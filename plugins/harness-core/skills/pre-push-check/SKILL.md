@@ -28,6 +28,12 @@ git push の前に必ず実行する。`.claude/harness.config.json` の `design
 > `docTriggers` のパターンから外れた層を変更した場合、**台帳検査は素通りする**。
 > それを拾うのが Step 3.5 である。
 
+> ⚠️ **ここで言う「台帳」は設計書同期台帳（`docs/設計書/.doc-sync.md`）である。**
+> **残作業台帳（`docs/backlog.md`）は見ていない。** あちらは別の仕組みが見る —
+> push の直前に `pre-push-backlog-check` フックが整合を確かめ、
+> 食い違っていれば **deny して `/harness-core:backlog-sync` を案内する**（H63）。
+> **このスキルを通したからといって、残作業台帳が合っている保証は無い。**
+
 config が読めない場合: 台帳が `docs/設計書/.doc-sync.md` にあれば推定で続行し、
 その旨を報告に明記する。台帳も無ければ「チェック不能」として報告し、push の可否はユーザーに委ねる。
 
