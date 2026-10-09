@@ -48,10 +48,10 @@ node -e "const m=require('${CLAUDE_PLUGIN_ROOT}/hooks/scripts/backlog-sync.js');
 
 | 検出 | ありうる正解 |
 |---|---|
-| `missing-dir`（置き場そのものが無い） | **ほぼ常に置き場の不在が原因**（H62。`docs/features/planned/` は harness-core 0.31.2 より前のテンプレートでは配られていなかった）。`/harness-core:harness-update` を当てる |
+| `missing-dir`（置き場ごと無い） | **置き場と設計書は別の事実である。** 置き場（`docs/features/planned/` 等）は `/harness-core:harness-update` で配られる（H62。0.31.2 より前のテンプレートでは配られていなかった）。**ただしそれだけでは設計書は生えない** —— あわせて `missing-doc` と同じ判断（作るのか・行を消すのか）が要る |
 | `missing-doc`（設計書が無い） | ①`plan-milestones` が置いた予定なら**設計書を作る**（`/harness-core:new-feature`） ②取り下げたなら**行を消す** |
 | `row-without-doc`（行にパスが無い） | パスを書く。設計書がまだ無いなら作る |
-| `doc-without-row`（計画節に無い） | ①進めるなら**行を足す** ②着手しないなら **`docs/features/pending/` へ移す**（`git mv`） |
+| `doc-without-row`（計画節に無い） | ①進めるなら**行を足す**（**`#` は空欄でよい** —— 番号は `plan-milestones` が分けたときだけ振る） ②着手しないなら **`docs/features/pending/` へ移す**（`git mv`） |
 | `completed-still-listed`（完了なのに残っている） | **行を消す**（`complete-feature` が消し忘れたもの）。**✅ を積み上げない** |
 
 **判断材料は git にある。**
@@ -71,6 +71,10 @@ git status --short                                 # 他セッションが触っ
   （`new-feature` が「着手するときに直下へ `git mv` し、台帳のパスも直す」と指示している操作）
 - **完了処理そのもの**（受け入れ基準の確認・`completed/` への移動）は
   **このスキルではやらない**。`/harness-core:complete-feature` が持つ
+
+> ⚠️ **検査が見ているのは作業ツリーの現状**で、push されるコミットの内容ではない。
+> **他セッションが台帳を編集中なら、その未コミットの状態で鳴る。**
+> `git status --short` で確かめ、**他セッションの変更には触らない**。
 
 ## Step 4: 検査し直して報告する
 

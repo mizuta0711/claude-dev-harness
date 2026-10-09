@@ -187,7 +187,8 @@ marketplace の場所（`extraKnownMarketplaces`）を教えるだけで、**導
 | `update-docs` | 変更駆動の設計書更新 |
 | `sync-check` | 全量照合＋残作業のタスク化（converge） |
 | `complete-feature` | 完了処理（受け入れ基準ゲート → `completed/` へ移動） |
-| `pre-push-check` | push 前の台帳同期チェック |
+| `pre-push-check` | push 前の**設計書同期台帳**チェック（`docs/設計書/.doc-sync.md`） |
+| `backlog-sync` | **残作業台帳**（`docs/backlog.md`）と `docs/features/` の食い違いを直す。`pre-push-backlog-check` が止めたときの出口 |
 | `done` | 完了報告 |
 | `plugin-update` | プラグイン層**だけ**の更新（導入済みプラグインとスコープを自動特定し、更新前後の版を報告） |
 | `harness-update` | **ハーネスの更新**（プラグイン層＋テンプレート層）。3点比較で分類し、**判断が要るものは別エージェントの査読を通して推奨つきで確認**する |

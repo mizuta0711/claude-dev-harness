@@ -17,8 +17,24 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /**
- * 計画節の見出し。**2つあり、約束している内容が違う。**
+ * 設計書ではないファイル。**設計書の雛形や案内を設計書と数えない。**
+ * （実測で `docs/features/TEMPLATE.md` と `docs/features/README.md` を
+ * 「計画節に載っていない」と報告してしまった）
+ */
+const NOT_A_FEATURE_DOC = new Set(["TEMPLATE.md", "README.md"]);
+
+/**
+ * 計画節の見出しかを判定する。
  *
+ * **前方一致でも完全一致でもいけない。**
+ *   - 前方一致だと `## 計画の進め方` のような別節まで計画節として扱う（査読 L4）
+ *   - 完全一致だと**実物が外れる** —— appcraft の見出しは `## 計画（この順で進める）` で、
+ *     完全一致にした初版は**計画節を1つも見つけられず、設計書6本すべてを
+ *     「計画節に載っていない」と誤報告した**（修正中の再実測で発覚）
+ *
+ * **見出し語の直後が、行末・空白・括弧・区切り記号**のときだけ計画節と見る。
+ *
+ * **見出しは2つあり、約束している内容が違う。**
  *   - `## 計画` … harness-core 0.27.0 の開発計画層。
  *     **「設計書を伴う作業はすべてここに1行ある」と宣言している**ので、
  *     載っていない設計書は違反である（検査2）
@@ -26,55 +42,96 @@ const path = require("node:path");
  *     検査2 を当てない（当てると古いプロジェクトで一斉に鳴る。
  *     実測: CommSim 6本・skillup_mock 1本が載っていなかったが、
  *     あれは違反ではなく「あの節が網羅ではない」だけ）
- */
-const PLAN_HEADINGS = ["## 計画", "## マイルストーン"];
-/** 検査2（載っていない設計書を見つける）を当てられる見出し */
-const EXHAUSTIVE_HEADING = "## 計画";
-
-/**
- * 設計書ではないファイル。**設計書の雛形を設計書と数えない。**
- * （実測で `docs/features/TEMPLATE.md` を「計画節に載っていない」と報告してしまった）
- */
-const NOT_A_FEATURE_DOC = new Set(["TEMPLATE.md"]);
-
-/**
- * 計画節の表から「設計書」の欄のパスを拾う。
  *
- * **HTML コメントの中は読まない。** あの節の先頭には書き方の説明が
- * コメントで入っており、例として設計書のパスが書かれている（拾うと誤検出になる）。
+ * @returns {{plan: boolean, exhaustive: boolean}} `exhaustive` は「網羅を約束している形」か
+ */
+function matchPlanHeading(line) {
+  const m = /^##\s+(計画|マイルストーン)\s*(?:$|[（(:：・\-—\s])/.exec(line.trim());
+  if (!m) return { plan: false, exhaustive: false };
+  return { plan: true, exhaustive: m[1] === "計画" };
+}
+
+/** 区切り行（`|---|---|`） */
+function isSeparatorRow(cells) {
+  return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c.replace(/\s/g, "")));
+}
+
+/**
+ * 計画節の表から行を拾う。
+ *
+ * **`#` の欄が空の行も拾う。** `new-feature` は
+ * **「`#` は空欄にする。番号は `plan-milestones` が分けたときだけ振る」**と定めており
+ * （`new-feature/SKILL.md` の「台帳に1行足す」）、**単発で作った設計書の行は番号を持たない**。
+ * 番号のある行だけを拾う実装にしていたため、**単発の設計書が「計画節に載っていない」と
+ * 誤報告され、正常な push が deny されていた**（0.32.0 の初版。査読で差し戻し）。
+ *
+ * **設計書のパスは「設計書」の列からだけ拾う。** 行全体から最初の一致を拾っていたため、
+ * 「やること」や「狙い」に別のパスを書いた行で**取り違えていた**（同じ査読）。
+ * 列は見出し行から決め、決められなければ最後の列を見る。
+ *
+ * **HTML コメントの中は読まない。** あの節の先頭には書き方の説明がコメントで入っており、
+ * **例として設計書のパスが書かれている**（拾うと誤検出になる）。
  */
 function parsePlanRows(markdown) {
   const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
   const rows = [];
   let inPlan = false;
   let inComment = false;
+  let docCol = null;
+  let seenHeader = false;
 
-  for (const line of lines) {
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+
+    // **1行に閉じと開きが混在する形を正しく扱う**（`<!-- a --> <!-- b`）。
+    // 「`-->` を含むから開いていない」と見ると、後続のコメント内を拾う（査読 L1）。
     if (inComment) {
-      if (line.includes("-->")) inComment = false;
+      const close = line.lastIndexOf("-->");
+      if (close < 0) continue;
+      const reopen = line.indexOf("<!--", close);
+      inComment = reopen >= 0;
       continue;
     }
-    if (line.includes("<!--") && !line.includes("-->")) {
-      inComment = true;
+    {
+      const open = line.lastIndexOf("<!--");
+      if (open >= 0 && line.indexOf("-->", open) < 0) {
+        inComment = true;
+        continue;
+      }
+    }
+
+    if (line.startsWith("#")) {
+      inPlan = matchPlanHeading(line).plan;
+      docCol = null;
+      seenHeader = false;
       continue;
     }
-    if (line.startsWith("## ")) {
-      inPlan = PLAN_HEADINGS.some((h) => line.startsWith(h));
-      continue;
-    }
-    if (!inPlan) continue;
-    if (!line.startsWith("|")) continue;
+    if (!inPlan || !line.startsWith("|")) continue;
 
     const cells = line.split("|").slice(1, -1).map((c) => c.trim());
-    if (cells.length < 2) continue;
-    // 見出し行・区切り行は飛ばす（1列目が番号の行だけを行と見る）
-    if (!/^\*{0,2}\d+\*{0,2}$/.test(cells[0])) continue;
+    if (!cells.length) continue;
+    if (isSeparatorRow(cells)) continue;
 
-    const num = cells[0].replace(/\*/g, "");
-    // 設計書の欄は**最後の列**に `docs/features/...md` が入る
-    const joined = cells.join(" | ");
-    const m = /`?(docs\/features\/[^`|\s]+\.md)`?/.exec(joined);
-    rows.push({ num, path: m ? m[1] : null, line });
+    // 見出し行: 「設計書」を含むセルの位置を覚える
+    if (!seenHeader) {
+      seenHeader = true;
+      const idx = cells.findIndex((c) => c.replace(/\*/g, "").includes("設計書"));
+      docCol = idx >= 0 ? idx : null;
+      continue;
+    }
+    // 空のプレースホルダ行（`| | | | |`）は行ではない
+    if (cells.every((c) => c === "")) continue;
+
+    const cell = cells[docCol !== null && docCol < cells.length ? docCol : cells.length - 1] || "";
+    const paths = [...cell.matchAll(/(docs\/features\/[^`|\s]+\.md)/g)].map((m) => m[1]);
+    const num = cells[0].replace(/\*/g, "").trim();
+    rows.push({
+      num,
+      // 番号が無い行も**人が特定できる名前**で呼べるようにする
+      label: num || cells[1]?.replace(/\*/g, "").trim() || paths[0] || "(名前なし)",
+      paths,
+      line,
+    });
   }
   return rows;
 }
@@ -118,8 +175,9 @@ function check(projectDir) {
   }
 
   const planLines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const hasPlan = PLAN_HEADINGS.some((h) => planLines.some((l) => l.startsWith(h)));
-  const exhaustive = planLines.some((l) => l.startsWith(EXHAUSTIVE_HEADING));
+  const headings = planLines.filter((l) => l.startsWith("#")).map(matchPlanHeading);
+  const hasPlan = headings.some((h) => h.plan);
+  const exhaustive = headings.some((h) => h.exhaustive);
   if (!hasPlan) {
     // **0.27.0 の開発計画層が届いていないプロジェクト。**
     // 計画節が無いのに「行が無い」と言っても直せない。
@@ -132,38 +190,45 @@ function check(projectDir) {
 
   // 検査1: 計画節の行が指す設計書が実在するか
   for (const row of rows) {
-    if (!row.path) {
+    if (!row.paths.length) {
       findings.push({
         kind: "row-without-doc",
-        what: `計画 #${row.num} に設計書のパスが書かれていない`,
-        how: "`docs/features/` 配下のパスを「設計書」の欄に書く。設計書がまだ無いなら `/harness-core:new-feature` で作る。",
+        what: `計画「${row.label}」の行に設計書のパスが書かれていない`,
+        how: "「設計書」の欄に `docs/features/` 配下のパスをコードスパンで書く。設計書がまだ無いなら `/harness-core:new-feature` で作る。",
       });
       continue;
     }
-    if (!fs.existsSync(path.join(projectDir, row.path))) {
-      // **置き場だけが無い場合を区別する。** `docs/features/planned/` は
-      // harness-core 0.31.2 より前のテンプレートでは配られていなかった（H62）。
-      const dir = path.dirname(row.path);
+    for (const rel of row.paths) {
+      if (fs.existsSync(path.join(projectDir, rel))) continue;
+      // **置き場が無いことと、設計書が無いことは別の事実である**（査読 M2）。
+      // `docs/features/planned/` は harness-core 0.31.2 より前のテンプレートでは
+      // 配られていなかった（H62）。**ただし置き場を配っても設計書は生えない。**
+      // 片方だけ案内すると行き止まりになるので、**両方を出す**。
+      const dir = path.dirname(rel);
       const dirMissing = !fs.existsSync(path.join(projectDir, dir));
       findings.push({
         kind: dirMissing ? "missing-dir" : "missing-doc",
-        what: `計画 #${row.num} が指す ${row.path} が無い`,
-        how: dirMissing
-          ? `置き場（\`${dir}/\`）そのものが無い。\`/harness-core:harness-update\` で配られる（harness-core 0.31.2 以降）。`
-          : "設計書を作る（`/harness-core:new-feature`）か、取り下げたなら計画節の行を消す。**どちらが正かは作業の実態で決まる**。",
+        what: dirMissing
+          ? `計画「${row.label}」が指す ${rel} が無い（置き場 \`${dir}/\` ごと無い）`
+          : `計画「${row.label}」が指す ${rel} が無い`,
+        how:
+          (dirMissing
+            ? `置き場（\`${dir}/\`）は \`/harness-core:harness-update\` で配られる（harness-core 0.31.2 以降）。**それだけでは設計書は生えない。** あわせて、`
+            : "") +
+          "①その作業を進めるなら設計書を作る（`/harness-core:new-feature`）②取り下げたなら計画節の行を消す。**どちらが正かは作業の実態で決まる。**",
       });
     }
   }
 
   // 検査2: 作業中・着手前の設計書が計画節に載っているか。
-  // **`## 計画` のときだけ当てる**（上の `PLAN_HEADINGS` の注記を見ること）。
-  const listed = new Set(rows.map((r) => r.path).filter(Boolean));
+  // **`## 計画` のときだけ当てる**（`matchPlanHeading` の注記を見ること）。
+  const listed = new Set(rows.flatMap((r) => r.paths));
   for (const doc of exhaustive ? [...docs.active, ...docs.planned] : []) {
     if (!listed.has(doc)) {
       findings.push({
         kind: "doc-without-row",
         what: `${doc} が計画節に載っていない`,
-        how: "計画節へ1行足す（`/harness-core:new-feature` が足すはずの行）。着手しないものなら `docs/features/pending/` へ移す。",
+        how: "計画節へ1行足す（`/harness-core:new-feature` が足すはずの行。`#` は空欄でよい）。着手しないものなら `docs/features/pending/` へ移す。",
       });
     }
   }
@@ -182,4 +247,4 @@ function check(projectDir) {
   return { applicable: true, findings };
 }
 
-module.exports = { check, parsePlanRows, collectFeatureDocs, PLAN_HEADINGS, EXHAUSTIVE_HEADING, NOT_A_FEATURE_DOC };
+module.exports = { check, parsePlanRows, collectFeatureDocs, matchPlanHeading, NOT_A_FEATURE_DOC };

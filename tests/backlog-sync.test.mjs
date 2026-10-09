@@ -182,3 +182,129 @@ test("太字の番号（`| **1** |`）も行として読む", () => {
   });
   assert.deepEqual(bs.check(dir).findings, []);
 });
+
+// ---- 査読（0.32.0 の初版）で出た誤検出の回帰 ----
+
+test("`#` が空欄の行も拾う（`new-feature` の既定）", () => {
+  // **初版はここで落ちた。** 行の判別を「1列目が数字」にしていたため、
+  // `new-feature` が足す単発の行（`#` は空欄と定められている）が**1行も見えず**、
+  // 「計画節に載っていない」と誤報告して**正常な push を deny していた**。
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["|  | 機能A | 狙い | `docs/features/20261010_a.md` |"]),
+    "docs/features/20261010_a.md": "# a",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+  // 逆向き: `#` 空欄の行が指す設計書が無ければ、ちゃんと鳴る（初版は鳴らなかった）
+  const dir2 = mkProject({
+    "docs/backlog.md": PLAN(["|  | 機能A | 狙い | `docs/features/20261010_a.md` |"]),
+    "docs/features/.gitkeep": "",
+  });
+  assert.equal(bs.check(dir2).findings[0].kind, "missing-doc");
+});
+
+test("設計書のパスは「設計書」の列からだけ拾う", () => {
+  // 行全体の最初の一致を拾っていたため、「やること」に別のパスを書くと取り違えた。
+  const dir = mkProject({
+    "docs/backlog.md": PLAN([
+      "|  | `docs/features/completed/old.md` の続き | 狙い | `docs/features/20261010_a.md` |",
+    ]),
+    "docs/features/20261010_a.md": "# a",
+    "docs/features/completed/old.md": "# old",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+
+  // 設計書の欄が未定なら、他の列にパスがあっても見逃さない
+  const dir2 = mkProject({
+    "docs/backlog.md": PLAN(["|  | `docs/features/20261010_a.md` の件 | 狙い | （未定） |"]),
+    "docs/features/20261010_a.md": "# a",
+  });
+  const kinds = bs.check(dir2).findings.map((f) => f.kind);
+  assert.ok(kinds.includes("row-without-doc"), JSON.stringify(kinds));
+});
+
+test("1つのセルに2本のパスがあれば両方拾う", () => {
+  const dir = mkProject({
+    "docs/backlog.md": PLAN([
+      "|  | a | b | `docs/features/20261010_a.md` / `docs/features/20261010_b.md` |",
+    ]),
+    "docs/features/20261010_a.md": "# a",
+    "docs/features/20261010_b.md": "# b",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("README.md も設計書ではない", () => {
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["|  | a | b | `docs/features/20261010_a.md` |"]),
+    "docs/features/20261010_a.md": "# a",
+    "docs/features/README.md": "# 案内",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("1行に閉じと開きが混在する HTML コメントを読み飛ばす", () => {
+  // `<!-- a --> <!-- b` は「`-->` を含むから開いていない」ではない。
+  const body = [
+    "# 残作業", "", "## 計画", "",
+    "<!-- 説明 --> <!-- つづき",
+    "| 1 | 例 | 例 | `docs/features/planned/例.md` |",
+    "-->", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | a | b | `docs/features/20261010_a.md` |", "",
+  ].join("\n");
+  const dir = mkProject({ "docs/backlog.md": body, "docs/features/20261010_a.md": "# a" });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("見出しは「語の直後が行末・空白・括弧」で見る（前方一致でも完全一致でもない）", () => {
+  // **完全一致にしたら実物が外れた。** appcraft の見出しは `## 計画（この順で進める）` で、
+  // 完全一致版は**計画節を1つも見つけられず、設計書6本すべてを誤報告した**（修正中の再実測で発覚）。
+  // 前方一致だと `## 計画の進め方` まで拾う。どちらにも寄せられない。
+  const M = bs.matchPlanHeading;
+  assert.deepEqual(M("## 計画"), { plan: true, exhaustive: true });
+  assert.deepEqual(M("## 計画（この順で進める）"), { plan: true, exhaustive: true });
+  assert.deepEqual(M("## マイルストーン"), { plan: true, exhaustive: false });
+  assert.deepEqual(M("## マイルストーン（分割）"), { plan: true, exhaustive: false });
+  assert.deepEqual(M("## 計画の進め方"), { plan: false, exhaustive: false });
+  assert.deepEqual(M("## 残作業"), { plan: false, exhaustive: false });
+  // 計画節は `##`。小見出しは拾わない
+  assert.deepEqual(M("### 計画"), { plan: false, exhaustive: false });
+});
+
+test("括弧つきの見出しでも表を読む（実物の形）", () => {
+  const body = [
+    "# 残作業", "", "## 計画（この順で進める）", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "| 1 | a | b | `docs/features/20261010_a.md` |", "",
+  ].join("\n");
+  const dir = mkProject({ "docs/backlog.md": body, "docs/features/20261010_a.md": "# a" });
+  const r = bs.check(dir);
+  assert.equal(r.applicable, true);
+  assert.deepEqual(r.findings, []);
+  assert.equal(bs.parsePlanRows(body).length, 1);
+});
+
+test("`## 計画の進め方` のような別節は計画節ではない", () => {
+  const body = [
+    "# 残作業", "", "## 計画の進め方", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | 例 | 例 | `docs/features/存在しない.md` |", "",
+    "## 計画", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | a | b | `docs/features/20261010_a.md` |", "",
+  ].join("\n");
+  const dir = mkProject({ "docs/backlog.md": body, "docs/features/20261010_a.md": "# a" });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("置き場が無いときの案内は、設計書の作成にも触れる", () => {
+  // `harness-update` を当てても設計書は生えない。片方だけ案内すると行き止まりになる。
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["|  | a | b | `docs/features/planned/20261010_a.md` |"]),
+    "docs/features/.gitkeep": "",
+  });
+  const f = bs.check(dir).findings[0];
+  assert.equal(f.kind, "missing-dir");
+  assert.match(f.how, /harness-update/);
+  assert.match(f.how, /new-feature/);
+});
