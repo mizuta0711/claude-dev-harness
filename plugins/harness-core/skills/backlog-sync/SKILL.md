@@ -54,9 +54,9 @@ node -e "const m=require('${CLAUDE_PLUGIN_ROOT}/hooks/scripts/backlog-sync.js');
 | 検出 | ありうる正解 |
 |---|---|
 | `missing-dir`（置き場ごと無い） | **置き場と設計書は別の事実である。** 置き場（`docs/features/planned/` 等）は `/harness-core:harness-update` で配られる（H62。0.31.2 より前のテンプレートでは配られていなかった）。**ただしそれだけでは設計書は生えない** —— あわせて `missing-doc` と同じ判断（作るのか・行を消すのか）が要る |
-| `missing-doc`（設計書が無い） | ①`plan-milestones` が置いた予定なら**設計書を作る**（`/harness-core:new-feature`） ②取り下げたなら**行を消す** |
+| `missing-doc`（設計書が無い） | ①`plan-milestones` が置いた予定なら**設計書を作る**（`/harness-core:new-feature`。**パスが `prototype/` なら `/harness-core:new-prototype`**） ②取り下げたなら**行を消す** |
 | `row-without-doc`（行にパスが無い） | パスを書く。設計書がまだ無いなら作る |
-| `doc-without-row`（計画節に無い） | ①進めるなら**行を足す**（**`#` は空欄でよい** —— 番号は `plan-milestones` が分けたときだけ振る） ②着手しないなら **`docs/features/pending/` へ移す**（`git mv`） |
+| `doc-without-row`（計画節に無い） | ①進めるなら**行を足す**（**`#` は空欄でよい** —— 番号は `plan-milestones` が分けたときだけ振る） ②着手しないなら **`docs/features/pending/` へ移す**（`git mv`）。**`prototype/` の設計書も対象である** —— 試作中は残っている作業なので、載っていなければ鳴る |
 | `completed-still-listed`（完了なのに残っている） | **行を消す**（`complete-feature` が消し忘れたもの）。**✅ を積み上げない** |
 
 **判断材料は git にある。**

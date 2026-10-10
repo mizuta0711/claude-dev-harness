@@ -57,6 +57,7 @@ test("docs の置き場（.gitkeep）は配り切りで、中身は触らない"
     "docs/features/planned/.gitkeep",
     "docs/features/pending/.gitkeep",
     "docs/features/completed/.gitkeep",
+    "docs/features/prototype/.gitkeep", // 試作・作業中（H76）
     "docs/reviews/.gitkeep",
   ]) {
     assert.ok(isSeedOnce(rel), `${rel} は配り切りであるべき`);
@@ -64,6 +65,7 @@ test("docs の置き場（.gitkeep）は配り切りで、中身は触らない"
   }
   // 中身は従来どおり触らない
   assert.ok(isNeverTouch("docs/features/planned/20261010_x.md"));
+  assert.ok(isNeverTouch("docs/features/prototype/20261010_x.md"));
   assert.ok(isNeverTouch("docs/features/20261010_x.md"));
   assert.ok(isNeverTouch("docs/reviews/20261010_x.md"));
 });

@@ -17,16 +17,29 @@ const SAVE_FILE = path.join(lib.projectDir(), ".claude", ".session-context.json"
 
 const input = lib.readPayload() || {};
 
+/**
+ * 進行中の機能設計書を列挙する。
+ *
+ * **直下（本実装・作業中）と `prototype/`（試作・作業中）の両方を見る**（H76）。
+ * 直下だけを見ていたため、**試作の設計書がコンパクト前の退避に残らなかった**
+ * （`session-start-context.js` も同じ形で直してある）。
+ */
 function activeFeatureDocs() {
-  const dir = path.join(lib.projectDir(), "docs", "features");
-  try {
-    return fs
-      .readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isFile() && e.name.endsWith(".md") && e.name !== "TEMPLATE.md")
-      .map((e) => lib.toPosix(path.join("docs", "features", e.name)));
-  } catch {
-    return [];
-  }
+  const base = path.join(lib.projectDir(), "docs", "features");
+  const filesIn = (sub) => {
+    const dir = sub ? path.join(base, sub) : base;
+    try {
+      return fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith(".md") && e.name !== "TEMPLATE.md")
+        .map((e) =>
+          lib.toPosix(sub ? path.join("docs", "features", sub, e.name) : path.join("docs", "features", e.name))
+        );
+    } catch {
+      return [];
+    }
+  };
+  return [...filesIn(null), ...filesIn("prototype")];
 }
 
 try {

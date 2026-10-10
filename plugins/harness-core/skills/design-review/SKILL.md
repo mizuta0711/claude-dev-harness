@@ -53,6 +53,11 @@ Stage 2 がフェーズ別に分かれていない設計書に対してフェー
 1. 未コミット変更の中の `docs/features/` 配下（`git diff --name-only`）
 2. 直近コミットの中の `docs/features/` 配下（`git diff --name-only HEAD~1 HEAD`）
 
+**`docs/features/prototype/` は候補に含める。** あちらは**試作・作業中**の置き場で、
+**試作でも Stage 1 の査読は残す**と決めている（`/harness-core:new-prototype`）。
+除外しているのは `planned/` だけなので**既定で含まれる**が、
+**`planned/` と同じだと読まれやすい**ので明記する。
+
 **`docs/features/planned/` は候補から外す。** あちらは**着手前**の置き場で、
 **着手するときに直下へ `git mv` してからレビューする**（`sync-check` と同じ扱い）。
 マイルストーンに分けたとき「残りの Stage 1 も先に書いてよい」ので、

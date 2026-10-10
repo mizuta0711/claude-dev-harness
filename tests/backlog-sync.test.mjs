@@ -376,3 +376,65 @@ test("コードフェンスの中の `#` を見出しと読まない", () => {
   assert.deepEqual(bs.check(dir).findings, []);
   assert.equal(bs.parsePlanRows(body).length, 1);
 });
+
+// ---------------------------------------------------------------------------
+// H76: `prototype/`（試作・作業中）は台帳の検査対象である
+//
+// **`pending/` とは逆向きに扱う。** あちらは「やると決めたが着手しない」ので
+// 計画節に載らないのが正しいが、**試作中は残っている作業**なので載っていないと鳴る。
+// **`sync-check` の照合対象からは外れるが、台帳の検査は受ける**（置き場で決まるのは照合）。
+// ---------------------------------------------------------------------------
+
+test("H76 検査2: prototype/ の設計書が計画節に載っていなければ鳴る", () => {
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["| 1 | a | b | `docs/features/20261010_a.md` |"]),
+    "docs/features/20261010_a.md": "# a",
+    "docs/features/prototype/20261010_p.md": "# p",
+  });
+  const f = bs.check(dir).findings;
+  assert.equal(f.length, 1);
+  assert.equal(f[0].kind, "doc-without-row");
+  assert.match(f[0].what, /prototype\/20261010_p/);
+});
+
+test("H76 検査2: 載っていれば鳴らない（正常な操作で鳴らないこと）", () => {
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["| 1 | p | b | `docs/features/prototype/20261010_p.md` |"]),
+    "docs/features/prototype/20261010_p.md": "# p",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("H76 検査1: prototype/ のパスを指す行も実在を見る", () => {
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["| 1 | p | b | `docs/features/prototype/20261010_none.md` |"]),
+    "docs/features/prototype/.gitkeep": "",
+  });
+  const f = bs.check(dir).findings;
+  assert.equal(f.length, 1);
+  assert.equal(f[0].kind, "missing-doc");
+});
+
+test("H76: 昇格（prototype/ → 直下）で台帳の欄を直し忘れると鳴る", () => {
+  // 出口の手順②（台帳の「設計書」の欄を直す）を飛ばした形。
+  // **置き場は残る**（`.gitkeep` が配られている）ので `missing-doc` 側になる。
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["| 1 | p | b | `docs/features/prototype/20261010_p.md` |"]),
+    "docs/features/prototype/.gitkeep": "",
+    "docs/features/20261010_p.md": "# p（昇格済み）",
+  });
+  const kinds = bs.check(dir).findings.map((f) => f.kind).sort();
+  assert.deepEqual(kinds, ["doc-without-row", "missing-doc"]);
+});
+
+test("H76: 置き場ごと無ければ missing-dir で、案内は new-prototype を指す", () => {
+  // `prototype/` は 0.39.0 で足した置き場なので、それより前のテンプレートには無い。
+  // **案内が `new-feature` を指していると、試作の設計書を直下に作らせてしまう。**
+  const dir = mkProject({
+    "docs/backlog.md": PLAN(["| 1 | p | b | `docs/features/prototype/20261010_p.md` |"]),
+  });
+  const f = bs.check(dir).findings;
+  assert.equal(f.length, 1);
+  assert.equal(f[0].kind, "missing-dir");
+  assert.match(f[0].how, /new-prototype/);
+});

@@ -169,9 +169,14 @@ function collectFeatureDocs(projectDir) {
   return {
     active: read(null), // 作業中（直下）
     planned: read("planned"), // 着手前
+    prototype: read("prototype"), // 試作・作業中（H76）
     completed: read("completed"), // 完了
     // `pending/` は**検査対象にしない** — 「やると決めたが着手しない」置き場で、
     // 計画節に載らないのが正しい（実測: 2本をここに置いている実プロジェクトがある）。
+    //
+    // **`prototype/` は逆に検査対象である。** あれは**試作中＝残っている作業**なので、
+    // 台帳に行が無いと忘れる。`pending/` を外す理由（計画節に載らないのが正しい）は
+    // こちらには当たらない。**`sync-check` の照合対象からは外れるが、台帳の検査は受ける。**
   };
 }
 
@@ -231,15 +236,20 @@ function check(projectDir) {
           (dirMissing
             ? `置き場（\`${dir}/\`）は \`/harness-core:harness-update\` で配られる（harness-core 0.31.2 以降）。**それだけでは設計書は生えない。** あわせて、`
             : "") +
-          "①その作業を進めるなら設計書を作る（`/harness-core:new-feature`）②取り下げたなら計画節の行を消す。**どちらが正かは作業の実態で決まる。**",
+          `①その作業を進めるなら設計書を作る（\`/harness-core:${
+            /^docs\/features\/prototype\//.test(rel) ? "new-prototype" : "new-feature"
+          }\`）②取り下げたなら計画節の行を消す。**どちらが正かは作業の実態で決まる。**`,
       });
     }
   }
 
-  // 検査2: 作業中・着手前の設計書が計画節に載っているか。
+  // 検査2: 作業中・着手前・試作中の設計書が計画節に載っているか。
   // **`## 計画` のときだけ当てる**（`matchPlanHeading` の注記を見ること）。
+  //
+  // ⚠️ **`collectFeatureDocs` に置き場を足すだけでは、この検査は動かない。**
+  // **ここにも足すこと**（H76 の設計の査読が、足し忘れを指摘した）。
   const listed = new Set(rows.flatMap((r) => r.paths));
-  for (const doc of exhaustive ? [...docs.active, ...docs.planned] : []) {
+  for (const doc of exhaustive ? [...docs.active, ...docs.planned, ...docs.prototype] : []) {
     if (!listed.has(doc)) {
       findings.push({
         kind: "doc-without-row",

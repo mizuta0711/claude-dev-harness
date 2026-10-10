@@ -356,7 +356,7 @@ node "${DIFF}" apply <path...>
 | 対象 | 挙動 |
 |------|------|
 | `.claude/harness/environment.md` | **持っていなければ配る。あれば以後一切触らない** |
-| **`docs/` 配下の `.gitkeep`**（`features/planned/` 等の置き場） | **置き場が無ければ配る。あれば配らない**（0.31.1） |
+| **`docs/` 配下の `.gitkeep`**（`features/planned/` / `features/prototype/` 等の置き場） | **置き場が無ければ配る。あれば配らない**（0.31.1）。**パターンで拾うので、置き場を足してもここは直らない**（`features/prototype/` は 0.39.0 で足した） |
 
 > **除外（`NEVER_TOUCH`）と混同しないこと。** 除外は比較にも apply にも出ないので、
 > **まだ持っていないプロジェクトへ初回を配る経路が消える**。`CLAUDE.md` が `@` で

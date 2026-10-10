@@ -146,6 +146,7 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest ../MyProje
 > `docs/features/` と `docs/reviews/` は中身がプロジェクトの資産なので `NEVER_TOUCH` だが、
 > **ディレクトリを丸ごと除外すると、後から足した置き場が既存プロジェクトへ永久に届かない**。
 > 0.27.0 で `docs/features/planned/` を足したのに**既存7プロジェクトの 0/7 に届いておらず**、
+> （同じ形で 0.39.0 が `docs/features/prototype/` を足している）
 > `plan-milestones` / `new-feature` / `design-review` の3スキルが
 > **存在しない置き場を指示する状態**になっていた。`.gitkeep` だけを除外から外して配り切る。
 

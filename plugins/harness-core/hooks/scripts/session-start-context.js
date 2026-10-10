@@ -144,19 +144,31 @@ function firstRowAfter(live, head, isSeparator) {
   return null;
 }
 
+/**
+ * 進行中の機能設計書を列挙する。
+ *
+ * **直下（本実装・作業中）と `prototype/`（試作・作業中）の両方を見る**（H76）。
+ * 直下だけを見ていたため、**試作の設計書はセッションをまたいだ瞬間に見えなくなっていた**
+ * （設計の査読が指摘した。`pre-compact-save.js` も同じ形で直してある）。
+ *
+ * 着手前（`planned/`）・保留（`pending/`）・完了（`completed/`）は**進行中ではない**ので見ない。
+ */
 function activeFeatureDocs() {
-  const dir = path.join(lib.projectDir(), "docs", "features");
-  let entries;
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
+  const base = path.join(lib.projectDir(), "docs", "features");
+  const filesIn = (sub) => {
+    const dir = sub ? path.join(base, sub) : base;
+    try {
+      return fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith(".md") && e.name !== "TEMPLATE.md")
+        .map((e) => (sub ? path.join("docs", "features", sub, e.name) : path.join("docs", "features", e.name)));
+    } catch {
+      return [];
+    }
+  };
 
-  return entries
-    .filter((e) => e.isFile() && e.name.endsWith(".md") && e.name !== "TEMPLATE.md")
-    .map((e) => {
-      const file = path.join("docs", "features", e.name);
+  return [...filesIn(null), ...filesIn("prototype")]
+    .map((file) => {
       let status = "";
       try {
         // メタ情報テーブルの「全体ステータス」行だけを見る（全文読みは不要）
