@@ -579,3 +579,50 @@ test("H65: `gh` もサブコマンドを限る（`git` と対称にする）", (
     assert.equal(guard.isBlockedAdd(cmd), false, cmd);
   }
 });
+
+// ---- H65: 誤警報側（6回目の査読。**ここが薄かった**） ----
+//
+// **`inOpenGroup` を足したことで、文書を書くだけの操作が鳴るようになっていた。**
+// **文書の本文にはコード例が入る**ので、`function f() {` や `if (x) {` は当たり前に出てくる。
+// **H65 が直そうとした問題そのものの再発**だった。
+//
+// 査読の指摘（中1・低2〜低4）と、自分の実測（本文の `{`）をまとめて固定する。
+
+test("H65: 数えるときに読み飛ばすもの（誤警報を増やさない）", () => {
+  const cases = [
+    // **ヒアドキュメントの本文**（コード例の `{` を数えていた）
+    ["cat > a.md <<'E1'", "{", "E1", "cat > b.md <<'E2'", "git add -A と書く", "E2"].join("\n"),
+    ["cat > a.md <<'E1'", "function f() {", "E1", "cat > b.md <<'E2'", "git add -A と書く", "E2"].join("\n"),
+    ["cat > a.md <<'E1'", "if (x) {", "E1", "cat > b.md <<'E2'", "git add -A と書く", "E2"].join("\n"),
+    ["cat > a.md <<'E1'", "- item (see", "E1", "cat > b.md <<'E2'", "git add -A と書く", "E2"].join("\n"),
+    // **引用符の中**
+    ['echo "fix (wip"; cat > f.md <<EOF', "git add -A", "EOF"].join("\n"),
+    ['grep -E "^\(" f', "git commit -F - -- a.md <<EOF", "git add -A", "EOF"].join("\n"),
+    ['git commit -m "feat(x: y" -- a', "cat > f.md <<EOF", "git add -A", "EOF"].join("\n"),
+    // **`#` コメントと `\` エスケープ**
+    ["# {", "cat > f.md <<EOF", "git add -A", "EOF"].join("\n"),
+    ["echo " + String.fromCharCode(92) + "{ ; cat > f.md <<EOF", "git add -A", "EOF"].join("\n"),
+    // **`gh` の値オプション**（`--repo a/b` の値を読んで `pr` に届いていなかった）
+    ["gh --repo a/b pr create --body-file - <<EOF", "git add -A と書く", "EOF"].join("\n"),
+    ["gh -R a/b issue create -F - <<EOF", "git add -A と書く", "EOF"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});
+
+test("H65: 読み飛ばしても、本物のグループは見逃さない", () => {
+  // **読み飛ばしを足した副作用で逆に見逃さないか** —— ここが落ちたら飛ばしすぎている。
+  const cases = [
+    // 前の本文に奇数個の `'` があっても、後ろの本物のグループは数える
+    ["cat > a.md <<'EOF'", "don't", "EOF", "{", "cat <<E2", "git add -A", "E2", "} | bash"].join("\n"),
+    // 引用符の中の `}` で深さを減らさない
+    ['{ echo "}"; cat <<EOF', "git add -A", "EOF", "} | bash"].join("\n"),
+    ['( echo ")"; cat <<EOF', "git add -A", "EOF", ") | bash"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});

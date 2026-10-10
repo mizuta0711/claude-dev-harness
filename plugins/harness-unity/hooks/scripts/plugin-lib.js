@@ -99,6 +99,9 @@ const GIT_VALUE_OPTS = new Set(["-C", "--git-dir", "--work-tree", "--namespace",
  */
 const GH_DATA_SUBCOMMANDS = new Set(["pr", "issue", "release", "gist", "api"]);
 
+/** `gh` のうち**次のトークンを値として取る**オプション */
+const GH_VALUE_OPTS = new Set(["-R", "--repo", "-H", "--hostname"]);
+
 /** `gh …` が本文をデータとして読む形か */
 function isGhDataForm(text) {
   const tokens = String(text)
@@ -111,6 +114,12 @@ function isGhDataForm(text) {
   if (gi < 0) return false;
   for (let k = gi + 1; k < tokens.length; k++) {
     const t = tokens[k];
+    // **値を取るオプションの「値」をサブコマンドと取り違えない。**
+    // `gh --repo a/b pr create` の `a/b` を読んで `pr` に届いていなかった（査読の低4・0.35.1 からの回帰）
+    if (GH_VALUE_OPTS.has(t)) {
+      k++;
+      continue;
+    }
     if (t.startsWith("-")) continue;
     return GH_DATA_SUBCOMMANDS.has(t);
   }
@@ -172,16 +181,20 @@ function isGitMessageForm(text) {
 /**
  * `at` の位置が、閉じていない**素のグループ**（`(` / `{`）の中にあるか。
  *
- * **1行だけ遡る方式では足りなかった**（査読の高1の残り）——
- * `{` が**別の行**にあると境界が改行になり、グループの中だと分からない。
+ * **1行だけ遡る方式では足りなかった** —— `{` が**別の行**にあると境界が改行になり、
+ * グループの中だと分からない（`{ cat <<EOF … EOF` の次に `} | bash` が来る形）。
  *
- * ```
- * {
- * cat <<EOF
- * git add -A
- * EOF
- * }|bash        ← **閉じ括弧の後ろで実行される**
- * ```
+ * ## 数えるときに読み飛ばすもの
+ *
+ * **生の文字列をそのまま数えると、誤警報が増える**（6回目の査読の中1と、自分の実測）。
+ * **文書を書く本文にはコード例が入る**ので、`function f() {` や `if (x) {` が当たり前に出てくる。
+ *
+ * | 読み飛ばすもの | 飛ばさないと起きること |
+ * |---|---|
+ * | **ヒアドキュメントの本文** | 本文の `{` を数え、**次の文書書き込みが鳴る**（`function f() {` を書くだけで） |
+ * | **引用符の中**（`'…'` / `"…"`） | `echo "fix (wip"` の後ろが鳴る。奇数個の `'` で状態が反転して**逆に見逃す** |
+ * | **`#` コメント** | `# {` の行の後ろが鳴る |
+ * | **`\` のエスケープ** | `echo \{` の後ろが鳴る |
  *
  * **`$(` と `${` は数えない。** あれは値になるだけで、
  * 外側が `git` のメッセージ引数なら潰してよい（標準のコミット形）。
@@ -189,14 +202,41 @@ function isGitMessageForm(text) {
  */
 function inOpenGroup(s, at) {
   let depth = 0;
-  let sq = false;
   for (let i = 0; i < at; i++) {
     const c = s[i];
-    if (c === "'") {
-      sq = !sq;
+
+    if (c === "\\") {
+      i++;
       continue;
     }
-    if (sq) continue;
+    if (c === "'" || c === '"') {
+      // 引用符の中は数えない。**閉じが無ければそこで打ち切る**
+      let j = i + 1;
+      while (j < s.length && s[j] !== c) {
+        if (c === '"' && s[j] === "\\") j++;
+        j++;
+      }
+      i = j;
+      continue;
+    }
+    if (c === "#" && (i === 0 || /\s/.test(s[i - 1]))) {
+      const nl = s.indexOf("\n", i);
+      if (nl < 0) break;
+      i = nl;
+      continue;
+    }
+    // **ヒアドキュメントの本文は数えない**（`<<<` は本文を持たない）
+    if (c === "<" && s[i + 1] === "<" && s[i + 2] !== "<") {
+      const m = /^<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\w]*))/.exec(s.slice(i));
+      if (m) {
+        const bodyStart = s.indexOf("\n", i + m[0].length);
+        if (bodyStart < 0) break;
+        const delim = m[2] || m[3] || m[4];
+        i = findTerminator(s, bodyStart + 1, delim, m[1] === "-") - 1;
+        continue;
+      }
+    }
+
     if (c === "(" || c === "{") {
       if (s[i - 1] === "$") continue; // `$(` / `${` は値
       depth++;
@@ -206,6 +246,7 @@ function inOpenGroup(s, at) {
   }
   return depth > 0;
 }
+
 
 /**
  * `<<` の導入部が「安全な形」かを判定する。
