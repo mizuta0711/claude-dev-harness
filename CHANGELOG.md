@@ -90,14 +90,32 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 相手にする（`analyze` が要求するのはそれだけ）。本物を使うと1ケースごとに全環境を生成することになり、
 守りたい配線と関係のない重さが乗る。
 
-H53-f の修正を外すとこのテストが落ちることを確認した（外して1件 fail → 戻して 12 件 pass）。
+**変異テストで較正した。** 査読が「引き継ぎの条件を外しても12本全部通る」ことを示したので、
+条件ごとに1本ずつ足した。最終的に **18本**で、下の5つの変異がすべて落ちる。
+
+| 変異 | 落ちるか |
+|---|---|
+| 引き継ぎを全部外す（H53-f の修正を戻す） | ✅ |
+| `latestCommit` の一致条件を外す | ✅ |
+| `baselineCommit` の一致条件を外す | ✅ |
+| `prev.kind === "conflict"` の条件を外す | ✅ |
+| 旧形式 report（`currentHash` 無し）の分岐を潰す | ✅ |
+
+### 裏返しの性質を1つ持ち込んだ（放置された report）
+
+基準が「最初の `analyze`」になったぶん、**report を放置して使い回すと、その間に入った
+無関係な編集まで「解決」として数える**。`finalize` は report が1日より古ければ警告を出し、
+`.claude/.harness-update/` を消して `analyze` から始める手を案内する
+（作業ディレクトリは `finalize` が成功したときにしか消えない）。
+**引き継ぎの条件に `baselineCommit` の一致も足した** —— 2点比較の report では
+`conflict` の意味が違うため。
 
 ### あわせて: `tests/README.md` の表を全部載せた（H53-d）
 
 27本中7本しか載っておらず、**`.gitignore` の自動適用を守る唯一のテストが漏れていた**。
 表に無いテストは「無いもの」として扱われるので、全件を5つの節に分けて載せた。
 
-docs 影響: あり（harness-update/SKILL.md — finalize の安全弁の節／tests/README.md）
+docs 影響: あり（harness-update/SKILL.md — finalize の安全弁の節と放置された report の注意／tests/README.md）
 
 ## [nextjs 0.5.3] — Prisma のバックアップを provider 別にし、失敗を握り潰さなくした（AC1・AC2・H43）
 

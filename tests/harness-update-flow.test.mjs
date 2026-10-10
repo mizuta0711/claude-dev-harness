@@ -37,13 +37,15 @@ const ENV = "nextjs";
 const STUB = [
   "import fs from 'node:fs';",
   "import path from 'node:path';",
+  "import { fileURLToPath } from 'node:url';",
   "const argv = process.argv.slice(2);",
   "let dest = null; const set = new Map();",
   "for (let i = 0; i < argv.length; i++) {",
   "  if (argv[i] === '--dest') dest = argv[++i];",
   "  else if (argv[i] === '--set') { const kv = argv[++i]; const e = kv.indexOf('='); set.set(kv.slice(0, e), kv.slice(e + 1)); }",
   "}",
-  "const src = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^[/]([A-Za-z]:)/, '$1')), '..', 'payload');",
+  // パスにスペースや非 ASCII が入ると、URL の pathname をそのまま使うと壊れる
+  "const src = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'payload');",
   "const walk = (d, base) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => {",
   "  const full = path.join(d, e.name);",
   "  return e.isDirectory() ? walk(full, base) : [path.relative(base, full)];",
@@ -314,6 +316,132 @@ test("analyze: auto-merge のハッシュは引き継がない（apply の安全
     const now = fs.readFileSync(path.join(project, ".gitignore"), "utf-8");
     assert.match(now, /後から足した/, "やり直し後の内容を土台にしている");
     assert.match(now, /coverage\//);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// 引き継ぎの条件そのものを守る。**査読が変異テストで「条件を外しても12本全部通る」ことを示した** ——
+// 条件は安全弁の本体なので、外れたら落ちるようにしておく。
+test("analyze: 別コミットに対する report からは引き継がない", () => {
+  const { root, repo, project } = scenario();
+  try {
+    analyze(project, repo.dir);
+    const firstHash = readReport(project).files.find((f) => f.file === "notes.md").currentHash;
+    // テンプレートがさらに進む ＝ 別の更新になる。前回の判定材料は使えない
+    write(repo.dir, "payload/notes.md", "テンプレートの注記 v3\n");
+    git(["add", "-A"], repo.dir);
+    git(["commit", "-q", "-m", "gen2"], repo.dir);
+    fs.writeFileSync(path.join(project, "notes.md"), "別の更新に向けて書き換えた\n", "utf-8");
+    const report = analyze(project, repo.dir);
+    const now = report.files.find((f) => f.file === "notes.md").currentHash;
+    assert.notEqual(now, firstHash, "前の更新のハッシュを持ち越さない");
+    // 新しい更新に対しては手つかずなので、finalize は止まる
+    const blocked = runFail("finalize", project, repo.dir);
+    assert.ok(blocked, "新しい更新としては手つかずなので止まるはず");
+    assert.match(blocked.stderr, /手つかずの競合/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("analyze: baseline が変わった report からは引き継がない（比較の意味が違う）", () => {
+  const { root, repo, project } = scenario();
+  try {
+    analyze(project, repo.dir);
+    const threeWay = readReport(project).files.find((f) => f.file === "notes.md").currentHash;
+    // baseline を失うと2点比較になり、同じ `conflict` でも意味が違う
+    fs.rmSync(path.join(project, ".claude/harness-baseline.json"));
+    fs.writeFileSync(path.join(project, "notes.md"), "2点比較の下で書き換えた\n", "utf-8");
+    const report = analyze(project, repo.dir);
+    assert.equal(report.twoWayFallback, true);
+    assert.notEqual(
+      report.files.find((f) => f.file === "notes.md").currentHash,
+      threeWay,
+      "3点比較のときのハッシュを持ち越さない",
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("analyze: 前回が競合でなかったものは引き継がない", () => {
+  const { root, repo, project } = scenario();
+  try {
+    // 1回目: docs/guide.md は template-improvement（現物は baseline と同じ）
+    const first = analyze(project, repo.dir);
+    assert.equal(kindOf(first, "docs/guide.md"), "template-improvement");
+    // 現物を独自に書き換えると conflict になる。**この時点が基準**でなければならない
+    fs.writeFileSync(path.join(project, "docs/guide.md"), "# 手引き\n\n独自\n", "utf-8");
+    const second = analyze(project, repo.dir);
+    assert.equal(kindOf(second, "docs/guide.md"), "conflict");
+    assert.equal(
+      second.files.find((f) => f.file === "docs/guide.md").currentHash,
+      // 引き継がず取り直すので、今の現物のハッシュになる（＝まだ手つかず）
+      readReport(project).files.find((f) => f.file === "docs/guide.md").currentHash,
+    );
+    const blocked = runFail("finalize", project, repo.dir);
+    assert.ok(blocked, "いまの内容が基準なので手つかず扱いで止まる");
+    assert.match(blocked.stderr, /docs\/guide\.md/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// 引き継ぐのは `conflict` → `conflict` のときだけ。
+// `auto-merge` のハッシュを引き継ぐと、**人がまだ解決していない競合が「解決済み」に見える**
+// （`auto-merge` だった時点の内容が基準になるため、競合を生んだ編集そのものが「解決」に数えられる）。
+test("analyze: 前回 auto-merge だったものが競合になっても引き継がない", () => {
+  const { root, repo, project } = scenario();
+  try {
+    analyze(project, repo.dir);
+    assert.equal(kindOf(readReport(project), ".gitignore"), "auto-merge");
+    // 末尾に足すとテンプレートの追記と同じハンクになり、行単位では統合できなくなる
+    fs.appendFileSync(path.join(project, ".gitignore"), "tmp/\n", "utf-8");
+    const second = analyze(project, repo.dir);
+    assert.equal(kindOf(second, ".gitignore"), "conflict");
+    // notes.md は解決しておく（止まる理由を .gitignore だけにする）
+    fs.writeFileSync(path.join(project, "notes.md"), "テンプレートの注記 v2 ＋ 独自\n", "utf-8");
+    const blocked = runFail("finalize", project, repo.dir);
+    assert.ok(blocked, ".gitignore の競合はまだ手つかずなので止まるはず");
+    assert.match(blocked.stderr, /\.gitignore/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// 0.27.0 より前の report には currentHash が無い。そのときは従来どおり
+// 「テンプレートと一致するか」で判定する（**止めるべきものを通してはいけない**）。
+test("finalize: currentHash の無い古い report でも手つかずを止める", () => {
+  const { root, repo, project } = scenario();
+  try {
+    analyze(project, repo.dir);
+    const file = path.join(project, ".claude/.harness-update/report.json");
+    const report = JSON.parse(fs.readFileSync(file, "utf-8"));
+    for (const f of report.files) delete f.currentHash;
+    fs.writeFileSync(file, JSON.stringify(report, null, 2), "utf-8");
+    const blocked = runFail("finalize", project, repo.dir);
+    assert.ok(blocked, "古い report でも止まるはず");
+    assert.match(blocked.stderr, /手つかずの競合/);
+    assert.match(blocked.stderr, /notes\.md/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// 基準が古い report のままだと、解決と無関係な編集まで「解決」として数える。
+// 止めはしないが**黙って進めない**（査読の中①）。
+test("finalize: 1日より古い report を使うと警告する", () => {
+  const { root, repo, project } = scenario();
+  try {
+    analyze(project, repo.dir);
+    const file = path.join(project, ".claude/.harness-update/report.json");
+    const report = JSON.parse(fs.readFileSync(file, "utf-8"));
+    report.createdAt = new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString();
+    fs.writeFileSync(file, JSON.stringify(report, null, 2), "utf-8");
+    const out = run("finalize", project, repo.dir, ["--force"]);
+    assert.match(out, /3 日前の analyze/);
+    assert.match(out, /\.claude\/\.harness-update\/ を消して/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -828,8 +828,16 @@ function cmdAnalyze(opts) {
     // auto-merge は引き継がない —— あちらの用途は apply の安全弁（統合結果が
     // 今の現物から作られたものか）で、analyze をやり直せば統合結果も作り直されるため、
     // 古いハッシュを持ち越すと正当な apply を拒否してしまう。
-    if (verdict.kind === "conflict" && prevReport?.latestCommit === latestCommit) {
-      const prev = (prevReport.files || []).find((f) => f.file === rel);
+    // 引き継ぐのは**同じ3点比較に対する前回の結果**だけ。比較の両端（最新と baseline）が
+    // 同じでなければ `conflict` の意味が違う（2点比較の report は全部 conflict になる）。
+    // `files` が配列でない壊れた report でも落ちないようにする
+    if (
+      verdict.kind === "conflict" &&
+      prevReport?.latestCommit === latestCommit &&
+      prevReport?.baselineCommit === (haveBaseline ? baselineCommit : null) &&
+      Array.isArray(prevReport?.files)
+    ) {
+      const prev = prevReport.files.find((f) => f.file === rel);
       if (prev?.kind === "conflict" && prev.currentHash) entry.currentHash = prev.currentHash;
     }
     results.push(entry);
@@ -842,6 +850,9 @@ function cmdAnalyze(opts) {
   );
 
   const report = {
+    // **いつ作った report か**を残す。競合の「手つかず」判定の基準は
+    // この report のハッシュなので、古い report を使い回すと基準も古くなる（下の cmdFinalize）
+    createdAt: new Date().toISOString(),
     environment,
     baselineCommit: haveBaseline ? baselineCommit : null,
     latestCommit,
@@ -1041,6 +1052,23 @@ function cmdFinalize(opts) {
       return now === f.currentHash;
     })
     .map((f) => f.file);
+
+  // **基準が古いと、解決と無関係な編集でも「解決済み」に見える。**
+  // 判定は「最初の analyze 以降に手を入れたか」なので、report を何日も放置して使い回すと、
+  // その間に入った無関係な編集まで「解決」として数えてしまう。黙って進めない
+  const reportAgeHours = report.createdAt
+    ? (Date.now() - Date.parse(report.createdAt)) / 3600000
+    : null;
+  if (reportAgeHours !== null && reportAgeHours > 24) {
+    console.warn(
+      `⚠️  この report は ${Math.floor(reportAgeHours / 24)} 日前の analyze で作られています` +
+        `（${report.createdAt}）。`
+    );
+    console.warn(
+      "    競合の「解決したか」はこの時点の内容と比べて判定します。" +
+        "判定をやり直したいときは .claude/.harness-update/ を消して analyze から始めてください。\n"
+    );
+  }
 
   if (unresolvedConflicts.length && !opts.force) {
     fail(
