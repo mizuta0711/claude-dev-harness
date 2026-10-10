@@ -689,6 +689,85 @@ function lineChanges(before, after) {
 }
 
 /**
+/**
+ * **所有マーカー**で中と外の持ち主を分ける対象（§0-4d・H53-b）
+ *
+ * ## なぜファイル単位では足りないのか
+ *
+ * `constitution.md` は**テンプレート自身が §9「このプロジェクト固有の原則」を用意して
+ * プロジェクトに書かせる**。つまり**使うほど `A≠C` が確定し、テンプレートが §1〜§8 を
+ * 1行直すたびに `conflict` になる**（実測・2026-10-11: 導入済み7プロジェクトのうち3つが
+ * プロジェクト側の内容を持ち、うち1つは47行）。
+ *
+ * 散文なので `git merge-file` には投げられない（行単位で混ぜると**意味が壊れる**）。
+ * JSON のようにキーも無い。**残る境界は「どこからどこまでがハーネスのものか」の明示**である。
+ *
+ * ## なぜファイル分割（0.25.0 の `CLAUDE.md`）ではないのか
+ *
+ * `CLAUDE.md` は `@` import で**必ず読み込まれる**ので、切り出しても読み落ちない。
+ * 一方 `constitution.md` は**必要になったときに読む文書**で、import されない。
+ * 分割するとリンクを辿らない限り不変原則が読まれない経路が新しく増える。
+ * **1ファイルのまま所有を分ける方が、読む側の経路を変えない。**
+ */
+const MARKER_FILES = new Set(["constitution.md"]);
+
+const MARKER_BEGIN = "<!-- harness:begin";
+const MARKER_END = "<!-- harness:end";
+
+/**
+ * 所有マーカーで本文を3つに割る。
+ *
+ * **行の配列で返す。** 文字列で返して連結すると、**境界の改行が落ちる**
+ * （検査で実際に踏んだ。前書きとマーカー行がつながってしまう）。
+ *
+ * @returns {{before: string[], owned: string[], after: string[]} | null} マーカーが無ければ null
+ */
+function splitByMarker(text) {
+  const lines = text.split("\n");
+  const begin = lines.findIndex((l) => l.trimStart().startsWith(MARKER_BEGIN));
+  if (begin < 0) return null;
+  const end = lines.findIndex((l, i) => i > begin && l.trimStart().startsWith(MARKER_END));
+  if (end < 0) return null;
+  // **2組目以降は見ない。** 1ファイルに1組だけという前提をここで固定する
+  // （複数組を許すと「どの組が対応するか」を決める規則が要る）
+  return {
+    before: lines.slice(0, begin),
+    owned: lines.slice(begin, end + 1),
+    after: lines.slice(end + 1),
+  };
+}
+
+/**
+ * 所有マーカーの中だけをテンプレートの内容へ置き換える。
+ *
+ * **外は一切触らない。** 中が同じなら `already-applied`、
+ * どちらかにマーカーが無ければ `null`（呼び出し側が `conflict` のまま残す）。
+ */
+function tryMarkerMerge(rel, bText, cText, work) {
+  const bParts = splitByMarker(bText);
+  const cParts = splitByMarker(cText);
+  if (!bParts || !cParts) return null;
+
+  const merged = [...cParts.before, ...bParts.owned, ...cParts.after].join("\n");
+  if (merged === cText) return { kind: "already-applied", note: "同じ変更が既に入っている" };
+
+  const ch = lineChanges(cParts.owned.join("\n"), bParts.owned.join("\n"));
+  const parts = [];
+  if (ch.deleted.length) parts.push(`削除 ${ch.deleted.length} 行`);
+  if (ch.added.length) parts.push(`追加 ${ch.added.length} 行`);
+
+  const dest = path.join(work, MERGED_REL, rel);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, merged, "utf-8");
+  return {
+    kind: "auto-merge",
+    how: "marker",
+    note: `所有マーカーの中だけを置き換えた — ${parts.join("、") || "変更なし"}（外は触っていない）`,
+    changes: { ...ch, updated: [] },
+  };
+}
+
+/**
  * `git merge-file` が返したマーカー入りの結果から、**衝突した場所**を読む。
  *
  * **「2箇所で衝突した」だけでは、人は現物のどこを見ればよいか分からない。**
@@ -859,6 +938,22 @@ function cmdAnalyze(opts) {
     if (TEXT_MERGE_FILES.has(rel) && verdict.kind === "conflict" && a !== null && c !== null) {
       const merged = tryTextMerge(rel, a, b, c, work);
       if (merged) verdict = merged;
+    }
+    // 所有マーカーの中だけを置き換える（§0-4d・H53-b）。**baseline は要らない** ——
+    // 境界が文書に書いてあるので、A を見なくても「どこがハーネスのものか」が分かる
+    if (MARKER_FILES.has(rel) && verdict.kind === "conflict" && b !== null && c !== null) {
+      const merged = tryMarkerMerge(rel, b, c, work);
+      if (merged) verdict = merged;
+      else if (splitByMarker(b) && !splitByMarker(c)) {
+        // **移行は一度だけ。** 現物にマーカーが無い（0.40.0 より前に生成した）
+        verdict = {
+          kind: "conflict",
+          note:
+            "所有マーカーが現物に無い（0.40.0 で一度だけの移行）。" +
+            "テンプレートの begin / end を現物へ入れ、プロジェクト固有の原則を end の外へ出す。" +
+            "手順は harness-update/SKILL.md の「constitution.md の移行は一度だけ」",
+        };
+      }
     }
     // 競合は finalize で「解決されたか」を判定する必要がある。
     // 判定に使うため、analyze 時点の現物のハッシュを控えておく（下の cmdFinalize を参照）
@@ -1229,7 +1324,10 @@ export {
   mergeArray3,
   tryJsonMerge,
   tryTextMerge,
+  tryMarkerMerge,
+  splitByMarker,
   lineChanges,
   JSON_MERGE_FILES,
   TEXT_MERGE_FILES,
+  MARKER_FILES,
 };
