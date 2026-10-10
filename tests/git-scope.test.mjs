@@ -258,3 +258,45 @@ test("H50: PowerShell のヒアストリングでも同じ（すり抜けと誤�
   const unscoped = [`git commit -m @'`, "msg", `'@`].join("\n");
   assert.equal(scope.isUnscopedCommit(unscoped, ps), true);
 });
+
+// ---- H65 の差し戻しで見つかった、`maskHereBodies` 由来の見逃し ----
+//
+// **0.31.3（H50）で入れた `maskHereBodies` が、`git add -A` の deny を5形すり抜けていた。**
+// H65 の査読で `isGitCommit` の同型の穴を指摘され、**同じ検査を `git-scope` にも当てて発覚した**
+// （査読は「`git-scope` は気をつけている」としていたが、**実測では同じ穴があった**）。
+//
+// **これは `repo-guard` が存在する理由そのものに触る** —— `6c68d30` では
+// 別セッションの20ファイルを巻き込んだまま push まで到達した。**見逃しは不可である。**
+
+test("H65: ヒアドキュメント由来の見逃しを作らない", () => {
+  const cases = [
+    // 導入部の行をまるごと潰すと、同じ行に続くコマンドが消える
+    ["cat <<EOF | git add -A", "msg", "EOF"].join("\n"),
+    ["cat <<EOF && git add -A", "msg", "EOF"].join("\n"),
+    // **シェルへ渡す本文は実行される。** 潰してはいけない
+    ["bash <<EOF", "git add -A", "EOF"].join("\n"),
+    ["sh <<'EOF'", "git add -A", "EOF"].join("\n"),
+    ["ssh host <<'EOF'", "git add -A", "EOF"].join("\n"),
+    // `<<` に見えて本文を持たない（終端が無いので後続を全部潰していた）
+    ["echo $((1 << N))", "git add -A"].join("\n"),
+    ["grep x <<<abc", "git add -A"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H65: 本文がデータのときは、潰す側も保つ（誤警報を増やさない）", () => {
+  // `cat` / `tee` / `git`（`-F -`）が受け取る本文は**データ**なので、
+  // 本文に書かれた禁止コマンドで鳴ってはいけない。
+  const cases = [
+    ["cat > d.md <<'EOF'", "git add -A と書く", "EOF"].join("\n"),
+    ["tee d.md <<EOF", "git add -A と書く", "EOF"].join("\n"),
+    ["git commit -F - -- a.md <<'EOF'", "git add -A も止める", "EOF"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});

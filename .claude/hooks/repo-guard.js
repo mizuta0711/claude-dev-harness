@@ -176,6 +176,36 @@ function dialect(opts) {
  * @returns {{index: number, text: string}[]} index はコマンド語の開始位置
  */
 /**
+ * ヒアドキュメントの本文を受け取るコマンドの名前（パスと拡張子を落とす）。
+ *
+ * **本文を潰してよいのは、その本文が「データ」のときだけである。**
+ * `bash <<EOF` / `ssh host <<EOF` の本文は**シェルが実行する**ので、
+ * 潰すと `git add -A` を見逃す（実測で deny がすり抜けた）。
+ */
+// **`git` も入れる** —— `git commit -F - <<EOF` は本文を**コミットメッセージとして読む**。
+// git は本文をコマンドとして実行しないので、潰しても見逃しにならない。
+const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
+
+function heredocSink(s, at) {
+  let start = 0;
+  for (let k = at - 1; k >= 0; k--) {
+    const c = s[k];
+    // **`(` も境界にする。** `$(cat <<EOF` で手前まで遡ると最初の語が
+    // `git` になり、**本文を受け取るのが `cat` だと分からない**（実測で H50 の回帰を招いた）。
+    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(") {
+      start = k + 1;
+      break;
+    }
+  }
+  const m = /^[\s(]*([A-Za-z0-9_./\-]+)/.exec(s.slice(start, at));
+  if (!m) return null;
+  // バックスラッシュを正規表現に書かずに済ませる（区切りはどちらでもよい）
+  const base = m[1].split("/").pop().split(String.fromCharCode(92)).pop();
+  const name = base.replace(/\.(exe|cmd|bat)$/i, "");
+  return name || null;
+}
+
+/**
  * ヒアドキュメント（`<<EOF`）と PowerShell のヒアストリング（`@"…"@`）の**本文を空白へ潰す**。
  * **長さは変えない**（インデックスが呼び出し側の契約なので、位置をずらせない）。改行は残す。
  *
@@ -232,16 +262,32 @@ function maskHereBodies(s, ps) {
     if (sq) continue;
 
     if (c === "<" && s[i + 1] === "<") {
+      // **ヒアストリング（`<<<`）は本文を持たない。** `<<abc` と読むと
+      // 終端が見つからず、**後続すべてを潰して deny をすり抜ける**（実測）。
+      if (s[i + 2] === "<") {
+        i += 2;
+        continue;
+      }
       const m = /^<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\w]*))/.exec(s.slice(i));
       if (m) {
+        // **本文を受け取るコマンドを見る。** `bash <<EOF` / `ssh h <<EOF` の本文は
+        // **シェルが実行する**ので、潰すと `git add -A` を見逃す（実測）。
+        // 算術のシフト（`$((1 << N))`）も、ここで自動的に外れる。
+        // **許可リストにしてあるのは、知らないコマンドを「潰さない」側へ倒すため** ——
+        // 潰さない側の失敗は誤警報だが、潰す側の失敗は **deny のすり抜け**である。
+        const sink = heredocSink(s, i);
+        if (!sink || !HEREDOC_DATA_SINKS.has(sink)) continue;
+
         const delim = m[2] || m[3] || m[4];
         const bodyStart = s.indexOf("\n", i + m[0].length);
         if (bodyStart < 0) return out.join("");
-        // **導入部（`<<'EOF'`）も潰す。** 残すとコマンド文に `<<'EOF'` が居座り、
-        // `-- <path>` の後ろに来たときに**パス指定として読まれうる**
-        // （`git commit -F - -- CLAUDE.md <<'EOF'` のパス指定が2つに見える）。
+        // **潰すのは `<<delim` のトークンと、本文の行だけ。**
+        // 導入部の行をまるごと潰すと、**同じ行に続く `| git add -A` が消える**（実測）。
+        // トークンだけ潰せば、`git commit -F - -- CLAUDE.md <<'EOF'` の
+        // `<<'EOF'` がパス指定に見える問題も起きない。
         const end = findTerminator(s, bodyStart + 1, delim, m[1] === "-");
-        blank(i, end);
+        blank(i, i + m[0].length);
+        blank(bodyStart + 1, end);
         i = end - 1;
       }
     }

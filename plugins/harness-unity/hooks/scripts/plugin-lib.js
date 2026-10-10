@@ -46,38 +46,89 @@ function readPayload() {
  * core の harness-lib.isGitCommit と同一実装。
  */
 /**
- * ヒアドキュメントの**本文**を空白へ潰す（長さは保つ）。
+ * ヒアドキュメントの**本文だけ**を空白へ潰す（長さは保つ）。
  *
  * **なぜ必要か**（H65）。`isGitCommit` は素朴な文字列一致で、
  * **本文に書かれた `git commit` を実際のコミットと取り違える**。
  * 方針は「**見逃しは不可・誤検知は許容**」だが、
  * **「誤検知は余計にチェックが走るだけ」という前提が成り立っていなかった** ——
  *
- * > 実測: `commands.typecheck` が失敗する状態で
- * > `cat > docs/x.md <<'EOF' … git commit -- path を使う … EOF` を実行すると、
- * > **文書を書くだけの操作が deny され**、「修正してから再度**コミット**してください」と出た。
+ * > 実測: `commands.typecheck` が失敗する状態で、本文に `git commit` を含む文書を
+ * > `cat > docs/x.md <<'EOF' … EOF` で書くと、**文書を書くだけの操作が deny され**、
+ * > 「修正してから再度**コミット**してください」と出た。
  *
  * **引用符は潰さない。** `bash -c "git commit -- a.md"` のように
- * **引用符の中に本物のコミットが来る形があり、潰すと見逃す**（実測で確認）。
- * **ヒアドキュメントの本文は実行されないので、潰しても見逃しは生じない。**
+ * **引用符の中に本物のコミットが来る形がある**（潰すと見逃す）。
  *
- * `git-scope.js` の `maskHereBodies` と同じ役目だが、**あちらはコマンドの走査用で、
- * 本体が大きく、配布単位も別**（unity の `plugin-lib.js` からは参照できない）。
- * ここは**この判定に必要な最小限**にとどめてある。
+ * ## 潰す条件を厳しくしてある（**初版は見逃しを6件作った**）
+ *
+ * **初版は「ヒアドキュメントの本文は実行されない」という前提で潰した。その前提が誤りだった。**
+ *
+ * | 初版で見逃した形 | なぜ |
+ * |---|---|
+ * | `cat <<EOF | git commit -F -` | **導入部の行ごと潰していた**ので `| git commit` が消えた |
+ * | `bash <<EOF` / `ssh h <<EOF` | **シェルへ渡す本文は実行される** |
+ * | `echo $((1 << N))` | **シフト演算**をヒアドキュメントと誤認した |
+ * | `grep x <<<abc` | **ヒアストリング**を `<<abc` と読み、終端が無いので後続を全部潰した |
+ *
+ * そこで次の3つにした。
+ *
+ * 1. **潰すのは本文の行だけ**（導入部の行は残す）
+ * 2. **`<<<`（ヒアストリング）は対象外**
+ * 3. **本文を受け取るコマンドが `cat` / `tee` のときだけ潰す。**
+ *    **許可リストにしてあるのは、知らないコマンドを「潰さない」側へ倒すため** ——
+ *    潰さない側の失敗は**許容されている誤検知**で、潰す側の失敗は**禁じられている見逃し**である。
+ *    `bash` / `sh` / `ssh` / 算術 / ヒアストリングは、これで自動的に外れる
+ *
+ * `git-scope.js` の `maskHereBodies` と役目は近いが、**あちらはコマンドの走査用で
+ * 導入部も潰し、配布単位も別**（unity の `plugin-lib.js` からは参照できない）。
  */
+// **`git` も入れる** —— `git commit -F - <<EOF` は本文を**コミットメッセージとして読む**。
+// git は本文をコマンドとして実行しないので、潰しても見逃しにならない。
+const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
+
+/** `<<` の手前にあるコマンド名（パスと拡張子を落とす）。分からなければ null */
+function heredocSink(s, at) {
+  let start = 0;
+  for (let k = at - 1; k >= 0; k--) {
+    const c = s[k];
+    // **`(` も境界にする。** `$(cat <<EOF` で手前まで遡ると最初の語が
+    // `git` になり、**本文を受け取るのが `cat` だと分からない**（実測で H50 の回帰を招いた）。
+    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(") {
+      start = k + 1;
+      break;
+    }
+  }
+  const head = s.slice(start, at);
+  const m = /^[\s(]*([A-Za-z0-9_./\\-]+)/.exec(head);
+  if (!m) return null;
+  const name = m[1].split(/[/\\]/).pop().replace(/\.(exe|cmd|bat)$/i, "");
+  return name || null;
+}
+
 function stripHeredocBodies(command) {
   const s = String(command || "");
   const out = s.split("");
   for (let i = 0; i < s.length; i++) {
     if (s[i] !== "<" || s[i + 1] !== "<") continue;
+    // ヒアストリング（`<<<`）は本文を持たない
+    if (s[i + 2] === "<") {
+      i += 2;
+      continue;
+    }
     const m = /^<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\w]*))/.exec(s.slice(i));
     if (!m) continue;
+    // **本文を受け取るコマンドを見る。** 知らないコマンドは潰さない（見逃しを作らないため）
+    const sink = heredocSink(s, i);
+    if (!sink || !HEREDOC_DATA_SINKS.has(sink)) continue;
+
     const delim = m[2] || m[3] || m[4];
     const stripTabs = m[1] === "-";
     const bodyStart = s.indexOf("\n", i + m[0].length);
     if (bodyStart < 0) break;
+
     let pos = bodyStart + 1;
-    let end = s.length;
+    let bodyEnd = s.length;
     while (pos <= s.length) {
       let nl = s.indexOf("\n", pos);
       const last = nl < 0;
@@ -85,16 +136,18 @@ function stripHeredocBodies(command) {
       let line = s.slice(pos, nl).replace(/\r$/, "");
       if (stripTabs) line = line.replace(/^\t+/, "");
       if (line === delim) {
-        end = last ? s.length : nl + 1;
+        bodyEnd = last ? s.length : nl + 1;
         break;
       }
       if (last) break;
       pos = nl + 1;
     }
-    for (let k = i; k < end && k < out.length; k++) {
+
+    // **導入部の行は潰さない**（`cat <<EOF | git commit -F -` の後半が消える）
+    for (let k = bodyStart + 1; k < bodyEnd && k < out.length; k++) {
       if (out[k] !== "\n") out[k] = " ";
     }
-    i = end - 1;
+    i = bodyEnd - 1;
   }
   return out.join("");
 }

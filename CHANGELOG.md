@@ -52,6 +52,74 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.34.1] — 0.34.0 の修正が見逃しを6件作り、同じ穴が `git-scope` にもあった（査読で差し戻し）
+
+**0.34.0 は push していない。** 査読が**差し戻し（push 不可）**を出した。
+**「ヒアドキュメントの本文は実行されない」という前提が誤りだった。**
+
+### 高: 修正が、方針で禁じている見逃しを作っていた
+
+**初版は `<<` の位置から終端まで潰していた**ため、次を見逃した（全件実測）。
+
+| 形 | なぜ見逃したか |
+|---|---|
+| `cat <<EOF \| git commit -F -` | **導入部の行ごと潰していた**ので `\| git commit` が消えた |
+| `cat <<EOF && git commit -m x` | 同じ行の `&&` 以降が消えた |
+| `bash <<EOF` / `sh <<'EOF'` / `ssh h <<'EOF'` | **シェルへ渡す本文は実行される。** 前提が崩れていた |
+| `echo $((1 << N))` | **シフト演算**を区切り語 `N` のヒアドキュメントと誤認した |
+| `grep x <<<abc` | **ヒアストリング**を `<<abc` と読み、終端が無いので後続を全部潰した |
+
+**方針は「見逃し（ゲート素通り）は不可」である。** 元の欠陥（誤検知）より悪い方向へ倒していた。
+
+### 同じ穴が `git-scope` にもあった —— そちらは `git add -A` の deny をすり抜ける
+
+**査読は「今回の穴は `git-scope` が気をつけている点」としたが、実測すると同じ穴があった。**
+**0.31.3（H50）で入れた `maskHereBodies` 自身の欠陥**である。
+
+```
+echo $((1 << N))\ngit add -A        → isBlockedAdd: false（すり抜け）
+grep x <<<abc\ngit add -A           → false
+cat <<EOF | git add -A\nmsg\nEOF    → false
+bash <<EOF\ngit add -A\nEOF         → false
+ssh h <<'EOF'\ngit add -A\nEOF      → false
+```
+
+**`repo-guard` が存在する理由そのものに触る** —— `6c68d30` では
+**別セッションの20ファイルを巻き込んだまま push まで到達した**。
+
+### 直し方（4コピーに同じ規則を当てた）
+
+1. **潰すのは `<<delim` のトークンと、本文の行だけ**（導入部の行は残す）
+2. **`<<<`（ヒアストリング）は対象外**
+3. **本文を受け取るコマンドが `cat` / `tee` / `git` のときだけ潰す**
+
+**3 を許可リストにしたのが要点である。** 知らないコマンドは「潰さない」側へ倒れ、
+**その失敗は許容されている誤検知**で済む。潰す側の失敗は**禁じられている見逃し**になる。
+`bash` / `sh` / `ssh` / 算術 / ヒアストリングは、これで自動的に外れる。
+
+- **`git` を許可リストに入れた** —— `git commit -F - <<EOF` は本文を
+  **コミットメッセージとして読む**。git は本文をコマンドとして実行しない
+- **`(` を sink の境界にした** —— `$(cat <<EOF` で手前まで遡ると最初の語が `git` になり、
+  **本文を受け取るのが `cat` だと分からない**（この取りこぼしで **H50 の回帰を一度招いた**）
+
+### 4コピーに同じ修正を当てた
+
+| ファイル | 役目 |
+|---|---|
+| `plugins/harness-core/hooks/scripts/git-scope.js` | コマンド走査（`maskHereBodies`） |
+| `.claude/hooks/repo-guard.js` | このリポジトリを守る側（**ProjectTemplete 側にも反映**） |
+| `plugins/harness-core/hooks/scripts/harness-lib.js` | `isGitCommit`（`stripHeredocBodies`） |
+| `plugins/harness-unity/hooks/scripts/plugin-lib.js` | 同（元から複製） |
+
+**査読の中（「3つ目の実装を作った判断を疑え」）はそのとおりだった。**
+**実測では、既存の実装も同じ穴を持っていた** —— 複製が増えたから穴が増えたのではなく、
+**`<<` の扱いが難しい**のが根である。**同じケース集を両方に当てるテストで押さえた**
+（`tests/git-scope.test.mjs` と `tests/is-git-commit.test.mjs`）。
+
+**テスト4件追加（計404件合格）。** 見逃し側と誤警報側を**対にして**置いてある。
+
+docs 影響: あり（reference/permissionsベースライン.md — §3 の残余リスクに「0.31.3 自身が見逃しを作っていた」を追記 ／ diagrams/05_フック発火タイミング図.md — `pre-commit-check` の発火条件。対象は `grep -rln "pre-commit-check|post-commit-doc-check|maskHereBodies|isGitCommit" docs/ templates/ README.md tools/` で出し、**「いつ発火するか」を書いているのは diagrams/05 だけ**だと確かめた）
+
 ## [0.34.0] — 文書を書くだけの操作が deny されていた（H65・harness-unity 0.4.1 も同時）
 
 **`isGitCommit` が、ヒアドキュメントの本文に書かれた `git commit` を実際のコミットと取り違えていた。**
