@@ -17,7 +17,21 @@ node tools/create-project.mjs --env <nextjs|unity|wpf|android> --dest <生成先
 |-----------|------|
 | `--set KEY=VALUE` | プレースホルダの値を指定する（複数可。未指定分は対話で尋ねる） |
 | `--dry-run` | 生成予定のファイル一覧と置換内容を表示するだけで、何も書き込まない |
-| `--yes` / `-y` | 対話プロンプトを出さず、既定値をそのまま使う |
+| `--yes` / `-y` | 対話プロンプトを出さず、既定値をそのまま使う。**既定値を持たないプレースホルダには効かない**（下記） |
+
+> ⚠️ **`--yes` は「全部おまかせ」ではない。** `template.json` の宣言に `default` が無い
+> プレースホルダは、**値が無いままでは生成せずエラーで止まる**
+> （`プレースホルダ PROJECT_NAME の値がありません`・終了コード 1。`create-project.mjs:262-268`）。
+> `--yes` で通るのは `default` のあるものだけなので、**残りは `--set KEY=VALUE` で渡す**。
+>
+> ```bash
+> node tools/create-project.mjs --env android --dest D:/path/MyApp --yes >   --set PROJECT_NAME=MyApp --set PROJECT_DESCRIPTION=... --set APPLICATION_ID=com.example.myapp
+> ```
+>
+> **`--yes` を付けない非 TTY 実行（CI・`claude -p` の中など）も同じ経路を通る** ——
+> 対話できるのは「TTY があり `--yes` でない」ときだけなので、**対話に落ちて待つのではなく、
+> 同じようにエラーで止まる**。どのプレースホルダに `default` があるかは
+> `templates/<env>/template.json` を見る。
 
 ### 処理の流れ
 

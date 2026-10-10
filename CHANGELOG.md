@@ -57,6 +57,60 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [wpf 0.5.0] — スクショの保存先・イベント購読の解除・`--yes` の限界（H57・H64・AC4）
+
+**還元の束。** いずれも「どう直すかまで分かっていて、判断が要らない」ものを1回にまとめた。
+
+### H57: 撮影の保存先に規約が無かった（プラグイン層）
+
+`capture-screenshots/SKILL.md` の手順本文が `Capture-AppWindow '<タイトル一部>' out.png` で、
+**保存先がリポジトリのルート直下**だった。撮り直すたびに上書きされ、消し忘れがルートに散る。
+
+**android 側（0.31.0）とまったく同じ欠陥**で、あのときは android だけを直したため
+**環境間で揃っていなかった**。既定を `screenshots/<画面名>_<yyyymmdd>.png` にし、
+**保存先が無ければ先に作ること**と、**コミットするかはプロジェクトで決めること**
+（撮り捨ては `.gitignore`、マニュアル用は追跡）を android と同じ形で入れた。
+
+### H64: イベント購読の解除が wpf テンプレートに無かった（テンプレート層）
+
+`rules/mvvm-viewmodel.md` は **Messenger の `Unregister` しか書いていなかった**。
+`+=` で購読した Core イベントの `-=` が無いため、
+**Core 側が ViewModel より長生きする構成で解放されない**。
+節とチェックリスト1行を足した。**ラムダで購読すると `-=` で外せない**ことも併記した
+（還元元の実プロジェクト固有の記述は落とし、環境非依存の形にしてある）。
+
+### AC4: `--yes` が「全部おまかせ」に見えていた（tools）
+
+`create-project.mjs --env android --yes` は、**`template.json` に `default` が無い
+プレースホルダがあると生成せずエラーで止まる**（`PROJECT_NAME` で実際に踏んだ。
+`tools/create-project.mjs:262-268`・終了コード 1。2026-10-11 に再現）。
+`tools/README.md` と `--help` に、**`--set` で渡すこと**と、
+**`--yes` を付けない非 TTY 実行（CI・`claude -p` の中）も同じ経路を通る**ことを書いた。
+
+### H36 の前提が実測で崩れた（記録のみ・修正なし）
+
+「wpf の allow に `capture-screenshots` の PowerShell を足す」ために、
+**ユーザー名に依存しない書き方**を探して測った（Claude Code 2.1.295・headless の
+`permission_denials`・allow 1件だけの設定 × 対照は allow 空）。
+
+| ルール | 結果 |
+|---|---|
+| `Bash(*ZZPROBE*)` | ✅ 通る（先頭ワイルドカードは効く） |
+| `PowerShell(zzprobe-cmd:*)` | ✅ 通る（前方一致は効く） |
+| `PowerShell(. "<絶対パス>")` | ✅ 通る（**完全一致**） |
+| ドットソースに対するワイルドカード4形 | ❌ **全滅** |
+
+**ドットソース（`. "<パス>"`）は完全一致しか通らない。** つまり
+**プラグイン同梱スクリプトをドットソースする手順は、テンプレートの allow では覆えない**
+（パスに必ずユーザー名が入る）。**H36 は「allow を足す」では閉じない**ので、
+手段の選択（スキル側をプロジェクト相対のパスに変える／`settings.local.json` に任せる）を
+残して実測だけ `docs/reference/permissionsベースライン.md` §4 に置いた。
+**ついでに1つ出た** —— 実在プロジェクトに溜まっていた
+`PowerShell(. "C:/Users/<名前>/.claude/plugins/cache/…/harness-wpf/*)` は
+上表で deny になった形と同型で、**承認ダイアログが生成した形がそのまま一致しない**疑いがある。
+
+docs 影響: あり（reference/permissionsベースライン.md — allow の一致のしかたの実測表を §4 に追加）
+
 ## [0.39.2] — 解決した競合が `--force` を要求しなくなった／追従コマンドにテストを足した（H53-f・H53-a）
 
 ### H53-f: 解決してから `analyze` をやり直すと、解決の証拠が消えていた

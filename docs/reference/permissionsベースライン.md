@@ -303,6 +303,42 @@ PowerShell の `$out = git push` のような代入で受ける形**。いずれ
   （config で実行するコマンドが allow に無いと、hook 経由の実行で毎回確認が入る）
 - 個人の趣味に属するもの（エディタ起動、雑多な CLI）は `settings.local.json` へ
 
+### allow の一致のしかた（2026-10-11 実測・H36）
+
+**ワイルドカードが効くかは、ツールと「コマンドの先頭が何か」で変わる。**
+Claude Code **2.1.295** / headless `claude -p` + `--output-format json` の
+`permission_denials` で、**allow を1件だけ置いた設定**を当てて測った
+（対照は allow 空。対照は全ケースで deny）。
+
+| ルール | 当てたコマンド | 結果 |
+|---|---|---|
+| `Bash(*ZZPROBE*)` | `zzprobe-cmd --marker ZZPROBE` | ✅ 通る（**先頭ワイルドカードは効く**） |
+| `PowerShell(zzprobe-cmd:*)` | `zzprobe-cmd --marker ZZP` | ✅ 通る（前方一致は効く） |
+| `PowerShell(. "<絶対パス>")` | `. "<同じ絶対パス>"` | ✅ 通る（**完全一致**） |
+| `PowerShell(*ui-capture.ps1*)` | `. "C:/…/tools/ui-capture.ps1"` | ❌ deny |
+| `PowerShell(. *ui-capture.ps1*)` | 同上 | ❌ deny |
+| `PowerShell(. "C:/…/<親ディレクトリ>/*)` | 同上 | ❌ deny |
+| `PowerShell(. "C:/Users/*)` | 同上 | ❌ deny |
+| `PowerShell(.:*)` | 同上 | ❌ deny |
+
+**ドットソース（`. "<パス>"`）は完全一致しか通らない。** `PowerShell` ツールは
+コマンドを操作単位に分解して照合し（deny の理由に
+`This PowerShell command contains multiple operations. The following part requires approval:` が出る）、
+**先頭が実行ファイル名でない操作には前方一致もワイルドカードも効かない**。
+
+**帰結: プラグイン同梱のスクリプトをドットソースする手順は、テンプレートの allow では覆えない。**
+`${CLAUDE_PLUGIN_ROOT}` の展開先は `C:\Users\<名前>\.claude\plugins\…` で、
+完全一致しか効かないなら**ルールにユーザー名が入る**。
+`templates/` に個人の値を入れない方針（`CLAUDE.md` §7）と両立しない。
+
+> ⚠️ **プロジェクト側に溜まった allow も、この形だと効いていない可能性がある。**
+> 実在のプロジェクトの `settings.local.json` には
+> `PowerShell(. "C:/Users/<名前>/.claude/plugins/cache/dev-harness/harness-wpf/*)` が入っていた。
+> これは上表で deny になった形（親ディレクトリ + `*`）と同型で、
+> **承認ダイアログが生成した形がそのまま一致しない**ことを意味する
+> （承認は通るが、次回も聞かれる）。**実測はしていない**（溜まった設定を書き換えると
+> 他セッションに影響するため）。
+
 ## 5. 単純化してはいけない4点
 
 いずれも**一度単純な形にして事故が起きた**もの。**「もっと短く書けるのでは」と思ったら、

@@ -94,6 +94,20 @@ _service.StateChanged += (_, s) =>
   `while (Logs.Count > 1000) Logs.RemoveAt(0);` のように管理する
 - スレッドの詳細は `csharp-wpf.md` の「非同期とスレッド」を参照
 
+## イベント購読の解除（必須）
+
+Core のイベントを `+=` で購読した ViewModel は、**破棄時に必ず `-=` で解除する。**
+
+```csharp
+public void Cleanup() => _service.StateChanged -= OnStateChanged;
+```
+
+- **Core 側が ViewModel より長生きすると**、解除し忘れた ViewModel が
+  イベント経由で参照され続けて解放されない
+- **画面や対象を動的に追加・削除する作りでは、解除漏れは使うほど積み上がる**
+- 解除は破棄処理（`Cleanup()` / `Dispose()` 等）に集約し、**購読と同じ場所で対にして書く**
+- ラムダで購読すると `-=` で外せない。**解除する購読はメソッド参照にする**
+
 ## ViewModel 間の通信（Messenger）
 
 ViewModel を直接参照せずに通知する場合は `WeakReferenceMessenger` を使う。
@@ -124,6 +138,7 @@ WeakReferenceMessenger.Default.Register<ItemCreatedMessage>(this, (recipient, ms
 - [ ] `CanExecute` 変化時に `NotifyCanExecuteChanged()`
 - [ ] Core イベント → UI 反映は Dispatcher 経由
 - [ ] 例外は ViewModel でハンドリングしログ化（Core ではキャッチしない）
+- [ ] `+=` で購読した Core イベントは破棄時に `-=`（購読と対で書く）
 - [ ] Messenger を使ったら破棄時に `Unregister`
 
 ## 新しい画面（View）を追加する場合の一般手順

@@ -20,7 +20,16 @@ allowed-tools: "PowerShell, Read, Glob"
 1. **ソフトウェアレンダリングへ切替**（必須）：WPFはハードウェアレンダリングのままだとGDIキャプチャが「タイトルバーだけで中身が真っ白」になる。`Set-WpfSoftwareRender`（`HKCU\…\Avalon.Graphics\DisableHWAcceleration=1`）を実行する。
 2. **対象アプリを起動**：スクショにデモデータを写したい場合は、あらかじめ用意したサンプルデータを引数に起動する。
 3. **画面操作**：UIAutomationのヘルパー（`Invoke-MenuItem` / `Invoke-Button` / `Toggle-Button`）を使う。自前描画コントロール（AutomationPeerが無くUIAに出ない要素）はウィンドウ実枠＋座標で叩く（`Invoke-ClickPoint` / `Click-RelativePoint`。オフセット値は対象コントロールのレイアウトに合わせて実測して渡す）。ファイル選択は `Invoke-Button '…' 'ファイルを開く'` → `Load-OpenFileDialog @(paths)`（最下部EditへWM_SETTEXT＋開くボタンBM_CLICK）。
-4. **撮影**：`Capture-AppWindow '<タイトル一部>' out.png`（AttachThreadInputで前面化＋DWM実枠をCopyFromScreen）。
+4. **撮影**：`Capture-AppWindow '<タイトル一部>' screenshots/<画面名>_<yyyymmdd>.png`（AttachThreadInputで前面化＋DWM実枠をCopyFromScreen）。**保存先が無ければ先に作る**（`New-Item -ItemType Directory -Force screenshots`）。
+
+   > ⚠️ **リポジトリのルート直下に `out.png` のような名前で落とさない。**
+   > 撮り直すたびに上書きされ、消し忘れがルートに散る。**保存先はプロジェクトが決めた
+   > ディレクトリ配下に固定する**（既定は `screenshots/`。`docs/` や `assets/` 配下に
+   > 決めているプロジェクトはそちらへ）。
+
+   > **コミットするかはプロジェクトで決める。** マニュアルに載せる画像は追跡し、
+   > 動作確認用の撮り捨ては `.gitignore` に入れる。**どちらにするか決めずに撮ると、
+   > 下のプライバシー保護チェックを通していない画像が履歴に入る。**
 5. **ソフトウェアレンダリングを元に戻す**（必須）：`Restore-WpfHwAccel` を必ず実行する。
 
 ## ★プライバシー保護チェック（撮影のたびに必須・省略禁止）
@@ -33,7 +42,7 @@ allowed-tools: "PowerShell, Read, Glob"
 
 - 撮影用PowerShellドライバを一時ファイルで作る場合、Windows PowerShell 5.1はBOM無しUTF-8をCP932と誤読して日本語が化けるため、実行前に**UTF-8 BOM付き**へ再エンコードする（`[System.IO.File]::WriteAllText($p,$t,(New-Object System.Text.UTF8Encoding($true)))`）。
   同じ理由で、同梱の `ui-capture.ps1` 自体も UTF-8 BOM 付きで配布している。
-- スクショの格納先は `docs/` や `assets/` 等プロジェクトで決めた場所に統一する。
+- スクショの格納先は `screenshots/`（既定）や `docs/`・`assets/` 配下など、プロジェクトで決めた場所に統一する。
 
 ## 結果報告
 

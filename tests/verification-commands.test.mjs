@@ -29,6 +29,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  *
  * **鳴りすぎないこと**が要件（R3）。拾うのは「テンプレートが permissions で言及している
  * 実行ファイル」で始まる行だけにする。**そのテンプレートが関心を持っていないコマンドは見ない。**
+ *
+ * ## 何を検査できないか（2026-10-11 実測・H36）
+ *
+ * **PowerShell のドットソース行（`. "<パス>"`）は、そもそも allow で覆えない。**
+ * あの形は**完全一致しか通らず**、前方一致もワイルドカードも効かない
+ * （`docs/reference/permissionsベースライン.md` §4 の実測表）。
+ * プラグイン同梱スクリプトのパスにはユーザー名が入るため、
+ * **テンプレートに書ける allow が存在しない**。
+ * wpf の `capture-screenshots` がこの形なので、**この検査は wpf では
+ * dotnet 系しか見ていない**（`exes` が小文字始まりに限られることとは別の理由）。
  */
 
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
