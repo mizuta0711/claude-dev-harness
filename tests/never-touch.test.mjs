@@ -86,7 +86,7 @@ test("baseline に入っている配り切りは、現物が無ければ配ら�
 
 test("置き場が実在するなら .gitkeep は配らない（消したものを再提案しない）", () => {
   // `.gitkeep` は「空ディレクトリを git に載せる」ためのもの。
-  // 中身があって消したプロジェクト（実測: engineer-potal / skillup_mock）へ出し続けない。
+  // 中身があって消したプロジェクト（実測: 実プロジェクト2件）へ出し続けない。
   // ROOT/tests は実在するディレクトリなので、その .gitkeep は不要と判定されるべき。
   assert.equal(seedOnceVerdict("tests/.gitkeep", ROOT), null);
 });

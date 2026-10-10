@@ -225,7 +225,7 @@ test("「つ」は単位に入れない（散文でいちばん汎用の助数�
 test("`environment.md` は検査しない（あれは実態を書く場所）", () => {
   // H55 で「プロジェクト所有・配り切り」と決めた唯一の常時ファイルで、
   // **スタックの実際の版・構成・固有の注意点を書く場所**である。
-  // 実測: CommSim の「WPF アプリが3本ある」「テストは2本立てで既に存在する」で鳴った。
+  // 実測: WPF の実プロジェクトの「WPF アプリが3本ある」「テストは2本立てで既に存在する」で鳴った。
   assert.ok(!scan.isWatchedPath(".claude/harness/environment.md"));
   assert.ok(scan.isWatchedPath(".claude/harness/core.md"));
 });

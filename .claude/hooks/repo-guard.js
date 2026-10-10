@@ -829,12 +829,34 @@ function gitTokenIndex(tokens) {
 /** 先頭の環境変数代入（`FOO=bar git ...`） */
 const ENV_ASSIGN_PREFIX = /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/;
 
-/** `-c` / `-Command`（`-lc` のような束も含む） */
-const isDashC = (v) =>
-  /^--?command$/i.test(v) || (/^-[A-Za-z]+$/.test(v) && v.includes("c"));
+/**
+ * `-c` の後ろを「シェルへ渡す文字列」として読むコマンド。**系ごとに規則が違う。**
+ *
+ * ⚠️ **一律に「`c` を含むオプション」で見てはいけない。** PowerShell には
+ * `-ExecutionPolicy` / `-NonInteractive` のように**小文字の `c` を含む実在のフラグ**があり、
+ * そこを本体の位置と取り違えると**見逃す**（実測で3形）。
+ */
+const BASH_LIKE = /^(?:bash|sh|zsh|dash|ksh|ash|busybox)$/i;
+const PS_LIKE = /^(?:pwsh|powershell)$/i;
+const CMD_LIKE = /^cmd$/i;
 
-/** `-c` / `-Command` の後ろを「シェルへ渡す文字列」として読むコマンド */
-const SHELL_DASH_C = /^(?:bash|sh|zsh|dash|ksh|ash|busybox|pwsh|powershell)$/i;
+/** bash 系の `-c`（`-lc` のような束も本体を取る） */
+const isBashDashC = (v) => /^-[A-Za-z]*c[A-Za-z]*$/.test(v) && !v.startsWith("--");
+
+/**
+ * PowerShell の `-Command`。**省略形を受ける**（`-c` / `-co` / `-Comm` …）が、
+ * `-Command` の前方一致だけに限る（`-ExecutionPolicy` には当たらない）。
+ */
+const isPsDashC = (v) => /^-c(?:o(?:m(?:m(?:a(?:n(?:d)?)?)?)?)?)?$/i.test(v);
+
+/** `cmd /c` / `cmd /k` */
+const isCmdDashC = (v) => /^[/-][ck]$/i.test(v);
+
+/**
+ * bash 系で**次のトークンを値として取る**オプション。
+ * 宣言しないと `bash -o pipefail -c "…"` の `pipefail` をスクリプト名と誤認して**見逃す**（実測）。
+ */
+const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 
 /**
  * **引用符の内側に隠れた、もう一段のコマンド**を取り出す（H69）。
@@ -854,18 +876,53 @@ const SHELL_DASH_C = /^(?:bash|sh|zsh|dash|ksh|ash|busybox|pwsh|powershell)$/i;
  */
 function wrappedCommand(text, opts) {
   const tokens = tokenize(String(text || "").replace(ENV_ASSIGN_PREFIX, ""), opts);
-  const join = (from) => tokens.slice(from).map((t) => t.value).join(" ") || null;
+  /**
+   * `eval` / `cmd /c` の本体。**引用符を復元せずに繋ぐのが正しい。**
+   *
+   * `eval` は引数を空白で連結してから**もう一度解析する**ので、引用符は本当に失われる。
+   *
+   * > 実測: `eval f git commit -m "docs: --all dummy"` を bash に通すと
+   * > `argc=6` で `[--all]` が独立した引数になる。つまり `--all` は**実際に git へ渡る**。
+   * > **査読はここを誤検知と見たが、deny が正しい。**
+   */
+  const rest = (from) => tokens.slice(from).map((t) => t.value).join(" ") || null;
+
+  /**
+   * `-c` の本体は**次の1トークンだけ**。
+   *
+   * `bash -c "cmd" name arg…` の後ろは `$0` `$1` …であって本体ではない。
+   * 繋いでしまうと引用符を失って別物になる（`eval` と違い、ここは1つの引数である）。
+   */
+  const body = (at) => (tokens[at] ? tokens[at].value : null);
   let k = 0;
   while (k < tokens.length) {
     const name = commandBaseName(tokens[k].value);
     // `eval` は後ろ全部を1つのコマンドとして読む（`eval git add -A` も `eval "git add -A"` も）
-    if (name === "eval") return join(k + 1);
-    if (SHELL_DASH_C.test(name)) {
+    if (name === "eval") return rest(1);
+    if (BASH_LIKE.test(name)) {
       for (let j = k + 1; j < tokens.length; j++) {
-        // **束も見る**（実測: `bash -lc "git stash"` が素通りしていた）。
-        // 束のどこに `c` があっても次を本体と読む —— 誤検知側に倒す
-        if (isDashC(tokens[j].value)) return join(j + 1);
-        if (!tokens[j].value.startsWith("-")) return null; // スクリプト名
+        const v = tokens[j].value;
+        if (isBashDashC(v)) return body(j + 1);
+        if (SHELL_VALUE_OPTS.has(v)) {
+          j++; // `-o pipefail` の値
+          continue;
+        }
+        if (!v.startsWith("-") && !v.startsWith("+")) return null; // スクリプト名
+      }
+      return null;
+    }
+    if (PS_LIKE.test(name)) {
+      // **オプションの値では止まらない**（`-ExecutionPolicy Bypass` が普通に挟まる）。
+      // `-Command` が無ければ本体は無い（`-File` はスクリプトなので読めない）
+      for (let j = k + 1; j < tokens.length; j++) {
+        if (isPsDashC(tokens[j].value)) return body(j + 1);
+      }
+      return null;
+    }
+    if (CMD_LIKE.test(name)) {
+      for (let j = k + 1; j < tokens.length; j++) {
+        // `cmd /c` は**残り全部**を受け取る（1つの引数ではない）。実測: `cmd /c git add -A` が動く
+        if (isCmdDashC(tokens[j].value)) return rest(j + 1);
       }
       return null;
     }
@@ -1021,9 +1078,11 @@ const GIT_VALUE_ARGS = {
   ]),
   stash: new Set(["-m", "--message", "--pathspec-from-file"]),
   clean: new Set(["-e", "--exclude"]),
-  checkout: new Set([
-    "-s", "--source", "--conflict", "-b", "-B", "--orphan", "-t", "--track", "--pathspec-from-file",
-  ]),
+  // ⚠️ **実測で値を取ると確かめたものだけを入れる。** 取らないものを入れると見逃す。
+  // `checkout` に `-s` は無い（`error: unknown switch 's'`）。`-t` / `--track` は
+  // 次のトークンを値として取らない（`git checkout -t .` は `fatal: missing branch name`）。
+  // いずれも git 自身が拒むので実害は無いが、**表が実態と違うと次に読む人が誤る**。
+  checkout: new Set(["--conflict", "-b", "-B", "--orphan", "--pathspec-from-file"]),
   restore: new Set(["-s", "--source", "--conflict", "--pathspec-from-file"]),
 };
 
@@ -1117,9 +1176,17 @@ function isBlockedDiscard(command, opts) {
   return gitInvocations(command, opts).some((g) => {
     if (g.sub === "checkout" || g.sub === "restore") {
       const a = splitArgs(g);
-      // `--` の前は「どこから戻すか」（`git checkout HEAD -- .`）なので、
-      // 区切りがあるときは後ろだけを見る
-      return a.sep ? a.pathspecs.some(isWholeScope) : a.operands.some(isWholeScope);
+      // ⚠️ **`--` があっても前を見る。** 初版は「区切りがあるときは後ろだけ」としたが、
+      // **`restore` は `--` の前後どちらもパス指定**なので、前だけに `.` があると見失う。
+      //
+      // > 実測（査読の高1）: `git restore . --` と `git restore . -- sub/b.txt` が
+      // > **rc=0 のまま作業ツリー全体を破棄する**のに、deny を素通りした（0.36.3 では止まっていた回帰）。
+      // > **後者はパスを指定しているように見えて全部消す**ので、事故の形として最も起きやすい。
+      //
+      // `checkout` は `--` の前が tree-ish なので本来は後ろだけで足りるが、
+      // **前に `.` が来る形は git 自身が拒む**（`fatal: invalid reference: .`）ため、
+      // 分けずに同じ規則にしてある（**規則を2つ持つと、片方だけ直す事故が起きる**）。
+      return a.operands.some(isWholeScope) || a.pathspecs.some(isWholeScope);
     }
     if (g.sub === "clean") {
       const a = splitArgs(g);

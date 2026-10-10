@@ -14,7 +14,7 @@ const rc = await import(pathToFileURL(path.join(ROOT, "tools", "rules-reality-ch
 //   A. paths が1件も一致しない（規約が一度もロードされない。**静かに失敗する**）
 //   B. 名指しした API が、ソースにも依存の宣言にも無い
 //
-// **実測で H27 の元の指摘を再現した** —— SimplePhone に当てると
+// **実測で H27 の元の指摘を再現した** —— Android の実プロジェクトに当てると
 // `hiltViewModel` と `collectAsStateWithLifecycle` が出る（H27 が査読で見つけた2件）。
 
 function mkProject(files) {
@@ -34,7 +34,7 @@ const rule = (globs, body) =>
 
 test("波括弧を展開する（テンプレートが配っている書き方）", () => {
   // **対応しないと `src/**` + `/*.{ts,tsx}` が1件も一致せず、
-  // 「この規約は一度もロードされない」と誤報告する**（実測: engineer-potal で出た）。
+  // 「この規約は一度もロードされない」と誤報告する**（実測: 実プロジェクトで出た）。
   const re = rc.globToRegExp("src/**/*.{ts,tsx}");
   assert.ok(re.test("src/app/page.tsx"));
   assert.ok(re.test("src/lib/a.ts"));
@@ -185,7 +185,7 @@ test("テンプレートの rules 自身は、生成直後に paths で鳴らな
 
 test("否定・禁止の文では報告しない（ここが最重要）", () => {
   // **禁止の規約は、禁止する対象の名前を本文に書く。** そのため
-  // **規約が正しいほど鳴る**。初版は SimplePhone に3件報告したが**全部誤報**で、
+  // **規約が正しいほど鳴る**。初版は Android の実プロジェクトに3件報告したが**全部誤報**で、
   // **3件とも査読の指摘を受けて直したあとの正しい文面**だった。
   for (const body of [
     "- **DI（Hilt / Koin / Dagger）は導入していない**ので `hiltViewModel()` は使えない",
@@ -198,7 +198,7 @@ test("否定・禁止の文では報告しない（ここが最重要）", () =>
 
 test("否定が隣の文にあっても、肯定の指示は報告する", () => {
   // **ここを間違えると本物の欠陥を落とす。**
-  // 適用時の SimplePhone の文面は、次の行が別の識別子についての否定だった:
+  // 適用時の実プロジェクトの文面は、次の行が別の識別子についての否定だった:
   //   「ViewModel は `viewModel()` / `hiltViewModel()` で取得する。」
   //   「**自分で `remember { MyViewModel() }` しない**（構成変更で作り直される）」
   // 行や項目で見ると、この「しない」が `hiltViewModel` に掛かっていると誤って読む（実測で落とした）。

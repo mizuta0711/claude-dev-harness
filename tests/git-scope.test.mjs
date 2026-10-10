@@ -1036,7 +1036,10 @@ test("H72: まとめて実測した見逃し5件", () => {
   assert.equal(scope.isBlockedAdd("git add -Av"), true, "短縮の束");
   assert.equal(scope.isBlockedAdd("git add ./"), true, "./ が表に無かった");
   assert.equal(scope.isBlockedDiscard("git clean -e build -fd"), true, "除外の値を対象と読んだ");
-  assert.equal(scope.isBlockedDiscard("git checkout -s HEAD -- ."), true, "-s の値を対象と読んだ");
+  // ⚠️ 初版は `git checkout -s HEAD -- .` を使っていたが、**checkout に `-s` は無い**
+  // （実測: `error: unknown switch 's'`）。**git が受け付けないコマンドを期待値にしていた**ので、
+  // 値を取ると実測した `restore -s` に替えた（査読の低5）
+  assert.equal(scope.isBlockedDiscard("git restore -s HEAD ."), true, "-s の値を対象と読んだ");
 });
 
 test("H72: 確認だけの形は通す（束も見る）", () => {
@@ -1067,4 +1070,153 @@ test("H73: 片側にしか無い実装の一覧を固定する", () => {
 test("H73: `isUnscopedCommit` は共有領域の終端として両方に置く", () => {
   assert.equal(typeof scope.isUnscopedCommit, "function");
   assert.equal(typeof guard.isUnscopedCommit, "function");
+});
+
+// ---------------------------------------------------------------------------
+// 0.37.2: 査読が出した回帰と取りこぼし
+// ---------------------------------------------------------------------------
+
+// **`--` があっても前を見る。** 0.37.0 は「区切りがあるときは後ろだけ」としたため、
+// `restore` の `--` の前にある範囲まるごとの指定を見失った。
+//
+// > 実測: `git restore . --` も `git restore . -- sub/b.txt` も、**rc=0 のまま
+// > 作業ツリー全体を破棄する**（使い捨てリポジトリで確認）。後者は**パスを指定している
+// > ように見えて全部消す**ので、事故の形として最も起きやすい。**0.36.3 では止まっていた回帰。**
+test("0.37.2 高1: `--` の前にある範囲まるごとの破棄を見逃さない", () => {
+  for (const cmd of [
+    "git restore . --",
+    "git restore ./ --",
+    "git restore :/ --",
+    "git restore -W . --",
+    "git restore . -- sub/b.txt",
+    "git checkout . --",
+  ]) {
+    assert.equal(scope.isBlockedDiscard(cmd), true, cmd);
+    assert.equal(guard.isBlockedDiscard(cmd), true, cmd);
+  }
+  // 正常な操作では鳴らない
+  for (const cmd of [
+    "git restore src/a.js",
+    "git restore -- src/a.js",
+    "git checkout main",
+    "git checkout HEAD -- src/a.js",
+    "git checkout -b feature/x",
+  ]) {
+    assert.equal(scope.isBlockedDiscard(cmd), false, cmd);
+    assert.equal(guard.isBlockedDiscard(cmd), false, cmd);
+  }
+});
+
+// **シェル系ごとに本体の探し方が違う。** 一律に「`c` を含むオプション」で見ると、
+// PowerShell の `-ExecutionPolicy` / `-NonInteractive` に当たって**見逃す**。
+test("0.37.2 中2: シェル系ごとの `-c` 本体を取り違えない", () => {
+  const blocked = [
+    'bash -o pipefail -c "git add -A"',
+    'bash --login -c "git add -A"',
+    'bash -lc "git add -A"',
+    'bash -c "git add -A" name arg',
+    'powershell -ExecutionPolicy Bypass -Command "git add -A"',
+    'pwsh -NoLogo -NonInteractive -Command "git add -A"',
+    'pwsh -Com "git add -A"',
+    'cmd /c "git add -A"',
+    "cmd /c git add -A",
+  ];
+  for (const cmd of blocked) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+  // **スクリプトを渡す形は読めない**（限界として固定する）
+  for (const cmd of ["bash script.sh", "powershell -File x.ps1", "powershell -ExecutionPolicy Bypass -File x.ps1"]) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+  }
+});
+
+// `eval` と `-c` で本体の取り方が違う。**引用符の扱いが逆**である。
+test("0.37.2: `eval` は連結して再解析、`-c` は1トークン", () => {
+  // `eval` は引数を空白で連結してから再解析するので、**引用符は本当に失われる**
+  // （実測: `eval f git commit -m "docs: --all dummy"` は bash で argc=6 になり `[--all]` が独立する）。
+  // **査読はここを誤検知と見たが、deny が正しい。**
+  assert.equal(scope.isBlockedCommitAll('eval git commit -m "docs: --all dummy" -- a.md'), true);
+  assert.equal(scope.isBlockedAdd('eval "git add -A"'), true);
+  // `-c` の本体は1つの引数なので引用符が残る。**ここは誤検知にしない**
+  assert.equal(scope.isBlockedCommitAll('bash -c "git commit -m \\"docs: --all\\" -- a.md"'), false);
+});
+
+// ---------------------------------------------------------------------------
+// 0.37.2 中3: 乖離検査しか無く、正解を1つも固定していなかった
+// ---------------------------------------------------------------------------
+
+// **`CASES` は2コピーの戻り値が一致することしか見ていない。**
+// 「止める／通す」のコメントが付いているので固定されているように読めるが、
+// **両コピーに同じ変異を当てると素通りする**（査読が実証した。このリポジトリの規律は
+// むしろ「両方直す」を要求するので、ソース突き合わせ検査でも止まらない）。
+//
+// | 当てた変異 | 0.37.1 のテスト |
+// |---|---|
+// | `WHOLE_SCOPE` から `":/"` を外す | **素通り** |
+// | `STASH_SAFE` に `"push"` を足す | **素通り** |
+// | `isBlockedAdd` の `pathspecs` の検査を落とす | **素通り** |
+//
+// いずれも `CLAUDE.md` が名指しで禁じている形である。**正解を絶対値で固定する。**
+test("0.37.2 中3: CLAUDE.md が名指しで禁じている形を絶対値で固定する", () => {
+  const MUST_BLOCK = [
+    ["git add -A", "isBlockedAdd"],
+    ["git add .", "isBlockedAdd"],
+    ["git add ./", "isBlockedAdd"],
+    ["git add :/", "isBlockedAdd"],
+    ["git add --all", "isBlockedAdd"],
+    ["git add -- .", "isBlockedAdd"],
+    ["git add -- :/", "isBlockedAdd"],
+    ["git commit -a -m x", "isBlockedCommitAll"],
+    ["git commit -am x", "isBlockedCommitAll"],
+    ["git commit --all -m x", "isBlockedCommitAll"],
+    ["git stash", "isBlockedStash"],
+    ["git stash push", "isBlockedStash"],
+    ["git stash push -- src/", "isBlockedStash"],
+    ["git stash save wip", "isBlockedStash"],
+    ["git checkout -- .", "isBlockedDiscard"],
+    ["git checkout -- :/", "isBlockedDiscard"],
+    ["git restore .", "isBlockedDiscard"],
+    ["git restore -- .", "isBlockedDiscard"],
+    ["git clean -fd", "isBlockedDiscard"],
+    ["git clean -fdx", "isBlockedDiscard"],
+    ["git clean -fd .", "isBlockedDiscard"],
+  ];
+  for (const [cmd, fn] of MUST_BLOCK) {
+    assert.equal(scope[fn](cmd), true, "止めるべき: " + cmd + " (" + fn + ")");
+    assert.equal(guard[fn](cmd), true, "止めるべき（repo-guard）: " + cmd);
+  }
+});
+
+test("0.37.2 中3: 日常の操作では1つも鳴らない", () => {
+  const MUST_PASS = [
+    "git add src/a.js",
+    "git add docs/ tests/",
+    "git commit -m x -- a.js",
+    "git status --short",
+    "git log --oneline -1",
+    "git diff HEAD",
+    "git push",
+    "git stash list",
+    "git stash show",
+    "git stash pop",
+    "git stash apply",
+    "git stash drop",
+    "git checkout main",
+    "git checkout -- src/a.js",
+    "git restore src/a.js",
+    "git clean -fd tests/",
+    "git clean -n",
+    "git clean -nfd",
+    "git mv a.js b.js",
+    "echo \"see git add -A here\"",
+    "grep -rn 'git add -A' docs/",
+  ];
+  const all = ["isBlockedAdd", "isBlockedCommitAll", "isBlockedStash", "isBlockedDiscard"];
+  for (const cmd of MUST_PASS) {
+    for (const fn of all) {
+      assert.equal(scope[fn](cmd), false, "通すべき: " + cmd + " (" + fn + ")");
+      assert.equal(guard[fn](cmd), false, "通すべき（repo-guard）: " + cmd);
+    }
+  }
 });

@@ -18,7 +18,7 @@ const lib = require(path.join(SCRIPTS, "harness-lib.js"));
 // ---------------------------------------------------------------------------
 
 const CHANGES = [
-  // pocket-drop で実測した形（型エラーのファイルが「✅ 成功」でコミットされた）
+  // 実プロジェクトで実測した形（型エラーのファイルが「✅ 成功」でコミットされた）
   ["printf 'x' > src/a.ts && git add -- src/a.ts && git commit -m t -- src/a.ts", "printf 'x' > src/a.ts"],
   ["sed -i s/a/b/ x.ts && git commit -- x.ts", "sed -i s/a/b/ x.ts"],
   ["cat > a.ts <<'EOF'\nx\nEOF\ngit commit -- a.ts", "cat > a.ts"],
