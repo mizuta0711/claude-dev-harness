@@ -52,6 +52,70 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.34.0] — 文書を書くだけの操作が deny されていた（H65・harness-unity 0.4.1 も同時）
+
+**`isGitCommit` が、ヒアドキュメントの本文に書かれた `git commit` を実際のコミットと取り違えていた。**
+
+### 実測した実害
+
+`commands.typecheck` が失敗する状態で、次を実行した。
+
+```
+cat > docs/x.md <<'EOF'
+git commit -- path を使う
+EOF
+```
+
+**`permissionDecision: "deny"` が返り**、「コミット前チェック『typecheck』が失敗しました。
+**修正してから再度コミットしてください**」と出た。**コミットしていないのに。**
+
+**このハーネスは `git commit -- <path>` を文書のあちこちで案内している**ので、
+**ガイドや CHANGELOG をヒアドキュメントで書くたびに踏む。**
+
+### 方針の前提が成り立っていなかった
+
+`tests/is-git-commit.test.mjs` は方針を
+**「見逃し（ゲート素通り）は不可・誤検知（余計にチェックが走るだけ）は許容」**と書き、
+`git commit-tree` を**許容済みの誤検知**として固定している。
+
+**「余計にチェックが走るだけ」が誤りだった** —— `pre-commit-check` は
+**ゲートが失敗すれば deny する**ので、**無関係な操作が止まる**。
+
+### `git-scope` に寄せるのは誤りだった
+
+最初は「`git-scope.gitInvocations`（引用符・ヒアドキュメントを見る）に寄せる」つもりだったが、**実測で却下した**。
+
+| 形 | `gitInvocations` |
+|---|---|
+| `bash -c "git commit -- a.md"` | **`[]`（見逃し）** |
+| `sh -c 'git commit -- a.md'` | **`[]`（見逃し）** |
+
+**引用符の中に本物のコミットが来る形がある。** 潰すと**方針で禁じている見逃しを作る**。
+
+### ヒアドキュメントの本文だけを潰した
+
+**本文は実行されないので、潰しても見逃しは生じない。** 引用符はそのままにしてある
+（`echo 'git commit'` は**誤検知のまま**だが、こちらは方針どおり許容する）。
+
+- `stripHeredocBodies` を新設（`<<EOF` / `<<'EOF'` / `<<"EOF"` / `<<-EOF` のタブ落としに対応）
+- **`harness-lib.js`（core）と `plugin-lib.js`（unity）の2コピーに同じものを置いた。**
+  `isGitCommit` が元から複製されており、**`tests/is-git-commit.test.mjs` が乖離した瞬間に落ちる**
+- **`git-scope.js` の `maskHereBodies` とは別物にしてある** —— あちらはコマンドの走査用で本体が大きく、
+  **配布単位も別**（unity の `plugin-lib.js` からは参照できない）。ここは**この判定に必要な最小限**
+- `git commit-tree` の許容済み誤検知は**そのまま**（HEAD を動かさないので実害が無い）
+
+### 確かめたこと（実測）
+
+| ケース | 期待 | 結果 |
+|---|---|---|
+| 本物のコミット | deny | ✅ deny |
+| **本文に `git commit` を含む文書を書く** | **deny しない** | ✅ **deny なし** |
+| **`bash -c "git commit -- a.md"`** | **deny**（見逃し不可） | ✅ deny |
+
+**テスト2件追加（計401件合格）。** core / unity の一致も同じテストが見る。
+
+docs 影響: あり（diagrams/05_フック発火タイミング図.md — `pre-commit-check` の発火条件。`grep -rln "isGitCommit" docs/ templates/ README.md tools/` は0件で、発火条件を書いている文書はあれだけだった）
+
 ## [0.33.2] — 再査読の条件付き承認。未追跡ファイルが検査されていなかった（H23 / H27）
 
 **0.33.1 も push していない。** 再査読は**条件付き承認**（**高・中なし**・低7件）で、

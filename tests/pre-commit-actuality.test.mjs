@@ -72,10 +72,13 @@ test("`git commit` 以外では何もしない", () => {
 });
 
 test("⚠️ `echo 'git commit'` でも鳴る（`lib.isGitCommit` が引用符を見ない）", () => {
-  // **これはこのフックの欠陥ではなく、共有の `harness-lib.isGitCommit` の欠陥である。**
-  // `pre-commit-check` / `post-commit-doc-check` も同じ判定を使っており、
-  // **引用符の中の `git commit` でゲートが走る**（`git-scope` は引用符を見るのに、あちらは見ていない）。
-  // **期待値を実態に合わせてある** —— 直したらここが落ちるので、そのとき期待値を変える。
+  // **これはこのフックの欠陥ではなく、共有の `harness-lib.isGitCommit` の挙動である。**
+  // `pre-commit-check` / `post-commit-doc-check` も同じ判定を使う。
+  //
+  // **引用符は意図的に潰していない**（H65）—— `bash -c "git commit -- a.md"` のように
+  // **引用符の中に本物のコミットが来る形があり、潰すと見逃す**。
+  // 方針は「**見逃しは不可・誤検知は許容**」（`tests/is-git-commit.test.mjs`）。
+  // **ヒアドキュメントの本文だけは H65 で潰した**（本文は実行されないので見逃しが生じない）。
   const dir = mkRepo({ "CLAUDE.md": "# 方針\n\n- 現在 14 件ある\n" });
   assert.equal(warned(run(dir, "echo 'git commit'")), true);
 });

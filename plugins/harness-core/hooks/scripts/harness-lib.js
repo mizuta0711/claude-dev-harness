@@ -102,8 +102,64 @@ function toolShell(payload) {
  * `git -c user.name=x commit`、`git --no-pager commit`）。
  * **見逃し（ゲート素通り）は不可・誤検知（余計にチェックが走るだけ）は許容**の方針で広めに取る。
  */
+/**
+ * ヒアドキュメントの**本文**を空白へ潰す（長さは保つ）。
+ *
+ * **なぜ必要か**（H65）。`isGitCommit` は素朴な文字列一致で、
+ * **本文に書かれた `git commit` を実際のコミットと取り違える**。
+ * 方針は「**見逃しは不可・誤検知は許容**」だが、
+ * **「誤検知は余計にチェックが走るだけ」という前提が成り立っていなかった** ——
+ *
+ * > 実測: `commands.typecheck` が失敗する状態で
+ * > `cat > docs/x.md <<'EOF' … git commit -- path を使う … EOF` を実行すると、
+ * > **文書を書くだけの操作が deny され**、「修正してから再度**コミット**してください」と出た。
+ *
+ * **引用符は潰さない。** `bash -c "git commit -- a.md"` のように
+ * **引用符の中に本物のコミットが来る形があり、潰すと見逃す**（実測で確認）。
+ * **ヒアドキュメントの本文は実行されないので、潰しても見逃しは生じない。**
+ *
+ * `git-scope.js` の `maskHereBodies` と同じ役目だが、**あちらはコマンドの走査用で、
+ * 本体が大きく、配布単位も別**（unity の `plugin-lib.js` からは参照できない）。
+ * ここは**この判定に必要な最小限**にとどめてある。
+ */
+function stripHeredocBodies(command) {
+  const s = String(command || "");
+  const out = s.split("");
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== "<" || s[i + 1] !== "<") continue;
+    const m = /^<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\w]*))/.exec(s.slice(i));
+    if (!m) continue;
+    const delim = m[2] || m[3] || m[4];
+    const stripTabs = m[1] === "-";
+    const bodyStart = s.indexOf("\n", i + m[0].length);
+    if (bodyStart < 0) break;
+    let pos = bodyStart + 1;
+    let end = s.length;
+    while (pos <= s.length) {
+      let nl = s.indexOf("\n", pos);
+      const last = nl < 0;
+      if (last) nl = s.length;
+      let line = s.slice(pos, nl).replace(/\r$/, "");
+      if (stripTabs) line = line.replace(/^\t+/, "");
+      if (line === delim) {
+        end = last ? s.length : nl + 1;
+        break;
+      }
+      if (last) break;
+      pos = nl + 1;
+    }
+    for (let k = i; k < end && k < out.length; k++) {
+      if (out[k] !== "\n") out[k] = " ";
+    }
+    i = end - 1;
+  }
+  return out.join("");
+}
+
 function isGitCommit(command) {
-  return /\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+commit\b/.test(command || "");
+  return /\bgit\b(?:\s+(?:-[cC]\s*\S+|--\S+))*\s+commit\b/.test(
+    stripHeredocBodies(command)
+  );
 }
 
 /** Windows のパス区切りを `/` に正規化する（docTriggers の正規表現は `/` 前提） */
@@ -431,6 +487,7 @@ module.exports = {
   readPayload,
   toolCommand,
   toolShell,
+  stripHeredocBodies,
   isGitCommit,
   toPosix,
   loadConfig,
