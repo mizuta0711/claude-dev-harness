@@ -41,6 +41,12 @@
           },
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-commit-actuality.js\"",
+            "timeout": 15,
+            "statusMessage": "常時読まれる指示に実態が無いか確認中..."
+          },
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-push-backlog-check.js\"",
             "timeout": 10,
             "statusMessage": "残作業台帳の整合を確認中..."

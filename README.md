@@ -205,6 +205,7 @@ marketplace の場所（`extraKnownMarketplaces`）を教えるだけで、**導
 | PreCompact | `pre-compact-save.js` | コンパクト前の文脈退避 |
 | PreToolUse | `pre-commit-scope.js` | 範囲まるごとの git 操作を検知。**既定は警告のみ**、`gates.commitScope: "paths"` でブロック |
 | PreToolUse | `pre-commit-check.js` | `gates.preCommit` のコマンドを実行し、失敗でコミットをブロック。未初期化なら飛ばして知らせ、同じ1行でファイルを変えてからのコミットはブロック |
+| PreToolUse | `pre-commit-actuality.js` | 常時読まれる指示の追加行に**実態**（日付・件数）があれば警告する（`gates.docActuality`） |
 | PreToolUse | `pre-push-backlog-check.js` | **push の直前**に**残作業台帳**（`docs/backlog.md`）と `docs/features/` の整合を確かめ、食い違えば deny（`gates.backlogSync`） |
 | PreToolUse | `guarded-command-ask.js` | `askGuards.sets` に一致する危険な操作を確認にかける（bypass でも止まる）。**信頼済み環境では素通り** |
 | PostToolUse | `post-commit-doc-check.js` | `paths.docTriggers` に従い設計書更新を促す |
