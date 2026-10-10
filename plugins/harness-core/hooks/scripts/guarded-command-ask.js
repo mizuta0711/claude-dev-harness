@@ -37,8 +37,12 @@
  * |------|------|
  * | config が無い | **素通り**（harness-core は user スコープでも入るので、
  *   ハーネス未導入のリポジトリで止め始めないため） |
- * | config が壊れている・schemaVersion が新しい | **環境の既定で止める**（下記）。`permissions.ask` 時代は
- *   config が壊れても確認が出ていたので、ここで素通りにすると黙って守りが消える |
+ * | config の JSON が壊れている | **全集合で止める**（H51）。`environment` も読めないので環境の既定が
+ *   引けず、以前は `git-destructive` だけになっていた（nextjs の prisma・android の端末操作の確認が
+ *   黙って消えた）。**取りこぼすより余分に確認する方を採る**（壊れている間だけの異常時なので、
+ *   確認が増える代償は小さい）。`permissions.ask` 時代は config が壊れても確認が出ていたので、
+ *   ここで素通りにすると黙って守りが消える |
+ * | schemaVersion が無い・新しい | config は読めているので**環境の既定で止める**（下記） |
  * | config はあるが `askGuards` が無い | **環境の既定**: `git-destructive` ＋ `environment` に応じた集合。
  *   `harness-update` は settings.json の ask 削除を自動で当てる一方、config への `askGuards` 追加は
  *   提案どまりなので、追加を見送っても nextjs / android の確認が消えないようにする |
@@ -122,6 +126,9 @@ function isTrustedEnv(env = process.env, home = os.homedir()) {
 
 /** config から有効な集合名を決める（`askGuards` が無ければ環境の既定） */
 function enabledSets(config) {
+  // JSON が壊れていると `lib.loadConfig` は config:null を返す。`environment` が読めず
+  // 環境の既定を引けないので、**全集合で止める**（H51）。config 不在は main が先に素通りさせる
+  if (!config) return Object.keys(GUARD_SETS);
   const sets = config?.askGuards?.sets;
   if (Array.isArray(sets)) return sets;
   return [...DEFAULT_SETS, ...(ENV_DEFAULT_SETS[config?.environment] || [])];
@@ -157,13 +164,21 @@ function main() {
   const found = findGuardHit(command, enabledSets(config), { shell: lib.toolShell(payload) });
   if (!found) lib.passThrough();
 
+  // 全集合で止めているときは、その理由を言う（でなければ wpf で prisma の確認が出た理由が分からない）
+  const brokenNote = config
+    ? ""
+    : `
+⚠️ ${lib.toPosix(lib.CONFIG_RELATIVE_PATH)} の JSON が壊れているため、環境の既定が引けません。` +
+      `取りこぼしを避けるため「全集合」で確認しています。config を直すと元の集合に戻ります。`;
+
   lib.emit({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "ask",
       permissionDecisionReason:
         `${found.reason}: \`${found.hit}\`\n` +
-        `（harness の askGuards「${found.name}」。信頼済み環境 = ~/.claude/.harness-trusted-env がある環境では確認なしで通ります）`,
+        `（harness の askGuards「${found.name}」。信頼済み環境 = ~/.claude/.harness-trusted-env がある環境では確認なしで通ります）` +
+        brokenNote,
     },
   });
 }

@@ -57,6 +57,30 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.39.1] — 壊れた config で確認が黙って減る件を直した（H51）
+
+**`guarded-command-ask` は、`harness.config.json` の JSON が壊れていると
+`git-destructive` の集合しか効かなかった。** `lib.loadConfig` はパース失敗に `config: null` を
+返すので `environment` が読めず、環境の既定（nextjs → `prisma-schema-change` /
+android → `android-device`）が引けない。結果、**DB のスキーマ変更と実機のアプリ入れ替えの
+確認が、壊れている間だけ黙って消えていた**。
+
+| 状況 | 0.39.0 まで | 0.39.1 |
+|------|------------|--------|
+| config が無い | 素通り | 素通り（変更なし） |
+| **JSON が壊れている** | **`git-destructive` だけ** | **全集合** |
+| `schemaVersion` が無い・新しい | 環境の既定 | 環境の既定（変更なし） |
+| `askGuards.sets` がある | その集合 | その集合（変更なし） |
+
+**取りこぼすより余分に確認する方を採った。** `environment` を壊れた JSON から正規表現で
+拾う案もあったが、壊れ方によって拾える・拾えないが変わる判定を安全弁の土台にしたくない。
+全集合でも**異常時だけ・3集合だけ**なので、余分な確認の代償は小さい。
+
+確認の文面に「**config が壊れているため全集合で確認している**」旨を足した。
+これが無いと、wpf のプロジェクトで prisma の確認が出た理由が分からない。
+
+docs 影響: あり（reference/harness設定契約.md §3 — 壊れた config の行／reference/permissionsベースライン.md §9）
+
 ## [0.39.0] — 試作・MVP のフローを足した（H76）
 
 **開発フローに「試作」の段が無かった。** `skills/` 全体で「試作」「MVP」「プロトタイプ」の

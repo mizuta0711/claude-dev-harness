@@ -96,12 +96,21 @@ test("未知の集合名は無視する（typo で全体が壊れない）", () 
 // 査読 H1 / H2: askGuards が無い・config が読めないときに、環境の確認が黙って消えないこと
 test("askGuards が無ければ git-destructive ＋ environment の既定を有効にする", () => {
   assert.deepEqual(guard.enabledSets({ schemaVersion: 1 }), ["git-destructive"]);
-  assert.deepEqual(guard.enabledSets(null), ["git-destructive"]);
   assert.deepEqual(guard.enabledSets({ environment: "wpf" }), ["git-destructive"]);
   assert.deepEqual(guard.enabledSets({ environment: "nextjs" }), ["git-destructive", "prisma-schema-change"]);
   assert.deepEqual(guard.enabledSets({ environment: "android" }), ["git-destructive", "android-device"]);
   assert.deepEqual(guard.enabledSets({ askGuards: { sets: [] } }), []);
   assert.deepEqual(guard.enabledSets({ askGuards: { sets: ["android-device"] } }), ["android-device"]);
+});
+
+// H51: JSON が壊れていると environment が読めない。git-destructive だけに縮むと
+// nextjs の prisma・android の端末操作の確認が黙って消えるので、全集合で止める
+test("config の JSON が壊れていたら全集合で止める（H51）", () => {
+  assert.deepEqual(guard.enabledSets(null), ALL);
+  assert.equal(hit("npx prisma migrate deploy", guard.enabledSets(null)), "prisma-schema-change");
+  assert.equal(hit("adb install app.apk", guard.enabledSets(null)), "android-device");
+  assert.equal(hit("git push", guard.enabledSets(null)), "git-destructive");
+  assert.equal(hit("npm run build", guard.enabledSets(null)), null);
 });
 
 test("信頼済み環境: 環境変数", () => {

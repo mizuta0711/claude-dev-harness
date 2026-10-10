@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.33.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
-| 最終更新 | 2026-10-10 |
+| 対応ハーネス版 | harness-core 0.39.1 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
+| 最終更新 | 2026-10-11 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
 
@@ -114,7 +114,7 @@
 | `pre-push-backlog-check` で対象リポジトリを解決できない／解決先が実在しない | **検査しない。** `cd` 系と `-C` を追って対象を決め、**リポジトリのルートまで寄せる**。**間違った台帳で止めるより見逃す**（誤って deny すると正常な作業が止まる） | — |
 | `docs/backlog.md` が無い / 残作業台帳に計画節が無い | **検査せず素通りする。ただし素通りしたことを知らせる**（黙って通ると「検査された」と誤解される）。0.27.0 より前のプロジェクトが該当 | 「検査の対象外」と報告して終わる |
 | `askGuards` で config が存在しない | **素通り**（確認を出さない）。harness-core は user スコープでも入るため、未導入のリポジトリで止め始めないように | — |
-| `askGuards` で config の JSON が壊れている | **`git-destructive` だけで止める**（`environment` も読めないので、環境の既定は足さない）。**fail-open にしない**（`permissions.ask` 時代は config が壊れても確認が出ていたため） | — |
+| `askGuards` で config の JSON が壊れている | **全集合（§9 の表の全部）で止める**（0.39.1・H51）。`environment` も読めず環境の既定が引けないので、**取りこぼすより余分に確認する**。確認の文面に「config が壊れているため全集合で確認している」旨が入る。**fail-open にしない**（`permissions.ask` 時代は config が壊れても確認が出ていたため） | — |
 | `askGuards` で `schemaVersion` が無い / 新しい | config は読めているので、**通常と同じ**（`askGuards.sets` があればそれ、無ければ `git-destructive` ＋ `environment` の既定） | — |
 | `askGuards.sets` に未知の集合名 | その名前だけ無視して続行 | — |
 | `audit.intervalDays` 未設定 / マーカーも baseline も無い | **何も言わない**（判定材料が無いのに催促しない） | — |

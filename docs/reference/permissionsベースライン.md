@@ -126,7 +126,8 @@
 | `android-device` | `gradlew installDebug` / `uninstallDebug` / `uninstallAll`、`adb install` / `uninstall` | android |
 
 `askGuards` が無い config では、**`git-destructive` ＋ `environment` に応じた集合**（上の表の既定）が有効になる。
-**JSON が壊れた config では `git-destructive` だけ**になる（`environment` も読めないため）。素通りにはしない。
+**JSON が壊れた config では全集合**が有効になる（0.39.1・H51）。`environment` が読めず環境の既定を引けないため、
+取りこぼすより余分に確認する方を採っている。素通りにはしない。
 `harness-update` が settings.json の ask 削除だけを当て、config への `askGuards` 追加を見送っても守りが消えないようにするため。
 **config 自体が無いリポジトリでは何もしない**（harness-core は user スコープでも入るので、ハーネス未導入のリポジトリで止め始めないため）。
 
