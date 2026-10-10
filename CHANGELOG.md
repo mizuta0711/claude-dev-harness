@@ -57,6 +57,45 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [docs] — プラグインの構成を引ける場所が無かった（docs のみ）
+
+`docs/reference/プラグイン構成リファレンス.md` を**新規作成**した。**挙動は変えていない。**
+
+構成の記載は3箇所に散っていて、**どれもプラグイン1本の内部に踏み込んでいなかった** ——
+`README.md` §構成 はツリーの1〜2階層（`skills/` `agents/` `hooks/` で止まる）、
+`diagrams/03_役割比較図.md` は5要素の実物パス（要素の比較が主眼）、
+`diagrams/05_フック発火タイミング図.md` は個々のフックの一覧。
+結果、次のどれも引ける場所が無かった:
+
+- `hooks/scripts/*.js`（CommonJS・ランタイムが stdin の JSON で起動・fail-open）と
+  `skills/<name>/scripts/*.mjs`（ESM・Claude が Bash で引数つきで起動）の**役割と拡張子の使い分け**
+- `harness-lib.js`（core 専用）と各環境プラグインの `plugin-lib.js` —— **重複が意図的である理由**
+  （`${CLAUDE_PLUGIN_ROOT}` がプラグインごとに別を指し、プラグイン間参照が成立しない）
+- `harness-wpf/tools/ui-capture.ps1` のような**プラグイン内 `tools/`** という第4のディレクトリ
+- `.claude-plugin/plugin.json`（プラグイン自身の宣言）と `.claude-plugin/marketplace.json`（配信カタログ）の関係
+- リポジトリ直下の `tools/` と `skills/create-project/scripts/create.mjs` の関係
+  （後者は**生成ロジックを持たず前者を一時取得して実行する薄い層**。配信されない実装を使うときの既定の形）
+
+**種別の決め事として書き、個々のスキル名・フック名は1つも列挙していない**（増減で腐るため。
+一覧は README と `diagrams/05` が正）。`templates/` / `tools/` / `tests/` はそれぞれの README が正で、
+入口だけを置いた。冒頭の §0 に**主要ディレクトリだけの見取り図**を置き、各ディレクトリから本文の節へ飛ばしている。
+
+**読者役の査読を1本通している**（指摘12件・致命的2／要修正6／提案4。全件に対応・見送りを付けた。
+記録は ProjectTemplete の `reviews/20261011_プラグイン構成リファレンスの新設.md`）。
+**致命的2件はどちらも「実物を数えずに一般化した」もの**だった:
+
+- `plugin-lib.js` を「各環境プラグインが1本ずつ」と書いたが、**`harness-wpf` は `hooks/` 自体が無い**
+  （実在は3本。`hooks/` が任意であることを飛ばしていた）。**`README.md` 174-176 も同じ誤りを持っていた**ので同時に直した
+- 「1ファイル1フック・ファイル名が登録名と対応する」と書いたが、`harness-core/hooks/scripts/` は
+  **`hooks.json` に登録の無い共有モジュール**（`git-scope.js` / `actuality-scan.js` / `backlog-sync.js` / `harness-lib.js`）を含む。
+  **このままでは「複数のフックから使う判定をどこに置くか」が引けず**、フック本体に埋めて `tests/` から呼べなくする読者を生む
+
+docs 影響: あり（reference/プラグイン構成リファレンス.md —— 新規。
+`README.md` は文書表と §構成 のツリーに1行ずつ追加したうえで、**§環境プラグインの `plugin-lib.js` の記述を是正**し、
+`reference/プラグイン開発手順.md` §0 の冒頭へ誘導を入れた（1.5）。
+**本書は「反映のさせ方」に特化しており、構成の説明を混ぜると主題が2つになる**ので分けた。
+`diagrams/03` `diagrams/05` は**役割と発火点の正のまま**なので触っていない）
+
 ## [docs] — 所有の表と入門ガイドが実装に追いついていなかった（H84 / H85）
 
 `docs/diagrams` / `docs/guide` / `docs/reference` の14本を、実装・テンプレート・config の現物と突き合わせた

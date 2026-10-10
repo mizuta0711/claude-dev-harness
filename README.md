@@ -99,6 +99,7 @@ claude plugin install harness-<env>@dev-harness --scope <同じ方>             
 
 | 文書 | 引くのはいつか |
 |------|--------------|
+| [プラグイン構成リファレンス](docs/reference/プラグイン構成リファレンス.md) | `plugins/` の**どこに何を置くか**を知りたいとき。ディレクトリ・ファイル種別ごとの役割と決め事（`hooks/scripts` と `skills/*/scripts` の違い・ライブラリの重複が意図的な理由） |
 | [プラグイン開発手順](docs/reference/プラグイン開発手順.md) | `plugins/` を直したとき。**版番号を上げないと利用側に届かない**・スコープ・キャッシュの扱い |
 | [harness設定契約](docs/reference/harness設定契約.md) | `.claude/harness.config.json` に手を入れるとき。**どのキーを書くと、どの hook / skill が何をするか** |
 | [permissionsベースライン](docs/reference/permissionsベースライン.md) | `.claude/settings.json` の `permissions` を変えるとき。とくに**既存プロジェクトへ後付けして衝突したとき** |
@@ -149,6 +150,7 @@ claude-dev-harness/
 └── docs/                              # ハーネス自体の仕様・運用文書
     ├── guide/                    # **使う人**向け（導入・運用・移行・オプション MCP）
     ├── reference/                # **直す人・設定を触る人**向け（仕様と方針。必要なときに引く）
+    │   ├── プラグイン構成リファレンス.md # どのフォルダ・ファイルが何のためにあるか（種別ごとの決め事）
     │   ├── プラグイン開発手順.md      # プラグインの修正・反映手順（版番号・スコープ・キャッシュ）
     │   ├── harness設定契約.md         # harness.config.json の全フィールドと、それを読む hook / skill
     │   └── permissionsベースライン.md # permissions の設計方針と、単純化してはいけない4点
@@ -171,7 +173,8 @@ marketplace の場所（`extraKnownMarketplaces`）を教えるだけで、**導
 
 環境プラグインの hook は **core の `harness-lib.js` を require しない**。
 `${CLAUDE_PLUGIN_ROOT}` はプラグインごとに異なりプラグイン間参照が保証されないため、
-必要な最小ヘルパ（`plugin-lib.js`）を各プラグインが自前で持つ。重複は意図的。
+必要な最小ヘルパ（`plugin-lib.js`）を**フックを持つプラグインが1本ずつ**自前で持つ。重複は意図的。
+**フックを持たない環境プラグインには `plugin-lib.js` も無い**（上表の「（なし）」）。
 
 ## harness-core が提供するもの
 
