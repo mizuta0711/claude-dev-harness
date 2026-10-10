@@ -28,7 +28,7 @@ import { pathToFileURL } from "node:url";
  * glob を正規表現へ。**波括弧の展開に対応している。**
  *
  * 対応しないと `src/**` + `/*.{ts,tsx}` の形が1件も一致せず、
- * **「この規約は一度もロードされない」と誤報告する**（実測: engineer-potal で出た）。
+ * **「この規約は一度もロードされない」と誤報告する**（実測: 実プロジェクトで出た）。
  * テンプレート自身がこの書き方を配っているので、**外せない**。
  */
 export function globToRegExp(glob) {
@@ -145,7 +145,7 @@ const GENERIC = new Set([
  * **禁止の規約は、禁止する対象の名前を本文に書く。** そのため
  * **規約が正しいほど B に引っかかる**（査読で指摘された構造的な欠陥）。
  *
- * > 実測（SimplePhone）: 初版は3件報告したが**全部誤報**だった ——
+ * > 実測（Android の実プロジェクト）: 初版は3件報告したが**全部誤報**だった ——
  * > 「DI は導入していないので `hiltViewModel()` は**使えない**」
  * > 「`collectAsStateWithLifecycle()` は … **入れていないため使えない**」
  * > 「`fallbackToDestructiveMigration()` は利用者のデータを**消す**ので … **限る**」。
@@ -170,7 +170,7 @@ export function isNegativeContext(line) {
  * **行でも箇条書きの項目でも粗すぎる。** 否定は識別子と同じ文に現れるが、
  * **隣の文には別の識別子についての否定がある**。
  *
- * > 実測（SimplePhone の適用時の文面）:
+ * > 実測（Android の実プロジェクトへ適用したときの文面）:
  * > 「ViewModel は `viewModel()` / `hiltViewModel()` で**取得する**。」の**次の行**が
  * > 「自分で `remember { MyViewModel() }` **しない**」だった。
  * > 行や項目で見ると、**この否定が `hiltViewModel` に掛かっていると誤って読み**、

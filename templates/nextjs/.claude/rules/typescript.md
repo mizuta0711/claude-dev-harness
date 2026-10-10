@@ -32,7 +32,7 @@ paths:
      「コンポーネントは PascalCase」のような無条件の規約を書くと、
      生成物と正面衝突する。
 
-     実測（EngineerPotal・2026-08-16）: shadcn/ui を使うプロジェクトで
+     実測（2026-08-16）: shadcn/ui を使う実プロジェクトで
      `src/components/ui/` の **26本すべてが kebab-case**（`button.tsx` /
      `dropdown-menu.tsx` 等）だったが、移設した命名表に例外が無く、
      規約と実装が正面から食い違う状態になった。

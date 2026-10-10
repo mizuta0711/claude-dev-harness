@@ -169,7 +169,7 @@ function isSeedOnce(rel) {
  *
  * ただし**消したものを無条件に配り直すと再提案が止まらない**。`.gitkeep` は
  * 「空ディレクトリを git に載せる」ためのものなので、**置き場が実在するなら不要**である
- * （実測: engineer-potal と skillup_mock は中身があるので `.gitkeep` を消している）。
+ * （実測: 中身があるので `.gitkeep` を消している実プロジェクトが2件あった）。
  *
  * @returns 配るときは verdict、配らないときは null
  */

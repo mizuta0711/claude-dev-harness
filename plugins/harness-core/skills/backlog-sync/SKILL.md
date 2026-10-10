@@ -25,7 +25,7 @@ allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git status:*), Bash(git mv:*
 | `plan-milestones` | 順序を置く |
 | `complete-feature` | 完了した行を消す |
 
-**整合を見る仕組みが1つも無かった。** 実測で乖離が出ている（appcraft・2026-10-10:
+**整合を見る仕組みが1つも無かった。** 実測で乖離が出ている（実プロジェクト・2026-10-10:
 計画 #3 が指す設計書が存在しなかった）。
 
 ## Step 1: 検査する
