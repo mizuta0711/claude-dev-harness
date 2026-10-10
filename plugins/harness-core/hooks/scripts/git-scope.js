@@ -68,6 +68,52 @@ function dialect(opts) {
 // git は本文をコマンドとして実行しないので、潰しても見逃しにならない。
 const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
 
+/**
+ * 本文を**実行しうる**コマンド。
+ *
+ * **「本文を受け取るのが `cat` ならデータ」は誤りだった**（査読で9形の見逃しを指摘された）。
+ * `cat` は本文を**出力へ流すだけ**で、その先が `bash` / `eval` なら**実行される**。
+ *
+ * ```
+ * cat <<EOF | bash          ← 本文は bash が実行する
+ * eval "$(cat <<'EOF' … )"  ← 同じ
+ * bash -c "$(cat <<EOF … )" ← 同じ
+ * source <(cat <<EOF … )    ← 同じ
+ * ```
+ *
+ * **そこで導入部の行に実行系があれば潰さない。** 行だけを見るのは粗いが、
+ * **粗い側の失敗は「潰さない＝許容されている誤検知」**になる。
+ */
+const BODY_EXECUTORS = new Set([
+  "bash", "sh", "zsh", "ksh", "dash", "eval", "source", "exec", "ssh",
+  "xargs", "node", "python", "python3", "perl", "ruby", "php",
+]);
+
+/** `<<` を含む行に、本文を実行しうるコマンドがあるか */
+function executorOnLine(s, at) {
+  let from = s.lastIndexOf("\n", at);
+  from = from < 0 ? 0 : from + 1;
+  let to = s.indexOf("\n", at);
+  if (to < 0) to = s.length;
+  const line = s.slice(from, to);
+  for (const raw of line.split(/[\s;|&()`"'<>]+/)) {
+    if (!raw) continue;
+    const base = raw.split("/").pop().split(String.fromCharCode(92)).pop();
+    const name = base.replace(/\.(exe|cmd|bat)$/i, "");
+    if (BODY_EXECUTORS.has(name)) return true;
+  }
+  return false;
+}
+
+/**
+ * 前置きを飛ばす。**環境変数の代入と、コマンドを包むだけのコマンド**が対象。
+ *
+ * **どちらに倒しても安全である** —— 飛ばした先が `cat` なら潰し（正しい）、
+ * `bash` なら潰さない（正しい）。飛ばさないと `FOO=1 cat <<EOF` の sink が
+ * `FOO=1` になり、**本文の禁止語で鳴る**（誤警報。実測）。
+ */
+const SINK_PREFIXES = new Set(["sudo", "env", "command", "nohup", "time", "xargs"]);
+
 function heredocSink(s, at) {
   let start = 0;
   for (let k = at - 1; k >= 0; k--) {
@@ -79,12 +125,20 @@ function heredocSink(s, at) {
       break;
     }
   }
-  const m = /^[\s(]*([A-Za-z0-9_./\-]+)/.exec(s.slice(start, at));
-  if (!m) return null;
-  // バックスラッシュを正規表現に書かずに済ませる（区切りはどちらでもよい）
-  const base = m[1].split("/").pop().split(String.fromCharCode(92)).pop();
-  const name = base.replace(/\.(exe|cmd|bat)$/i, "");
-  return name || null;
+  const head = s.slice(start, at);
+  for (const raw of head.split(/\s+/)) {
+    const token = raw.replace(/^[\s(]+/, "");
+    if (!token) continue;
+    // 環境変数の代入（`FOO=1`）は飛ばす
+    if (/^[A-Za-z_][\w]*=/.test(token)) continue;
+    // バックスラッシュと `/` を含むパスから基底名を取る
+    const base = token.split("/").pop().split(String.fromCharCode(92)).pop();
+    const name = base.replace(/\.(exe|cmd|bat)$/i, "");
+    if (!name) continue;
+    if (SINK_PREFIXES.has(name)) continue; // 包むだけのコマンドは飛ばす
+    return name;
+  }
+  return null;
 }
 
 /**
@@ -159,6 +213,8 @@ function maskHereBodies(s, ps) {
         // 潰さない側の失敗は誤警報だが、潰す側の失敗は **deny のすり抜け**である。
         const sink = heredocSink(s, i);
         if (!sink || !HEREDOC_DATA_SINKS.has(sink)) continue;
+        // **パイプ先やコマンド置換の外側が実行系なら潰さない**（査読で9形の見逃し）
+        if (executorOnLine(s, i)) continue;
 
         const delim = m[2] || m[3] || m[4];
         const bodyStart = s.indexOf("\n", i + m[0].length);

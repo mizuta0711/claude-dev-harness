@@ -300,3 +300,60 @@ test("H65: 本文がデータのときは、潰す側も保つ（誤警報を増
     assert.equal(guard.isBlockedAdd(cmd), false, cmd);
   }
 });
+
+// ---- H65 の再査読: 本文の行き先が実行系なら潰さない ----
+//
+// **「本文を受け取るのが `cat` ならデータ」は誤りだった。**
+// `cat` は本文を**出力へ流すだけ**で、**その先が `bash` / `eval` なら実行される**。
+// 査読で9形の見逃しを指摘され、**7形がこの修正で直った**（残る2形は下の限界）。
+
+test("H65: 本文の行き先が実行系なら潰さない", () => {
+  const cases = [
+    ["cat <<EOF | bash", "git add -A", "EOF"].join("\n"),
+    ["cat <<'EOF' | sh", "git add -A", "EOF"].join("\n"),
+    ["tee /dev/null <<EOF | sh", "git add -A", "EOF"].join("\n"),
+    ["cat <<EOF | xargs -I{} sh -c {}", "git add -A", "EOF"].join("\n"),
+    ["source <(cat <<EOF", "git add -A", "EOF", ")"].join("\n"),
+    ["git log `bash <<EOF", "git add -A", "EOF", "`"].join("\n"),
+    ["cat <<EOF > /tmp/x.sh; bash /tmp/x.sh", "git add -A", "EOF"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H65: 本文がデータのままなら潰す（誤警報を増やさない）", () => {
+  const cases = [
+    ["cat > d.md <<'EOF'", "git add -A と書く", "EOF"].join("\n"),
+    ["tee d.md <<EOF", "git add -A と書く", "EOF"].join("\n"),
+    ["git commit -F - -- a.md <<'EOF'", "git add -A も止める", "EOF"].join("\n"),
+    // 前置きは飛ばす（飛ばさないと sink が `FOO=1` / `sudo` になって鳴る）
+    ["FOO=1 cat <<EOF", "git add -A と書く", "EOF"].join("\n"),
+    ["sudo cat <<EOF", "git add -A と書く", "EOF"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});
+
+// **限界として固定する。** `scanCommands` は**引用符の中を走査しない**ので、
+// `bash -c "…"` / `eval "…"` の中は**ヒアドキュメントが無くても見えない**。
+//
+// > 実測: `bash -c "git add -A"`（ヒアドキュメント無し）も `false` である。
+// > **この修正による回帰ではなく、元からある限界**である。
+// > 引用符の中を走査する形は H50 で「やってはいけない」と決めた側なので、
+// > ここを直すには別の設計が要る（ProjectTemplete の **H69**）。
+test("H65: 引用符の中は見えない（元からの限界。直したら期待値を変える）", () => {
+  const cases = [
+    'bash -c "git add -A"',
+    'eval "git add -A"',
+    ["bash -c \"$(cat <<EOF", "git add -A", "EOF", ")\""].join("\n"),
+    ["eval \"$(cat <<'EOF'", "git add -A", "EOF", ")\""].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});
