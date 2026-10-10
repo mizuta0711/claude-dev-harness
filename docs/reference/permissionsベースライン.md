@@ -130,7 +130,10 @@
 `harness-update` が settings.json の ask 削除だけを当て、config への `askGuards` 追加を見送っても守りが消えないようにするため。
 **config 自体が無いリポジトリでは何もしない**（harness-core は user スコープでも入るので、ハーネス未導入のリポジトリで止め始めないため）。
 
-**ラッパー経由の起動は対象外**（`bash -c "git push"` / `sudo` / `cmd /c` / フルパスの `git.exe` 等）。`permissions.ask` 時代も同じく拾っていなかった。
+**ラッパー経由の起動も拾う**（harness-core 0.36.0・H70）。**`sudo git push` / `env` / `time` / `timeout` / `nice` / `xargs` / `setsid` / `doas` / フルパスの `git.exe` は確認にかかる** ——`sudo` の付け忘れ・付け足しは実際に起こるので、**拾わないと事故の形で素通りする**。
+**判定はラッパー直後の「最初の実コマンド」で行う**ので、`sudo echo git push` のように**別のコマンドが動く形では鳴らない**。
+
+**対象外は引用符の中だけ**（`bash -c "git push"` / `sh -c 'git push'` / `eval "git push"` / `cmd /c`）。**`scanCommands` が引用符の中を走査しない**ためで、`permissions.ask` 時代も同じく拾っていなかった（→ §3 の残る限界）。
 
 ### 何を止めるかの方針
 

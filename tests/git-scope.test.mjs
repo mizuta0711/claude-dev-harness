@@ -688,3 +688,84 @@ test("H70: 他の判定にも効く（`parseGit` は全判定の入口）", () =
   assert.equal(scope.isBlockedCommitAll("git commit -- a.md"), false);
   assert.equal(scope.isUnscopedCommit("git commit -- a.md"), false);
 });
+
+// ---- H70: ラッパー直後の「最初の実コマンド」で判定する ----
+//
+// **「後ろのどこかに `git` があれば」ではいけない**（0.36.0 の査読）——
+// ラッパーの後ろで**別のコマンドが動く**形や、**オプションの値が `git`** の形で誤る。
+
+test("H70: ラッパーの後ろで別のコマンドが動く形では鳴らない", () => {
+  // **ここが落ちたら「どこかに git」方式に戻っている。**
+  // `echo` / `ls` / `man` / `docker` は `git` を**実行しない**。
+  const cases = [
+    "sudo echo git add -A",
+    "time echo git add .",
+    "env echo git add -A",
+    "xargs echo git add -A",
+    "sudo ls git status",
+    "exec ls git stash",
+    "sudo man git commit -a",
+    "sudo grep -n git commit -a notes.md",
+    "sudo less git commit -a",
+    "sudo docker run --rm alpine/git add -A",
+    "sudo ls /srv/git checkout .",
+    "time docker compose run git reset --hard",
+    "sudo apt-get install -y git stash",
+  ];
+  for (const cmd of cases) {
+    const hit =
+      scope.isBlockedAdd(cmd) ||
+      scope.isBlockedCommitAll(cmd) ||
+      scope.isBlockedStash(cmd) ||
+      scope.isBlockedDiscard(cmd);
+    assert.equal(hit, false, cmd);
+    const hitGuard =
+      guard.isBlockedAdd(cmd) ||
+      guard.isBlockedCommitAll(cmd) ||
+      guard.isBlockedStash(cmd) ||
+      guard.isBlockedDiscard(cmd);
+    assert.equal(hitGuard, false, cmd);
+  }
+});
+
+test("H70: オプションの値が `git` でも見逃さない", () => {
+  // `sudo -u git git push` の `-u` の値 `git` を先に見つけ、
+  // サブコマンドが `git` になって**見逃していた**（査読の中2）。
+  // `git` ユーザー（ホスティング用アカウント）はよくある名前である。
+  assert.ok(scope.gitInvocations("sudo -u git git push").some((g) => g.sub === "push"));
+  assert.ok(guard.gitInvocations("sudo -u git git push").some((g) => g.sub === "push"));
+  assert.equal(scope.isBlockedAdd("sudo -u git git add -A"), true);
+  assert.equal(guard.isBlockedAdd("sudo -u git git add -A"), true);
+  // `-u` の値が `git` でも、動くのが `ls` なら鳴らない
+  assert.equal(scope.isBlockedAdd("sudo -u git ls git add -A"), false);
+});
+
+test("H70: ラッパーのオプションを飛ばす（値あり／値なしを取り違えない）", () => {
+  // **一律の表にしてはいけない** —— `env -i`（値なし）と `xargs -i`（値あり）は同じ綴り。
+  // 一律に値ありとすると `env -i git add -A` の `git` を飛ばして**見逃す**。
+  const cases = [
+    "env -i git add -A",
+    "xargs -I{} git add -A",
+    "sudo -E git add -A",
+    "nice -n 10 git add -A",
+    "timeout 5 git add -A",
+    "timeout --signal=TERM 5 git add -A",
+    "stdbuf -o0 git add -A",
+    "sudo -u x nice -n 5 git add -A",
+    "setsid git add -A",
+    "doas git add -A",
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H70: `changesBeforeCommit` を一方向に緩めない", () => {
+  // ラッパー越しの誤認で「ツリーを変えない」と判定され、**見逃しが増えていた**（査読の低4）。
+  assert.ok(scope.changesBeforeCommit("sudo rm -rf build git status; git commit -m x"));
+  assert.ok(scope.changesBeforeCommit("env X=1 rm -rf src git status && git commit -m x"));
+  assert.ok(scope.changesBeforeCommit("sudo rm -rf build && git commit -m x"));
+  // 読むだけの操作は従来どおり安全
+  assert.equal(scope.changesBeforeCommit("git status && git commit -- a.md"), null);
+});

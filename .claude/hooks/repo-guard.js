@@ -720,19 +720,42 @@ const GIT_GLOBAL_VALUE_OPTS = new Set([
 /**
  * コマンドを包むだけのコマンド。**この後ろの `git` を見落としてはいけない**（H70）。
  *
- * > 実測: **`sudo git add -A` / `env git add -A` / `time git add -A` /
- * > `eval git add -A` / `/usr/bin/git add -A` が、すべて deny を素通りしていた。**
+ * > 実測: **`sudo git add -A` / `env` / `time` / `eval` / `command` / `nohup` /
+ * > `nice` / `xargs` / `/usr/bin/git` が、すべて deny を素通りしていた。**
  * > `parseGit` が `tokens[0].value !== "git"` で弾いていたため。
  *
- * **`sudo` の付け忘れ・付け足しは実際に起こる**ので、**ヒアドキュメント由来の見逃し（H65）より
- * 事故の形に近い**（査読も「H65 のような攻撃的な形より優先度は上」と判断した）。
+ * **`sudo` の付け忘れ・付け足しは実際に起こる**ので、
+ * **ヒアドキュメント由来の見逃し（H65）より事故の形に近い**。
  *
- * **`echo` や `cp` は入れない。** あれは `git` を**実行しない**ので、
+ * **`echo` / `cp` / `ls` / `docker` は入れない。** あれは `git` を**実行しない**ので、
  * 入れると `echo git add -A` で鳴る（誤検知）。
  */
 const COMMAND_WRAPPERS = new Set([
-  "sudo", "env", "command", "nohup", "time", "nice", "xargs", "eval", "exec", "stdbuf", "ionice",
+  "sudo", "doas", "env", "command", "nohup", "setsid", "time", "timeout",
+  "nice", "ionice", "stdbuf", "xargs", "eval", "exec",
 ]);
+
+/**
+ * 包むコマンドごとの、**次のトークンを値として取る**オプション。
+ *
+ * **一律の表にしてはいけない。** `env -i`（環境を捨てる・値なし）と
+ * `xargs -i`（置換文字列・値あり）のように、**同じ綴りで意味が違う**
+ * （一律に値ありとすると `env -i git add -A` の `git` を飛ばして**見逃す**）。
+ */
+const WRAPPER_VALUE_FLAGS = {
+  sudo: new Set(["-u", "-g", "-U", "-C", "-p", "-r", "-t", "--user", "--group", "--prompt"]),
+  doas: new Set(["-u", "-C"]),
+  env: new Set(["-u", "--unset"]),
+  nice: new Set(["-n", "--adjustment"]),
+  ionice: new Set(["-c", "-n", "-p", "--class", "--classdata", "--pid"]),
+  stdbuf: new Set(["-i", "-o", "-e", "--input", "--output", "--error"]),
+  xargs: new Set(["-I", "-i", "-n", "-L", "-P", "-s", "-d", "-E", "--replace", "--max-args"]),
+  timeout: new Set(["-s", "-k", "--signal", "--kill-after"]),
+  time: new Set(["-f", "--format", "-o", "--output"]),
+  exec: new Set(["-a"]),
+};
+
+const NO_VALUE_FLAGS = new Set();
 
 /** トークンから実行ファイル名を取る（ディレクトリと拡張子を落とす） */
 function commandBaseName(value) {
@@ -743,18 +766,47 @@ function commandBaseName(value) {
 /**
  * `git` の呼び出しの位置を返す。**包むコマンドとパス付きの形を越えて探す**（H70）。
  *
- * 先頭が**包むだけのコマンド**なら、その後ろから `git` を探す。
- * **先頭が包むコマンドでなければ探さない** —— `echo git add -A` は
- * `git` を実行しないので、探すと誤検知になる。
+ * **「後ろのどこかに `git` があれば」ではいけない**（査読の中1・中2）——
+ * ラッパーの後ろで**別のコマンドが動く**形や、**オプションの値が `git`** の形で誤る。
+ *
+ * | 形 | 「どこかに」方式の誤り |
+ * |---|---|
+ * | `sudo echo git add -A` | **`echo` は `git` を実行しない**のに鳴った（誤検知） |
+ * | `sudo ls git status` / `sudo man git commit -a` | 同じ（誤検知） |
+ * | `sudo docker run --rm alpine/git add -A` | 同じ（誤検知。コンテナ内の git） |
+ * | `sudo -u git git push` | **`-u` の値 `git`** を先に見つけ、サブコマンドが `git` になって**見逃した** |
+ *
+ * そこで**ラッパーのオプション・環境変数代入・秒数を飛ばした「最初の実コマンド」**で判定する。
+ * ラッパーが続けば繰り返す（`sudo -u x nice -n 5 git add -A`）。
  *
  * @returns `git` のトークンの添字。無ければ -1
  */
 function gitTokenIndex(tokens) {
-  if (!tokens.length) return -1;
-  if (commandBaseName(tokens[0].value) === "git") return 0;
-  if (!COMMAND_WRAPPERS.has(commandBaseName(tokens[0].value))) return -1;
-  for (let k = 1; k < tokens.length; k++) {
-    if (commandBaseName(tokens[k].value) === "git") return k;
+  let k = 0;
+  while (k < tokens.length) {
+    const name = commandBaseName(tokens[k].value);
+    if (name === "git") return k;
+    if (!COMMAND_WRAPPERS.has(name)) return -1;
+
+    const flags = WRAPPER_VALUE_FLAGS[name] || NO_VALUE_FLAGS;
+    k++;
+    while (k < tokens.length) {
+      const t = tokens[k].value;
+      if (/^[A-Za-z_][\w]*=/.test(t)) {
+        k++; // 環境変数の代入（`env FOO=1 git …`）
+        continue;
+      }
+      if (t.startsWith("-")) {
+        // **値が別トークンのものだけ2つ飛ばす**（`-I{}` のように値が付いている形は1つ）
+        k += flags.has(t) ? 2 : 1;
+        continue;
+      }
+      if (/^\d+(?:\.\d+)?[smhd]?$/.test(t)) {
+        k++; // `timeout 5` の秒数
+        continue;
+      }
+      break;
+    }
   }
   return -1;
 }
