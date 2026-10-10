@@ -4,11 +4,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const guard = require(path.join(ROOT, "plugins", "harness-core", "hooks", "scripts", "guarded-command-ask.js"));
+const SCRIPTS = path.join(ROOT, "plugins", "harness-core", "hooks", "scripts");
+const HOOK = path.join(SCRIPTS, "guarded-command-ask.js");
+const guard = require(HOOK);
 
 const ALL = Object.keys(guard.GUARD_SETS);
 const hit = (cmd, sets = ALL) => guard.findGuardHit(cmd, sets)?.name ?? null;
@@ -111,6 +114,70 @@ test("config の JSON が壊れていたら全集合で止める（H51）", () =
   assert.equal(hit("adb install app.apk", guard.enabledSets(null)), "android-device");
   assert.equal(hit("git push", guard.enabledSets(null)), "git-destructive");
   assert.equal(hit("npm run build", guard.enabledSets(null)), null);
+});
+
+// ---------------------------------------------------------------------------
+// フック本体を通す
+//
+// `enabledSets` / `findGuardHit` の単体テストでは、**config を読む分岐**が守られない。
+// 外すと実害が出るのは2方向: ①`status:"missing"` の素通りを外すと、ハーネス未導入の
+// リポジトリで確認が出始める ②壊れた config の分岐を外すと H51 が戻る。
+// ---------------------------------------------------------------------------
+
+/** 一時プロジェクトでフックを起動し、返った JSON を読む（config は中身をそのまま置く） */
+function runHook(command, configText) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ask-guard-hook-"));
+  try {
+    if (configText !== undefined) {
+      fs.mkdirSync(path.join(dir, ".claude"), { recursive: true });
+      fs.writeFileSync(path.join(dir, ".claude", "harness.config.json"), configText, "utf-8");
+    }
+    const out = execFileSync(process.execPath, [HOOK], {
+      input: JSON.stringify({
+        cwd: dir,
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command },
+      }),
+      encoding: "utf-8",
+      cwd: dir,
+      // 信頼済み環境マーカーを引かせない（開発機に置いてあると素通りして検査にならない）
+      env: { ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_TRUSTED_ENV: "0", HOME: dir, USERPROFILE: dir },
+    });
+    return out.trim() ? JSON.parse(out) : {};
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const decision = (o) => o?.hookSpecificOutput?.permissionDecision ?? null;
+const reason = (o) => o?.hookSpecificOutput?.permissionDecisionReason ?? "";
+
+test("フック本体: config が無ければ素通りする（未導入のリポジトリで止め始めない）", () => {
+  assert.equal(decision(runHook("git push")), null);
+  assert.equal(decision(runHook("npx prisma migrate deploy")), null);
+});
+
+test("フック本体: 壊れた config では全集合で ask を返し、理由に config の破損を書く（H51）", () => {
+  const broken = "{ schemaVersion: 1,";
+  const out = runHook("npx prisma migrate deploy", broken);
+  assert.equal(decision(out), "ask");
+  assert.match(reason(out), /prisma/);
+  assert.match(reason(out), /JSON が壊れている/);
+  assert.match(reason(out), /harness\.config\.json/);
+  // 壊れていても git-destructive は従来どおり止まる
+  assert.equal(decision(runHook("git push", broken)), "ask");
+  // 関係のないコマンドは止めない（全集合でも誤発火はしない）
+  assert.equal(decision(runHook("npm run build", broken)), null);
+});
+
+test("フック本体: 読める config では環境の既定どおりで、破損の注記は付かない", () => {
+  const wpf = JSON.stringify({ schemaVersion: 1, environment: "wpf" });
+  // wpf の既定は git-destructive だけ
+  assert.equal(decision(runHook("npx prisma migrate deploy", wpf)), null);
+  const out = runHook("git push", wpf);
+  assert.equal(decision(out), "ask");
+  assert.doesNotMatch(reason(out), /JSON が壊れている/);
 });
 
 test("信頼済み環境: 環境変数", () => {

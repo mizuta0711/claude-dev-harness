@@ -79,7 +79,7 @@ android → `android-device`）が引けない。結果、**DB のスキーマ�
 確認の文面に「**config が壊れているため全集合で確認している**」旨を足した。
 これが無いと、wpf のプロジェクトで prisma の確認が出た理由が分からない。
 
-docs 影響: あり（reference/harness設定契約.md §3 — 壊れた config の行／reference/permissionsベースライン.md §9）
+docs 影響: あり（reference/harness設定契約.md §3 — 壊れた config の行／reference/permissionsベースライン.md §3「集合」／diagrams/05_フック発火タイミング図.md ⑦の行）
 
 ## [0.39.0] — 試作・MVP のフローを足した（H76）
 
