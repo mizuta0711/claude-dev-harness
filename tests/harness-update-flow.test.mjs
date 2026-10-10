@@ -591,3 +591,82 @@ test("揃っている現物では、余計なことを言わない", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// 所有マーカーは `analyze` の配線まで通っているか（H53-b）
+//
+// `tests/marker-merge.test.mjs` は `tryMarkerMerge` を直接呼ぶので、
+// **`cmdAnalyze` の分岐を丸ごと消しても緑になる**（査読が実測で示した）。
+// ここでコマンド経由の配線を固定する。
+// ---------------------------------------------------------------------------
+
+const MK_BEGIN = "<!-- harness:begin ハーネスが所有する -->";
+const MK_END = "<!-- harness:end ここから下はプロジェクト -->";
+const constitution = (owned, project) =>
+  ["# 不変原則", MK_BEGIN, ...owned, MK_END, "", "## 9. このプロジェクト固有の原則", ...project].join("\n") + "\n";
+
+test("analyze: マーカー付きの constitution.md は auto-merge になる（配線）", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "h53b-wire-"));
+  try {
+    const repo = mkTemplateRepo(root, [
+      { "constitution.md": constitution(["## 1. 規模ゲート"], ["<!-- TODO -->"]) },
+      { "constitution.md": constitution(["## 1. 規模ゲート", "- 足した規律"], ["<!-- TODO -->"]) },
+    ]);
+    const project = mkProject(root, repo.commits[0], {
+      "constitution.md": constitution(["## 1. 規模ゲート"], ["- **独自の原則。** これは残る"]),
+    });
+    const report = analyze(project, repo.dir);
+    assert.equal(kindOf(report, "constitution.md"), "auto-merge");
+
+    run("apply", project, repo.dir, ["constitution.md"]);
+    const out = fs.readFileSync(path.join(project, "constitution.md"), "utf-8");
+    assert.ok(out.includes("- 足した規律"), "テンプレートの追加が入っていない");
+    assert.ok(out.includes("- **独自の原則。** これは残る"), "プロジェクトの原則が消えた");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("analyze: マーカーの無い現物は conflict になり、移行だと案内する（配線）", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "h53b-wire2-"));
+  try {
+    const repo = mkTemplateRepo(root, [
+      { "constitution.md": constitution(["## 1. 規模ゲート"], []) },
+      { "constitution.md": constitution(["## 1. 規模ゲート", "- 足した規律"], []) },
+    ]);
+    // 現物はマーカー無し（0.40.0 より前に生成したプロジェクト）
+    const project = mkProject(root, repo.commits[0], {
+      "constitution.md": ["# 不変原則", "## 1. 規模ゲート", "", "## 9. 固有", "- 独自"].join("\n") + "\n",
+    });
+    const report = analyze(project, repo.dir);
+    const entry = report.files.find((f) => f.file === "constitution.md");
+    assert.equal(entry.kind, "conflict");
+    assert.match(entry.note, /所有マーカーが現物に無い/, `移行の案内が出ていない: ${entry.note}`);
+    assert.match(entry.note, /前書きと begin \/ end/, `前書きの持ち込みに触れていない: ${entry.note}`);
+
+    // 競合は apply で書かない（事故にならないこと）
+    const failed = runFail("apply", project, repo.dir, ["constitution.md"]);
+    assert.ok(failed, "競合なのに apply が通った");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("analyze: end が無い壊れた現物は、begin を足せと言わない（配線）", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "h53b-wire3-"));
+  try {
+    const repo = mkTemplateRepo(root, [
+      { "constitution.md": constitution(["## 1. 規模ゲート"], []) },
+      { "constitution.md": constitution(["## 1. 規模ゲート", "- 足した規律"], []) },
+    ]);
+    const project = mkProject(root, repo.commits[0], {
+      "constitution.md": ["# 不変原則", MK_BEGIN, "## 1. 規模ゲート", "", "## 9. 固有", "- 独自"].join("\n") + "\n",
+    });
+    const report = analyze(project, repo.dir);
+    const entry = report.files.find((f) => f.file === "constitution.md");
+    assert.equal(entry.kind, "conflict");
+    assert.match(entry.note, /harness:end が無い/, `壊れた現物として案内していない: ${entry.note}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

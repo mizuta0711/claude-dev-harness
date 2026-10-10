@@ -719,22 +719,32 @@ const MARKER_END = "<!-- harness:end";
  * **行の配列で返す。** 文字列で返して連結すると、**境界の改行が落ちる**
  * （検査で実際に踏んだ。前書きとマーカー行がつながってしまう）。
  *
- * @returns {{before: string[], owned: string[], after: string[]} | null} マーカーが無ければ null
+ * **割れなかった理由も返す。** 「マーカーが無い」（＝移行が要る）と
+ * 「`end` が無い・`begin` が2つある」（＝現物が壊れている／前提が崩れている）は
+ * **人がする作業が違う**ので、呼び出し側が案内を書き分けられるようにする。
+ *
+ * @returns {{before: string[], owned: string[], after: string[]} | {reason: string}}
  */
 function splitByMarker(text) {
   const lines = text.split("\n");
-  const begin = lines.findIndex((l) => l.trimStart().startsWith(MARKER_BEGIN));
-  if (begin < 0) return null;
+  const isBegin = (l) => l.trimStart().startsWith(MARKER_BEGIN);
+  const begin = lines.findIndex(isBegin);
+  if (begin < 0) return { reason: "no-begin" };
   const end = lines.findIndex((l, i) => i > begin && l.trimStart().startsWith(MARKER_END));
-  if (end < 0) return null;
-  // **2組目以降は見ない。** 1ファイルに1組だけという前提をここで固定する
-  // （複数組を許すと「どの組が対応するか」を決める規則が要る）
+  if (end < 0) return { reason: "no-end" };
+  // **1ファイルに1組だけが前提。** 2組目があれば統合しない ——
+  // 移行手順を自分の文書へ書き写してマーカーを例示すると、**例示の側が1組目になり、
+  // ハーネスの節がコードフェンスの中へ入って本物が凍結する**（査読が実測で示した）。
+  if (lines.findIndex((l, i) => i > end && isBegin(l)) >= 0) return { reason: "multiple" };
   return {
     before: lines.slice(0, begin),
     owned: lines.slice(begin, end + 1),
     after: lines.slice(end + 1),
   };
 }
+
+/** `splitByMarker` が割れた結果か（`reason` を持たない） */
+const isSplit = (r) => Boolean(r) && !r.reason;
 
 /**
  * 所有マーカーの中だけをテンプレートの内容へ置き換える。
@@ -745,10 +755,23 @@ function splitByMarker(text) {
 function tryMarkerMerge(rel, bText, cText, work) {
   const bParts = splitByMarker(bText);
   const cParts = splitByMarker(cText);
-  if (!bParts || !cParts) return null;
+  if (!isSplit(bParts) || !isSplit(cParts)) return null;
 
   const merged = [...cParts.before, ...bParts.owned, ...cParts.after].join("\n");
-  if (merged === cText) return { kind: "already-applied", note: "同じ変更が既に入っている" };
+  if (merged === cText) {
+    // **外だけが違うときに「同じ変更が既に入っている」と言わない。**
+    // テンプレートの変更は入っていないので、嘘になる（0.39.3 で直した型と同じ）。
+    const outsideDiffers =
+      bParts.before.join("\n") !== cParts.before.join("\n") ||
+      bParts.after.join("\n") !== cParts.after.join("\n");
+    return outsideDiffers
+      ? {
+          kind: "already-applied",
+          note:
+            "マーカーの中は同じ。**外はテンプレート側と違うが、外はプロジェクトの領域なので追従しない**",
+        }
+      : { kind: "already-applied", note: "同じ変更が既に入っている" };
+  }
 
   const ch = lineChanges(cParts.owned.join("\n"), bParts.owned.join("\n"));
   const parts = [];
@@ -982,15 +1005,30 @@ function cmdAnalyze(opts) {
     // 境界が文書に書いてあるので、A を見なくても「どこがハーネスのものか」が分かる
     if (MARKER_FILES.has(rel) && verdict.kind === "conflict" && b !== null && c !== null) {
       const merged = tryMarkerMerge(rel, b, c, work);
+      const cSplit = splitByMarker(c);
       if (merged) verdict = merged;
-      else if (splitByMarker(b) && !splitByMarker(c)) {
+      else if (cSplit?.reason === "no-begin") {
         // **移行は一度だけ。** 現物にマーカーが無い（0.40.0 より前に生成した）
         verdict = {
           kind: "conflict",
           note:
             "所有マーカーが現物に無い（0.40.0 で一度だけの移行）。" +
-            "テンプレートの begin / end を現物へ入れ、プロジェクト固有の原則を end の外へ出す。" +
-            "手順は harness-update/SKILL.md の「constitution.md の移行は一度だけ」",
+            "テンプレートの前書きと begin / end を現物へ入れ、プロジェクト固有の原則を end の外へ出す。" +
+            "手順は harness-update/SKILL.md の「constitution.md の移行は 0.40.0 で一度だけ」",
+        };
+      } else if (cSplit?.reason === "no-end") {
+        verdict = {
+          kind: "conflict",
+          note:
+            "現物に harness:begin はあるが harness:end が無い（現物が壊れている）。" +
+            "**begin を足すのではなく、end を正しい位置（§9 の直前）へ入れる**",
+        };
+      } else if (cSplit?.reason === "multiple") {
+        verdict = {
+          kind: "conflict",
+          note:
+            "現物に harness:begin が2組以上ある（1組だけという前提が崩れている）。" +
+            "例示のために書いたマーカーがあるなら、**本物より前に置かない**",
         };
       }
     }

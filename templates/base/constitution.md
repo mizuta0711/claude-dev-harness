@@ -1,11 +1,11 @@
 # constitution.md — {{PROJECT_NAME}} の不変原則
 
+<!-- harness:begin ハーネスが所有する。ここから end までは harness-update が置き換える -->
+
 > **この文書は2つの所有に分かれている。**
 > `harness:begin` 〜 `harness:end` の**中はハーネスが持つ**（`harness-update` が置き換える。
 > プロジェクト側で編集しても次の追従で戻る）。**外はプロジェクトが持つ**（追従では触らない）。
 > このプロジェクト固有の原則は、**マーカーの外にある §9 に書く**。
-
-<!-- harness:begin ハーネスが所有する。ここから end までは harness-update が置き換える -->
 
 | 項目 | 内容 |
 |------|------|
