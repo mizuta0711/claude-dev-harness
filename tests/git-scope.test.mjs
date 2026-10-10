@@ -427,3 +427,78 @@ test("H65: 安全な形は潰す（文書を書くだけで鳴らせない）", 
     assert.equal(guard.isBlockedAdd(cmd), false, cmd);
   }
 });
+
+// ---- H65: 許可リストの2つ目の軸（行を包む外側） ----
+//
+// **0.35.0 は「導入部の行」だけを見ており、その行を包む外側を見ていなかった**
+// （査読が2形の見逃しを実行確認つきで出した）。
+
+test("H65: 行を包む外側が実行経路なら潰さない", () => {
+  const cases = [
+    // 素のサブシェル。**閉じ括弧の後ろで実行される**（終端より後ろなので行の判定に入らない）
+    ["(cat <<EOF", "git add -A", "EOF", ") | bash"].join("\n"),
+    // コマンド置換の値が実行される（引用符なしの形）
+    ["eval $(cat <<EOF", "git add -A", "EOF", ")"].join("\n"),
+    // バッククォート
+    ["git log `bash <<EOF", "git add -A", "EOF", "`"].join("\n"),
+    // プロセス置換
+    ["source <(cat <<EOF", "git add -A", "EOF", ")"].join("\n"),
+    [". <(cat <<EOF", "git add -A", "EOF", ")"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H65: `git` の sink はメッセージを読むサブコマンドだけ", () => {
+  // **`git` を丸ごと許すと広すぎた**（査読の中1。実行確認つき）——
+  // `git -c alias.x='!bash' x <<EOF` は**本文を bash が実行する**。
+  const unsafe = [
+    ["git -c alias.x=!bash x <<EOF", "git add -A", "EOF"].join("\n"),
+    ["git bisect run sh <<EOF", "git add -A", "EOF"].join("\n"),
+    ["git submodule foreach bash <<EOF", "git add -A", "EOF"].join("\n"),
+    ["git sh <<EOF", "git add -A", "EOF"].join("\n"), // 設定済みの別名
+  ];
+  for (const cmd of unsafe) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+  // メッセージを読む形は潰す
+  const safe = [
+    ["git commit -F - -- a.md <<'EOF'", "git add -A も止める", "EOF"].join("\n"),
+    ["git tag -F - v1 <<EOF", "git add -A", "EOF"].join("\n"),
+    ["git notes add -F - <<EOF", "git add -A", "EOF"].join("\n"),
+  ];
+  for (const cmd of safe) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});
+
+test("H65: `gh` も本文をデータとして読む（誤警報を減らす）", () => {
+  // `gh pr create --body-file - <<'EOF'` は実運用で出る形。
+  const cmd = ["gh pr create --body-file - <<'EOF'", "git add -A と書く", "EOF"].join("\n");
+  assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+  assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+});
+
+// **限界として固定する（H69 / H70）。** どちらも**ヒアドキュメントとは無関係**で、
+// `scanCommands` / `parseGit` の作りに由来する。**直したら期待値を変える。**
+//
+// > 実測: `bash -c "git add -A"`（引用符の中）も `eval git add -A`（引用符なし）も
+// > `sudo git add -A`（ラッパー1つ）も `false` である。
+test("H65: 引用符の中とラッパー越しは見えない（元からの限界）", () => {
+  const quoted = [
+    'bash -c "git add -A"',
+    "sh -c 'git add -A'",
+    'eval "git add -A"',
+    ["bash -c \"$(cat <<EOF", "git add -A", "EOF", ")\""].join("\n"),
+    ["eval \"$(cat <<'EOF'", "git add -A", "EOF", ")\""].join("\n"),
+  ];
+  const wrapped = ["eval git add -A", "sudo git add -A", "env git add -A", "time git add -A"];
+  for (const cmd of [...quoted, ...wrapped]) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});

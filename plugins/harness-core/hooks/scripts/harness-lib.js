@@ -108,34 +108,25 @@ function toolShell(payload) {
  *
  * ## なぜ禁止リストをやめたか
  *
- * 0.34.0〜0.34.2 は「実行系を見つけたら潰さない」という**禁止リスト**だった。
- * **3回続けて前提が崩れ、そのたびに見逃しを作った。**
+ * 0.34.0〜0.34.2 は「実行系を見つけたら潰さない」という**禁止リスト**で、
+ * **3回続けて前提が崩れた**（`bash <<EOF` → `cat <<EOF | bash` →
+ * `| $SHELL` / `| . /dev/stdin` / 関数 / 別の行で定義）。
+ * **名前を並べる方式は収束しない** —— 別名・変数・関数・別の行で抜ける。
  *
- * | 版 | 前提 | 崩れた形 |
- * |---|---|---|
- * | 0.34.0 | 本文は実行されない | `bash <<EOF`（シェルが本文を実行する） |
- * | 0.34.1 | 受け取るのが `cat` ならデータ | `cat <<EOF \| bash`（`cat` は流すだけ） |
- * | 0.34.2 | 導入部の行に実行系の名前が無ければデータ | `cat <<EOF \| $SHELL` / `\| . /dev/stdin` / 関数 / 別の行で定義 |
+ * ## 許可リストは2つの軸で閉じる
  *
- * **禁止リストは収束しない。** 名前を足すたびに、別名・変数・関数・別の行で抜ける
- * （査読が13形を実測し、**うち5形は実際に本文が実行されることまで確かめた**）。
+ * **0.35.0 は「導入部の行」だけを見ており、その行を包む外側を見ていなかった**
+ * （査読で2形の見逃しを実測された）。
  *
- * ## 許可リストに反転した
+ *   ① **導入部の行の中**: sink が `cat` / `tee` / `git` / `gh` で、区切りも置換も無く、
+ *      後ろもリダイレクトかコメントだけ
+ *   ② **行を包む外側**: サブシェル `(…)` の中ではなく、`$(…)` の中なら
+ *      **外側が `git` のメッセージ引数**のときだけ
  *
- * **「確実に安全な形のときだけ潰す」。** 安全な形は**有限**である。
- *
- *   ① 本文を受け取るのが `cat` / `tee` / `git` で、
- *   ② 導入部に**コマンドの区切りも置換も無く**（`|` `;` `&` `` ` `` `$(` `>(` `>&`）、
- *   ③ `<<DELIM` の**後ろもリダイレクトかコメントだけ**
- *
- * **どれか外れたら潰さない＝許容されている誤検知**に倒れる。
- * 不確かなものは全部そちらへ落ちるので、**見逃しを新しく作らない**。
- *
- * **`git` を許すのは** `git commit -F - -- a.md <<EOF` と
- * Claude Code 標準の `git commit -m "$(cat <<'EOF' … )"` のため
- * （git は本文をコマンドとして実行しない）。
+ * **どちらかでも外れたら潰さない＝許容されている誤検知**に倒れる。
+ * **不確かなものは全部そちらへ落ちるので、見逃しを新しく作らない。**
  */
-const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
+const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git", "gh"]);
 
 /**
  * 前置き。**飛ばしても安全である** —— 飛ばした先が `cat` なら潰し（正しい）、
@@ -143,8 +134,54 @@ const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
  */
 const SINK_PREFIXES = new Set(["sudo", "env", "command", "nohup", "time", "xargs"]);
 
+/**
+ * `git` で本文を潰してよいサブコマンド。**本文をメッセージとして読むものだけ。**
+ *
+ * **`git` を丸ごと許すと広すぎた**（査読の中1。実行確認つき）——
+ * `git -c alias.x='!bash' x <<EOF` は**本文を bash が実行する**。
+ * `git bisect run sh <<EOF` / `git submodule foreach bash <<EOF` も同型。
+ */
+const GIT_MESSAGE_SUBCOMMANDS = new Set(["commit", "tag", "notes", "merge", "revert", "cherry-pick"]);
+
 /** コマンドの区切りと置換。**導入部にこれがあれば潰さない** */
 const UNSAFE_IN_INTRODUCER = /[|;&`]|\$\(|>\(|>&/;
+
+/** 文字列の先頭から、前置きを飛ばした最初の実コマンド名。無ければ null */
+function firstCommandName(text) {
+  for (const raw of String(text).split(/\s+/)) {
+    const token = raw.replace(/^[\s({]+/, "");
+    if (!token) continue;
+    if (/^[A-Za-z_][\w]*=/.test(token)) continue; // 環境変数の代入
+    const base = token.split("/").pop().split(String.fromCharCode(92)).pop();
+    const name = base.replace(/\.(exe|cmd|bat)$/i, "");
+    if (!name) continue;
+    if (SINK_PREFIXES.has(name)) continue;
+    return name;
+  }
+  return null;
+}
+
+/** `git …` が本文をメッセージとして読む形か（`-c` は認めない） */
+function isGitMessageForm(text) {
+  const tokens = String(text)
+    .split(/\s+/)
+    .map((t) => t.replace(/^[\s({]+/, ""))
+    .filter(Boolean)
+    .filter((t) => !/^[A-Za-z_][\w]*=/.test(t));
+  const gi = tokens.findIndex((t) => {
+    const base = t.split("/").pop().split(String.fromCharCode(92)).pop();
+    return base.replace(/\.(exe|cmd|bat)$/i, "") === "git";
+  });
+  if (gi < 0) return false;
+  for (let k = gi + 1; k < tokens.length; k++) {
+    const t = tokens[k];
+    // **`-c` を認めない。** `git -c alias.x='!bash' x <<EOF` は本文が実行される
+    if (t === "-c" || t.startsWith("-c") || t === "--exec-path" || t.startsWith("--exec-path")) return false;
+    if (t.startsWith("-")) continue;
+    return GIT_MESSAGE_SUBCOMMANDS.has(t);
+  }
+  return false;
+}
 
 /**
  * `<<` の導入部が「安全な形」かを判定する。
@@ -154,19 +191,45 @@ const UNSAFE_IN_INTRODUCER = /[|;&`]|\$\(|>\(|>&/;
  * @param afterDelim `<<DELIM` トークンの直後の位置
  */
 function isSafeHeredocIntroducer(s, at, afterDelim) {
-  // 手前: 直近の区切り（改行・`;`・`|`・`&`・`(`・バッククォート）から `<<` まで
+  // 手前: 直近の区切りから `<<` まで。**どの区切りで切れたかで外側の扱いが変わる**
   let start = 0;
+  let boundary = null;
+  let boundaryAt = -1;
   for (let k = at - 1; k >= 0; k--) {
     const c = s[k];
     if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`") {
-      // **プロセス置換（`<(` / `>(`）はコマンド置換（`$(`）と違う。**
-      // `source <(cat <<EOF … )` は**本文を `source` が実行する**ので潰してはいけない
-      // （`$(cat <<EOF … )` は値になるだけなので潰してよい）。
-      if (c === "(" && (s[k - 1] === "<" || s[k - 1] === ">")) return false;
+      boundary = c;
+      boundaryAt = k;
       start = k + 1;
       break;
     }
   }
+
+  if (boundary === "`") return false; // バッククォートの中は値が実行されうる
+
+  if (boundary === "(") {
+    const prev = s[boundaryAt - 1];
+    // **プロセス置換（`<(` / `>(`）は本文が実行される**
+    if (prev === "<" || prev === ">") return false;
+    if (prev === "$") {
+      // **コマンド置換。** 値が `bash -c` / `eval` の引数になれば実行される。
+      // **外側が `git` のメッセージ引数のときだけ潰す**（Claude Code 標準のコミット形）。
+      let outerStart = 0;
+      for (let k = boundaryAt - 2; k >= 0; k--) {
+        const c = s[k];
+        if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`") {
+          outerStart = k + 1;
+          break;
+        }
+      }
+      if (!isGitMessageForm(s.slice(outerStart, boundaryAt - 1))) return false;
+    } else {
+      // **素のサブシェル。** `(cat <<EOF … EOF\n) | bash` のように、
+      // **閉じ括弧の後ろで実行される**（終端より後ろなのでどの判定にも入らない）。
+      return false;
+    }
+  }
+
   const before = s.slice(start, at);
   if (UNSAFE_IN_INTRODUCER.test(before)) return false;
 
@@ -176,19 +239,14 @@ function isSafeHeredocIntroducer(s, at, afterDelim) {
   const after = s.slice(afterDelim, to);
   if (!/^\s*(?:>>?\s*[^\s|;&`$(>]+\s*)*(?:#.*)?$/.test(after)) return false;
 
-  // 手前の語を順に見て、前置きを飛ばし、最初の実コマンドが許可リストにあるか
-  for (const raw of before.split(/\s+/)) {
-    const token = raw.replace(/^[\s(]+/, "");
-    if (!token) continue;
-    if (/^[A-Za-z_][\w]*=/.test(token)) continue; // 環境変数の代入
-    const base = token.split("/").pop().split(String.fromCharCode(92)).pop();
-    const name = base.replace(/\.(exe|cmd|bat)$/i, "");
-    if (!name) continue;
-    if (SINK_PREFIXES.has(name)) continue;
-    return HEREDOC_DATA_SINKS.has(name);
-  }
-  return false;
+  const name = firstCommandName(before);
+  if (!name) return false;
+  if (!HEREDOC_DATA_SINKS.has(name)) return false;
+  // **`git` はサブコマンドを限る**（`-c` / `bisect` / `submodule` は本文が実行されうる）
+  if (name === "git") return isGitMessageForm(before);
+  return true;
 }
+
 
 
 function stripHeredocBodies(command) {
