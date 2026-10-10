@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPTS = path.join(ROOT, "plugins", "harness-core", "hooks", "scripts");
 
 // 配布物側（利用側プロジェクトへ配る）
 const scope = require(path.join(ROOT, "plugins", "harness-core", "hooks", "scripts", "git-scope.js"));
@@ -866,4 +868,75 @@ test("H49: `gitInvocations` の結果も2コピーで一致する", () => {
     const b = guard.gitInvocations(cmd).map((g) => `${g.sub}:${g.args}`);
     assert.deepEqual(a, b, cmd);
   }
+});
+
+// ---- H49: ソースそのものを突き合わせる（ケース集では閉じない） ----
+//
+// **手書きのケース集では「2コピーの食い違い」という型は閉じない**（査読が変異テストで実証）。
+// 落とせるのは**ケースが踏んだ分岐の戻り値**だけで、次は素通りした。
+//
+// | 変異（`git-scope` 側だけ） | ケース集の検査 |
+// |---|---|
+// | `isBlockedDiscard` から `./` や `:/` を外す | **すり抜け** |
+// | `STASH_SAFE` から `branch` / `show` を外す | **すり抜け** |
+// | `GIT_VALUE_OPTS` から `--work-tree` を外す | **すり抜け** |
+// | `SINK_PREFIXES` から `xargs` を外す | **すり抜け** |
+// | `SEPARATORS` から `` ` `` を外す | **すり抜け** |
+//
+// **判定の「外」にある定数（集合・正規表現）は、戻り値を比べても見えない。**
+// そこで**共有領域のソースを正規化して突き合わせる**。
+//
+// **共有領域は両方で連続していて、同じ順に並んでいる** ——
+// `const SEPARATORS` から `isUnscopedCommit` の終わりまで。
+
+const SHARED_BEGIN = "const SEPARATORS = new Set";
+const SHARED_END = "function isUnscopedCommit";
+
+/** 共有領域を取り出し、コメントと空白を落として比べられる形にする */
+function sharedSource(file) {
+  const text = fs.readFileSync(file, "utf-8").replace(/\r\n/g, "\n");
+  const begin = text.indexOf(SHARED_BEGIN);
+  assert.ok(begin >= 0, `${file}: 共有領域の始まりが見つからない`);
+  const endAt = text.indexOf(SHARED_END, begin);
+  assert.ok(endAt >= 0, `${file}: 共有領域の終わりが見つからない`);
+  // `isUnscopedCommit` の本体の終わり（次の `\n}` ）まで含める
+  const close = text.indexOf("\n}\n", endAt);
+  assert.ok(close >= 0, `${file}: ${SHARED_END} の終わりが見つからない`);
+
+  return (
+    text
+      .slice(begin, close + 3)
+      // ブロックコメントを落とす
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      // 行コメントを落とす（**文字列の中の `//` は無いことを前提にしている**。
+      // 共有領域に URL やパスのリテラルが入ったら、ここを見直すこと）
+      .map((l) => l.replace(/^\s*\/\/.*$/, "").trim())
+      .filter(Boolean)
+  );
+}
+
+test("H49: 共有領域のソースが2コピーで一致する（定数の食い違いも拾う）", () => {
+  const a = sharedSource(path.join(SCRIPTS, "git-scope.js"));
+  const b = sharedSource(path.join(ROOT, ".claude", "hooks", "repo-guard.js"));
+
+  // **並び順の違いは許す**（`hasPathspecSep` の置き場が違う等）。
+  // **中身の有無だけを見る** —— 足りない・多いを拾えれば乖離は分かる。
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  const onlyInScope = sortedA.filter((l) => !sortedB.includes(l));
+  const onlyInGuard = sortedB.filter((l) => !sortedA.includes(l));
+
+  assert.deepEqual(
+    { onlyInScope, onlyInGuard },
+    { onlyInScope: [], onlyInGuard: [] },
+    "共有領域のソースが食い違っている（片方だけ直した可能性）",
+  );
+});
+
+test("H49: 共有領域が小さくなりすぎていないか（取り出しの壊れに気づく）", () => {
+  // **領域の切り出しが壊れると、検査が空振りして気づけない。**
+  // 行数の下限を置いて、黙って無力化されるのを防ぐ。
+  const a = sharedSource(path.join(SCRIPTS, "git-scope.js"));
+  assert.ok(a.length > 300, `共有領域が ${a.length} 行しか取れていない（切り出しが壊れた可能性）`);
 });
