@@ -744,6 +744,12 @@ function cmdAnalyze(opts) {
 
   const work = path.join(opts.project, WORK_REL);
   fs.mkdirSync(work, { recursive: true });
+  // **上書きする前に前回の report を読む**（H53-f）。競合が「解決されたか」は
+  // analyze 時点のハッシュとの比較で判定するため、**解決してから analyze をやり直すと
+  // 証拠が消える**（新しいハッシュは解決後の現物と一致してしまい、finalize が
+  // 「手つかず」と判定して --force を要求する）。2026-10-08 の展開では
+  // **4プロジェクトすべてで --force が必要**になった。
+  const prevReport = readJson(path.join(work, "report.json"));
   // 前回の統合結果を残さない（別のコミットに対する結果がディスクに居座るのを避ける）
   fs.rmSync(path.join(work, MERGED_REL), { recursive: true, force: true });
 
@@ -816,6 +822,16 @@ function cmdAnalyze(opts) {
     // conflict は finalize で「解決されたか」を、auto-merge は apply で
     // 「analyze 以降に現物が変わっていないか」を見るために控える。
     if (verdict.kind === "conflict" || verdict.kind === "auto-merge") entry.currentHash = hashOf(c);
+    // **conflict だけは、同じ更新に対する前回の analyze のハッシュを引き継ぐ**（H53-f）。
+    // こちらの用途は「人が手を入れたか」の証拠なので、基準は
+    // **この更新で最初に analyze したときの現物**でなければならない。
+    // auto-merge は引き継がない —— あちらの用途は apply の安全弁（統合結果が
+    // 今の現物から作られたものか）で、analyze をやり直せば統合結果も作り直されるため、
+    // 古いハッシュを持ち越すと正当な apply を拒否してしまう。
+    if (verdict.kind === "conflict" && prevReport?.latestCommit === latestCommit) {
+      const prev = (prevReport.files || []).find((f) => f.file === rel);
+      if (prev?.kind === "conflict" && prev.currentHash) entry.currentHash = prev.currentHash;
+    }
     results.push(entry);
   }
 
@@ -1005,7 +1021,8 @@ function cmdFinalize(opts) {
     return b !== c;
   };
 
-  // 競合が「解決されたか」は **analyze 以降に人が手を入れたか** で判定する。
+  // 競合が「解決されたか」は **最初の analyze 以降に人が手を入れたか** で判定する。
+  // 基準になるハッシュは analyze が引き継ぐ（H53-f。やり直しても証拠が消えない）。
   //
   // かつては「現物 == 最新テンプレート」を解決条件にしていたが、競合の正しい解決は
   // 多くの場合「テンプレートの改善 + ローカル改変の統合」であり、**必然的にテンプレートとは
@@ -1019,6 +1036,7 @@ function cmdFinalize(opts) {
     .filter((f) => {
       // analyze 時のハッシュが無い古い report は、従来どおりテンプレートとの一致で判定する
       if (!f.currentHash) return stillDiffers(f.file);
+      // ここで比べる currentHash は「この更新で最初に analyze したときの現物」（H53-f）
       const now = hashOf(readText(path.join(opts.project, f.file)));
       return now === f.currentHash;
     })
