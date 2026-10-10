@@ -1278,3 +1278,100 @@ test("H74査読: 予約語を剥がしても、文字列やコメントでは発
     assert.equal(guard.isBlockedAdd(cmd), false, `repo-guard も: ${cmd}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// 0.38.0 の査読（誤検知と抜け道で2本に分けた）
+//
+// **塞いだ形の「隣の形」が残っていた。** いずれも実測で素通りしていたもので、
+// `$x.y = ` / `$global:r = ` は**直す前から通っていた** —— 同じ代入なのに
+// 形で差が出るのが分かりにくいので、まとめて受けるようにした。**ケースを消さないこと。**
+// ---------------------------------------------------------------------------
+
+test("0.38.0査読: PowerShell の代入は型キャスト・複合・複数・波括弧・添字も受ける", () => {
+  const ps = { shell: "powershell" };
+  const cases = [
+    "[string]$r = git add -A",
+    "[int]$r = git add -A",
+    "[string[]]$r = git add -A",
+    "$r += git add -A",
+    "$a, $b = git add -A",
+    "${r} = git add -A", // `{` は区切り文字なので断片が `= git …` に割れる
+    "$x[0] = git add -A",
+    "$x.y = git add -A",
+    "$global:r = git add -A",
+    "$null = git add -A",
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd, ps), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd, ps), true, `repo-guard も: ${cmd}`);
+  }
+});
+
+test("0.38.0査読: `return` / `coproc` も予約語として剥がす", () => {
+  for (const cmd of ["return git add -A", "coproc git add -A", "if true; then coproc git add -A; fi"]) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, `repo-guard も: ${cmd}`);
+  }
+});
+
+test("0.38.0査読: `Invoke-Expression` / `iex` は `eval` と同じに読む", () => {
+  const ps = { shell: "powershell" };
+  for (const cmd of ["iex 'git add -A'", "$r = Invoke-Expression 'git add -A'", "IEX \"git add -A\""]) {
+    assert.equal(scope.isBlockedAdd(cmd, ps), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd, ps), true, `repo-guard も: ${cmd}`);
+  }
+  // **bash では `iex` を見ない** —— Elixir の REPL が同じ名前なので方言で限る
+  assert.equal(scope.isBlockedAdd("iex 'git add -A'"), false, "bash の iex は見ない");
+  assert.equal(guard.isBlockedAdd("iex 'git add -A'"), false, "bash の iex は見ない");
+});
+
+test("0.38.0査読: `builtin` も包むコマンドに数える", () => {
+  assert.equal(scope.isBlockedAdd("if true; then builtin eval 'git add -A'; fi"), true);
+  assert.equal(guard.isBlockedAdd("if true; then builtin eval 'git add -A'; fi"), true);
+});
+
+test("0.38.0査読: 代入や予約語を広げても、まっとうな操作は止まらない", () => {
+  const ps = { shell: "powershell" };
+  const SAFE = [
+    ["$r = git status", ps],
+    ["[string]$out = git status", ps],
+    ["$r += git log --oneline", ps],
+    ["$msg = \"then git add -A\"", ps], // 文字列として書いただけ
+    ["$x = 'git add -A'", ps],
+    ["return git status", undefined],
+    ["echo return git add -A", undefined],
+    ["ls # coproc git add -A", undefined],
+    ['git commit -m "return git add -A" -- a', undefined],
+    ["if git diff --quiet; then git commit -m x -- a; fi", undefined],
+  ];
+  for (const [cmd, opts] of SAFE) {
+    assert.equal(scope.isBlockedAdd(cmd, opts), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd, opts), false, `repo-guard も: ${cmd}`);
+  }
+});
+
+test("0.38.0査読: stripCommandPrefix は止まる", () => {
+  // 各 replace は文字列を縮めるか不変にするだけなので、止まらない入力は作れない。
+  // **念のため実測で固定する**（査読が 20,000 回で 8ms 以下と報告した）。
+  const started = Date.now();
+  assert.equal(scope.isBlockedAdd("then ".repeat(20000) + "git add -A"), true);
+  assert.equal(scope.isBlockedAdd("$a = ".repeat(20000) + "git add -A", { shell: "powershell" }), true);
+  assert.ok(Date.now() - started < 3000, "1秒台で終わること");
+});
+
+// ---------------------------------------------------------------------------
+// 0.38.0 査読3 の付記: `changesBeforeCommit` が何も書き込まない形を咎めていた
+//
+// **誤検知の向きがコミットの deny** なので実害がある（1件目はありそうな書き方）。
+// ---------------------------------------------------------------------------
+
+test("0.38.0査読: 予約語を剥がすのは1回では足りない（コミットを止めていた）", () => {
+  const cases = [
+    "if ! git diff --quiet; then git commit -m a -- b; fi",
+    "while ! git fetch; do sleep 1; done; git commit -m a -- b",
+    "until git fetch; do sleep 1; done; git commit -m a -- b",
+  ];
+  for (const cmd of cases) assert.equal(scope.changesBeforeCommit(cmd), null, cmd);
+  // **検出する側は変わっていない**
+  assert.equal(scope.changesBeforeCommit("printf x > a.ts; git commit -- a.ts"), "printf x > a.ts");
+});

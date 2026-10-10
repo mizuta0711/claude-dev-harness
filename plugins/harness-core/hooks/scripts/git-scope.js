@@ -613,7 +613,7 @@ const GIT_GLOBAL_VALUE_OPTS = new Set([
  * 入れると `echo git add -A` で鳴る（誤検知）。
  */
 const COMMAND_WRAPPERS = new Set([
-  "sudo", "doas", "env", "command", "nohup", "setsid", "time", "timeout",
+  "sudo", "doas", "env", "command", "builtin", "nohup", "setsid", "time", "timeout",
   "nice", "ionice", "stdbuf", "xargs", "eval", "exec",
 ]);
 
@@ -727,15 +727,41 @@ const ENV_ASSIGN_PREFIX = /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+
  * あちらが `sudo` / `env` を越えたのに対し、こちらはシェルの構文を越える。
  * `time` はラッパー側（`COMMAND_WRAPPERS`）が受けるが、**予約語としても書けるので両方に置く**。
  */
-const SHELL_KEYWORD_PREFIX = /^(?:if|then|elif|else|while|until|do|time|!)\s+/;
+const SHELL_KEYWORD_PREFIX = /^(?:if|then|elif|else|while|until|do|time|coproc|return|!)\s+/;
 
 /**
  * PowerShell の**代入で受ける形**（`$out = git …`）。
  *
  * 括弧で包む形（`$out = (git …)`）は `(` が区切り文字なので既に割れるが、
  * **括弧なしの形は割れない**ため先頭に代入が残り、**deny を素通りしていた**（実測）。
+ *
+ * ⚠️ **`$name = ` の単純形だけでは足りない**（査読の中1・いずれも実測で素通りしていた）。
+ *
+ * | 形 | 単純形だけのとき |
+ * |---|---|
+ * | `[string]$r = git add -A` | **素通り**（型キャストが先頭に来る） |
+ * | `$r += git add -A` | **素通り**（複合代入） |
+ * | `$a, $b = git add -A` | **素通り**（代入先が複数） |
+ * | `${r} = git add -A` | **素通り**（波括弧つきの変数名） |
+ * | `$x[0] = git add -A` | **素通り**（添字つき） |
+ *
+ * **`$x.y = ` と `$global:r = ` は単純形でも通っていた**（`[\w:.]` に `.` と `:` が入るため）。
+ * **同じ代入なのに形で差が出る**のが分かりにくいので、まとめて受けるようにした。
  */
-const PS_ASSIGN_PREFIX = /^\$[A-Za-z_][\w:.]*\s*=\s*/;
+const PS_CAST = String.raw`(?:\[[\w.\[\]]+\]\s*)*`;
+const PS_TARGET = String.raw`\$(?:\{[^}]*\}|[A-Za-z_][\w:.]*)(?:\[[^\]]*\])?`;
+const PS_ASSIGN_PREFIX = new RegExp(
+  `^${PS_CAST}${PS_TARGET}(?:\\s*,\\s*${PS_CAST}${PS_TARGET})*\\s*(?:[-+*/%])?=\\s*`
+);
+
+/**
+ * **代入の演算子だけが断片の先頭に残った形**（`= git …`）。
+ *
+ * `${r} = git add -A` の `{` `}` は**区切り文字**なので、`PS_ASSIGN_PREFIX` が
+ * 当たる前に断片が割れ、`= git add -A` だけが残る（実測で素通りしていた）。
+ * **先頭が代入演算子で始まる断片は、他に意味が無い。**
+ */
+const ASSIGN_OP_PREFIX = /^(?:[-+*/%])?=\s*/;
 
 /**
  * コマンド位置の手前にある構文を**無くなるまで**剥がす。
@@ -751,7 +777,10 @@ const PS_ASSIGN_PREFIX = /^\$[A-Za-z_][\w:.]*\s*=\s*/;
 function stripCommandPrefix(text) {
   let s = String(text || "");
   for (;;) {
-    const next = s.replace(SHELL_KEYWORD_PREFIX, "").replace(PS_ASSIGN_PREFIX, "");
+    const next = s
+      .replace(SHELL_KEYWORD_PREFIX, "")
+      .replace(PS_ASSIGN_PREFIX, "")
+      .replace(ASSIGN_OP_PREFIX, "");
     if (next === s) return s;
     s = next;
   }
@@ -804,6 +833,7 @@ const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-fi
  */
 function wrappedCommand(text, opts) {
   const tokens = tokenize(String(text || "").replace(ENV_ASSIGN_PREFIX, ""), opts);
+  const isPowerShell = (opts && opts.shell) === "powershell";
   /**
    * `eval` / `cmd /c` の本体。**引用符を復元せずに繋ぐのが正しい。**
    *
@@ -825,8 +855,11 @@ function wrappedCommand(text, opts) {
   let k = 0;
   while (k < tokens.length) {
     const name = commandBaseName(tokens[k].value);
-    // `eval` は後ろ全部を1つのコマンドとして読む（`eval git add -A` も `eval "git add -A"` も）
+    // `eval` は後ろ全部を1つのコマンドとして読む（`eval git add -A` も `eval "git add -A"` も）。
+    // **PowerShell の対応物は `Invoke-Expression` / `iex`**（査読の低1。素通りしていた）。
+    // **bash では `iex` を見ない** —— Elixir の REPL が同じ名前なので、方言で限る
     if (name === "eval") return rest(1);
+    if (isPowerShell && /^(?:invoke-expression|iex)$/i.test(name)) return rest(1);
     if (BASH_LIKE.test(name)) {
       for (let j = k + 1; j < tokens.length; j++) {
         const v = tokens[j].value;
@@ -1193,6 +1226,9 @@ const TREE_SAFE_COMMANDS = new Set([
   "wc", "head", "tail", "grep", "sort", "uniq", "type", "findstr", "get-content", "gc",
   "out-null", "out-string", "select-object", "select", "where-object", "where", "measure-object",
   "select-string", "sls", "format-table", "ft",
+  // **閉じる側の予約語**。断片として独立するので、未知のコマンドとして咎めていた
+  // （`until git fetch; do sleep 1; done; git commit …` の `done`）
+  "done", "fi", "esac",
 ]);
 
 /** ファイルへのリダイレクト（`/dev/null` / `$null` / `NUL` は除く） */
@@ -1205,7 +1241,16 @@ const FILE_REDIRECT = />>?\s*(?!\/dev\/null\b)(?!\$null\b)(?!nul\b)[^\s&|;<>]/i;
  * ここは代入までは剥がさない —— `changesTree` は `$x = 1` を
  * 「ツリーを変えない」と判定するので、剥がすと `1` を未知のコマンドとして読んでしまう。
  */
-const stripKeyword = (seg) => ({ ...seg, text: seg.text.replace(SHELL_KEYWORD_PREFIX, "") });
+const stripKeyword = (seg) => {
+  // **1回では足りない**（`if ! git diff --quiet` の `!` が残り、未知のコマンドとして
+  // 「ツリーを変える」と判定していた —— 誤検知の向きが**コミットの deny** なので実害がある）
+  let text = seg.text;
+  for (;;) {
+    const next = text.replace(SHELL_KEYWORD_PREFIX, "");
+    if (next === text) return { ...seg, text };
+    text = next;
+  }
+};
 
 function changesTree(seg, opts) {
   const unquoted = seg.text.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '""');
