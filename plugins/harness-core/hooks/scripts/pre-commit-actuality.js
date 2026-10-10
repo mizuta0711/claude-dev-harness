@@ -59,6 +59,27 @@ function addedLinesByFile(cwd) {
     if (!byFile.has(file)) byFile.set(file, new Set());
     byFile.get(file).add(raw.slice(1).trim());
   }
+
+  // **未追跡のファイルは `git diff HEAD` に出ない。**
+  // **新しく足した指示文書（`.claude/rules/new.md` 等）が、丸ごと検査されずに通っていた**
+  // （再査読のテストを書いていて気づいた）。**全行を追加行として扱う。**
+  const others = git(
+    ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "--", "CLAUDE.md", "constitution.md", ".claude"],
+    cwd
+  );
+  for (const rel of String(others).split("\n").map((x) => x.trim()).filter(Boolean)) {
+    if (!scan.isWatchedPath(rel)) continue;
+    if (!byFile.has(rel)) byFile.set(rel, new Set());
+    const set = byFile.get(rel);
+    try {
+      for (const line of fs.readFileSync(path.join(cwd, rel), "utf-8").split(/\r?\n/)) {
+        set.add(line.trim());
+      }
+    } catch {
+      /* 読めなければ飛ばす */
+    }
+  }
+
   return byFile;
 }
 

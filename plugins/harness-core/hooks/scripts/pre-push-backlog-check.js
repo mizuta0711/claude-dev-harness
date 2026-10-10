@@ -79,14 +79,14 @@ function repoRoot(dir) {
  * **リポジトリのルートまで寄せる。** `cd src && git push` のように下位から
  * 打たれると、そのままでは `docs/backlog.md` が見つからず素通りする（査読 L1）。
  *
+ * **`sub` で探すサブコマンドを変えられる**（既定は `push`。`commit` を渡せば
+ * コミット前のフックからも同じ解決を使える —— 二重実装すると片方だけ古くなる）。
+ *
  * 解決は `cd` 系と `-C` を追うだけの**浅いもの**にしてある。解決先が実在しなければ
  * **検査しない** —— **間違った台帳で止めるより、見逃す方がましである**
  * （誤って deny すると正常な作業が止まる）。
  *
  * @returns {{dir: string, args: string}|null}
- * **`sub` で探すサブコマンドを変えられる**（既定は `push`。`commit` を渡せば
- * コミット前のフックからも同じ解決を使える —— 二重実装すると片方だけ古くなる）。
- *
  */
 function resolveTarget(command, opts, startDir, sub = "push") {
   let cwd = startDir;
