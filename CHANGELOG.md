@@ -52,6 +52,41 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.36.2] — `isUnscopedCommit` が片方だけ誤っていた（H49）
+
+**同じ判定の2コピーが、片方だけ誤っていた。** `git-scope`（**配布側**）が見逃していた。
+
+### 実測
+
+| コマンド | `git-scope`（配布側） | `repo-guard`（このリポジトリ側） |
+|---|---|---|
+| **`git commit --quiet -m x`** | **false（警告なし）** | true |
+| `git commit -m x --no-verify` | **false** | true |
+| `git commit -m x --signoff` | **false** | true |
+
+**原因は `args.includes("--")`。** あれは**長いオプションに当たる** ——
+`--no-verify` / `--quiet` / `--signoff` があるだけで「パス指定あり」と誤判定し、
+**ごく普通のコマンドで「パス指定なし」の警告が出なかった**。
+
+`repo-guard` 側は最初から `/(^|\s)--(\s|$)/`（**単独の `--`**）で正しかった。
+
+### 根は「乖離検査がこの関数を見ていなかった」こと
+
+**個別のケースを足すのではなく、両方が持つ判定を全部、同じケース集に当てる。**
+
+| 足した検査 | 内容 |
+|---|---|
+| **判定の突き合わせ** | `isBlockedAdd` / `isBlockedCommitAll` / `isBlockedStash` / `isBlockedDiscard` / `isUnscopedCommit` を**34形**に当てて結果を比べる |
+| **共有している判定の数** | **新しく共有の判定が増えたら落ちる**（検査に入れ忘れを防ぐ） |
+| **`gitInvocations` の突き合わせ** | 判定の土台。**ここが食い違うと全部ずれる** |
+
+**変異テストで効くことを確かめた** —— 元の誤りに戻すと落ち、
+**食い違いを `isUnscopedCommit: "git commit --quiet -m x" → scope=false / guard=true` の形で名指しする**。
+
+**テスト3件追加（計429件合格）。**
+
+docs 影響: なし（`grep -rln "isUnscopedCommit|パス指定なし" docs/ templates/ README.md` で **`templates/base/.claude/harness/core.md:76` が当たったが、中を見ると `git commit --amend` の規律の記述**で、**判定の実装には触れていない**。**規律は変わらず、検出が正確になっただけ**なので直す必要が無い）
+
 ## [0.36.1] — 0.36.0 の「後ろのどこかに `git`」が誤検知を作っていた（H70）
 
 **⚠️ 0.36.0 は査読を通さずに push してしまった**（`CLAUDE.md` §4 の手順を飛ばした）。

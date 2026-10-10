@@ -792,6 +792,18 @@ function isBlockedDiscard(command, opts) {
 }
 
 /**
+ * パス指定の区切り（単独の `--`）があるか。
+ *
+ * **`args.includes("--")` ではいけない**（H49）。あれは**長いオプションに当たる** ——
+ * `--no-verify` / `--quiet` / `--signoff` があるだけで「パス指定あり」と誤判定し、
+ * **`git commit --quiet -m x` のようなごく普通のコマンドで警告が出なかった**（実測）。
+ *
+ * **`repo-guard.js` 側は最初から正しかった。** 同じ判定の2コピーが
+ * **片方だけ正しい**状態で、`tests/repo-guard.test.mjs` の乖離検査もここを見ていなかった。
+ */
+const hasPathspecSep = (args) => /(^|\s)--(\s|$)/.test(args);
+
+/**
  * パス指定なしの `git commit`。**deny しない**（`git add <path>` の直後など正当な使い方がある）。
  * 警告に留めるのは R4 の明示的な指示。
  */
@@ -799,7 +811,7 @@ function isUnscopedCommit(command, opts) {
   return gitInvocations(command, opts).some(
     (g) =>
       g.sub === "commit" &&
-      !g.args.includes("--") &&
+      !hasPathspecSep(g.args) &&
       !inBundle(g.args, "a") &&
       !hasFlag(g.args, /(^|\s)--all(\s|$)/) &&
       !hasFlag(g.args, /(^|\s)(--amend|--dry-run)(\s|$)/)

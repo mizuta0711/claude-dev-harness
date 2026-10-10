@@ -769,3 +769,101 @@ test("H70: `changesBeforeCommit` を一方向に緩めない", () => {
   // 読むだけの操作は従来どおり安全
   assert.equal(scope.changesBeforeCommit("git status && git commit -- a.md"), null);
 });
+
+// ---- H49: 2コピーの食い違いを「関数ごとに」機械で押さえる ----
+//
+// **`isUnscopedCommit` が片方だけ誤っていた。**
+// `git-scope` は `args.includes("--")` で、**長いオプションに当たっていた** ——
+// `--no-verify` / `--quiet` / `--signoff` があるだけで「パス指定あり」と誤判定し、
+// **`git commit --quiet -m x` のようなごく普通のコマンドで警告が出なかった**（実測）。
+// `repo-guard` 側は最初から正しかった。
+//
+// **根は「乖離検査がこの関数を見ていなかった」ことである。**
+// 個別のケースを足すのではなく、**両方が持つ判定を全部、同じケース集に当てる**。
+// **新しく共有の判定が増えたら、ここに自動で乗る。**
+
+const SHARED_PREDICATES = [
+  "isBlockedAdd",
+  "isBlockedCommitAll",
+  "isBlockedStash",
+  "isBlockedDiscard",
+  "isUnscopedCommit",
+];
+
+/** 乖離が出やすい形を集めてある。**減らさないこと**（減らすと乖離を見逃す） */
+const PARITY_CASES = [
+  // パス指定の区切りと、長いオプションの区別（H49 の本体）
+  "git commit -m x",
+  "git commit -m x -- a.md",
+  "git commit -m x --no-verify",
+  "git commit --quiet -m x",
+  "git commit -m x --signoff",
+  "git commit -m x --amend",
+  "git commit -m x --dry-run",
+  "git commit -am x",
+  "git commit --all -m x",
+  // 範囲まるごと
+  "git add -A",
+  "git add .",
+  "git add --all",
+  "git add src/a.ts",
+  "git stash",
+  "git stash push -- a.md",
+  "git checkout -- .",
+  "git restore .",
+  "git clean -fd",
+  "git clean -n",
+  // ラッパーとパス付き（H70）
+  "sudo git add -A",
+  "sudo git commit --quiet -m x",
+  "/usr/bin/git add -A",
+  "sudo echo git add -A",
+  "env -i git add -A",
+  // 引用符・コメント・ヒアドキュメント（H50 / H65）
+  "echo 'git add -A'",
+  "# git add -A",
+  ["cat > a.md <<'EOF'", "git add -A と書く", "EOF"].join("\n"),
+  ["cat <<EOF | bash", "git add -A", "EOF"].join("\n"),
+  ["{ cat <<EOF", "git add -A", "EOF", "} | bash"].join("\n"),
+  ["git commit -m \"$(cat <<'EOF'", "git add -A は使わない", "EOF", ')" -- a.md'].join("\n"),
+  // グローバルオプション
+  "git -C /d commit -m x",
+  "git -c user.name=x commit -m x",
+  "git --no-pager add -A",
+];
+
+test("H49: 両方が持つ判定は、すべて同じ結果を返す", () => {
+  const diffs = [];
+  for (const name of SHARED_PREDICATES) {
+    assert.equal(typeof scope[name], "function", `git-scope に ${name} が無い`);
+    assert.equal(typeof guard[name], "function", `repo-guard に ${name} が無い`);
+    for (const cmd of PARITY_CASES) {
+      const a = scope[name](cmd);
+      const b = guard[name](cmd);
+      if (a !== b) diffs.push(`${name}: ${JSON.stringify(cmd)} → scope=${a} / guard=${b}`);
+    }
+  }
+  assert.deepEqual(diffs, [], `2コピーが食い違っている:\n${diffs.join("\n")}`);
+});
+
+test("H49: 共有している判定を数え、増えたら気づける", () => {
+  // **新しく共有の判定が増えたら、上の検査に入れ忘れないようにする。**
+  // ここが落ちたら `SHARED_PREDICATES` に足す（または意図的な片側実装だと注記する）。
+  const shared = Object.keys(scope).filter(
+    (k) => typeof scope[k] === "function" && typeof guard[k] === "function",
+  );
+  // 判定以外（`scanCommands` / `tokenize` / `parseGit` / `gitInvocations`）は
+  // 戻り値が構造体なので、上の検査とは別に扱う
+  const helpers = ["scanCommands", "tokenize", "parseGit", "gitInvocations"];
+  const predicates = shared.filter((k) => !helpers.includes(k)).sort();
+  assert.deepEqual(predicates, [...SHARED_PREDICATES].sort());
+});
+
+test("H49: `gitInvocations` の結果も2コピーで一致する", () => {
+  // 判定の土台。ここが食い違うと全部ずれる。
+  for (const cmd of PARITY_CASES) {
+    const a = scope.gitInvocations(cmd).map((g) => `${g.sub}:${g.args}`);
+    const b = guard.gitInvocations(cmd).map((g) => `${g.sub}:${g.args}`);
+    assert.deepEqual(a, b, cmd);
+  }
+});
