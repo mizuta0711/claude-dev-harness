@@ -3,7 +3,7 @@
   "environment": "nextjs",
   "commands": {
     "build": "npm run build",
-    "typecheck": "npx tsc --noEmit",
+    "typecheck": "npx next typegen && npx tsc --noEmit",
     "lint": "npm run lint",
     "format": null,
     "test": null,

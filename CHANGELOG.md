@@ -57,6 +57,63 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [templates] — nextjs の足場づくりで実際に踏んだ4点と、型チェックの前提（H41・H42・AC5・AC7）
+
+**還元の束。** 4件すべて **`templates/nextjs/` の Step 2 と同じ config** に当たるため、
+個別に直すと同じ箇所を4回書き換えることになる（`CLAUDE.md` §6）。
+**テンプレート層だけの変更なのでプラグインの版は据え置き。**
+既存の適用先は `/harness-core:harness-update` で受け取れる。
+
+### H42: `commands.typecheck` が `.next/types` の生成前に落ちる
+
+`npx tsc --noEmit` → **`npx next typegen && npx tsc --noEmit`** にし、allow に
+`Bash(npx next typegen:*)` を足した（`&&` で分解されるので両方が allow に要る）。
+Next.js 16 の `LayoutProps` / `PageProps` は**グローバル型で、`.next/types` ができるまで
+存在しない**ため、**クローン直後や `.next` を消した直後にコミット前ゲートが落ちる**。
+**Next.js 自身の文書が CI 向けに `next typegen && tsc --noEmit` を勧めている**
+（`node_modules/next/dist/docs/01-app/03-api-reference/06-cli/next.md:184`）。
+ゲートは `execSync` の既定シェル（cmd.exe / sh）で走るので `&&` はどちらでも動く。
+
+### AC7: 足場だけでは `build-check` が原理的に通らない
+
+**アプリのコードが0行でも、Prisma を入れるまで型チェックとビルドが落ちる。**
+`tools/export-to-sql.ts` が `@prisma/client` を**値として** import していて、
+`create-next-app` が作る `tsconfig.json` の `include`（`**/*.ts`）が `tools/` を拾うため `TS2307`。
+**`@prisma/client` が入るだけで解消する**（スキーマも `generate` も要らない）ことが実測で確認されている。
+`exclude` に `tools` を足す解き方は**採らない**（`tools/` の型チェックが丸ごと落ちる）。
+
+### AC5 ①: 生成された `next.config.ts` に `cacheComponents` が入る
+
+`create-next-app`（16.4.0 で確認）は `cacheComponents` と `partialPrefetching` を書き込む。
+**Next.js 自体の既定は `cacheComponents: false`**（`dist/server/config-shared.js:146`）なので、
+**足場が足しているもの**である。有効のままにするなら
+`export const dynamic` を外して `use cache` へ寄せ、`runtime = 'edge'` は使えない
+（Cache Components は Node.js ランタイムを要求する）。**Phase 0 で決める**ことを書いた ——
+決めずに進めると**後から `dynamic` を書いた時点で落ちる**。
+
+### AC5 ②: `next dev` の待ち受けが既定で `0.0.0.0`
+
+同じ LAN の他の端末から開ける。`scripts.dev` を `next dev -p 3000 -H 127.0.0.1` に
+固定する案内を足した（**ポート固定の利点も併記** —— 既定は使用中なら勝手にずれて
+`browser-test` の URL と食い違う）。
+
+### H41: `AGENTS.md` を除外しても `npm run dev` で戻る
+
+Next.js 16.3 以降の `next dev` は `CLAUDE.md` / `AGENTS.md` に管理ブロックを書き足す。
+**Step 2 の「除外する」は初回しか効かない。** `next.config.ts` の **`agentRules: false`** を
+案内に足した（`create-next-app --no-agents-md` もあるが、**止めたいのは `next dev` が
+毎回戻すこと**なので `agentRules: false` の方が確実）。ハーネスでは `CLAUDE.md` が正で、
+**指示書を2枚にしない**。
+
+> **裏取りの出所。** 4件はいずれも appcraft の Phase 0（`create-next-app` 16.4.0）で
+> 実際に踏んだもので、**当該プロジェクトの初期化コミットに対処と理由が残っている**。
+> `next typegen` / `0.0.0.0` / `cacheComponents` の既定は**同梱文書と実装で確認した**。
+
+docs 影響: あり（guide/セットアップガイド.md — `SETUP.md` Step 2 の落とし穴を「4点」と数えていた行。
+**grep で出した** ——「配布物だから `docs/` 影響なし」と最初は書いたが、
+`grep -rn "SETUP.md" docs/` が1本当てた。**件数を書いている記述は、増えるたびに嘘になる**ので
+数えない形へ直した。`CLAUDE.md` §3 と同じ型）
+
 ## [wpf 0.5.0] — スクショの保存先・イベント購読の解除・`--yes` の限界（H57・H64・AC4）
 
 **還元の束。** いずれも「どう直すかまで分かっていて、判断が要らない」ものを1回にまとめた。
