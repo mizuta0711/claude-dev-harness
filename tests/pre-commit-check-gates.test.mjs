@@ -33,7 +33,10 @@ const CHANGES = [
   ['bash -c "printf x > src/a.ts && git commit -m t -- src/a.ts"', "printf x > src/a.ts"],
   ["pwsh -Command \"Set-Content a.ts 'x'; git commit -- a.ts\"", "Set-Content a.ts 'x'"],
   ["printf x > a.ts; bash -c 'git commit -- a.ts'", "printf x > a.ts"],
-  ["if true; then printf x > a.ts; git commit -- a.ts; fi", "if true"],
+  // **0.37.3 で報告する断片が変わった。** `if` を予約語として剥がすようになったため、
+  // `if true` を未知のコマンドとして咎めるのをやめ、**実際に書き込む側**を指すようになった。
+  // 検出すること自体は変わらない（変わったのは、人が読む1行がどこを指すか）。
+  ["if true; then printf x > a.ts; git commit -- a.ts; fi", "printf x > a.ts"],
   ["echo x &> a.ts; git commit -- a.ts", "echo x > a.ts"],
   // index だけでなく作業ツリーを変える形
   ["git reset --hard HEAD && git commit -- a", "git reset --hard HEAD"],

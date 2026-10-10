@@ -57,12 +57,18 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
-## [0.37.3] — `post-branch-notice` の偽の報告を止める（H74）
+## [0.38.0] — コマンド位置を見失っていた2形（H74 とその査読）
 
-**`createdBranchName()` が生のコマンド文字列に正規表現を当てていた**ため、
-**コマンド位置にない文字列をブランチ作成と誤判定していた**。`0.37.2` の査読が低6として起票した件。
+**H74（`post-branch-notice` が偽の報告を出す）を直したら、査読が根をもう一段掘り出した。**
+`createdBranchName()` の件は**誤検知**だったが、**同じ「コマンド位置の判定」の穴が
+`git add -A` の deny を素通りさせていた**（2コピーとも）。前者が H74、後者が今回の主眼である。
 
-| 形 | 0.37.2 | 0.37.3 |
+### H74: 生のコマンド文字列に正規表現を当てていた
+
+`createdBranchName()` が `scanCommands` を通さず**生の文字列**を見ていたため、
+**コマンド位置にない文字列をブランチ作成と誤判定していた**。
+
+| 形 | 0.37.2 | 0.38.0 |
 |---|---|---|
 | `git commit -F - <<'EOF'` の本文に `git branch fake-branch` | **`fake-branch` を作成と報告** | 発火しない |
 | `git commit -m "git checkout -b nope を禁じる"` | **`nope` を作成と報告** | 発火しない |
@@ -72,29 +78,68 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 **誤検知の害が「余計な1行」では済まない。** このフックの文面は
 「**この作成をユーザーに報告すること**」と指示するので、
 **Claude が存在しないブランチをユーザーへ報告する**ところまで行く。
-モジュール冒頭の方針（見逃しは不可・誤検知は許容）は、**この1本には当てはまらない**。
+初版が置いていた「見逃しは不可・誤検知は許容」という前提をこの1本については改め、
+**作成形だと確実に言える形だけ取る**ようにした。判定は `gitInvocations` に委ねた。
 
-**根は `0b32ee3`（H69 / H71 / H72 / H73）が `git-scope` で直したものと同じ型**なので、
-直し方も同じ —— 判定を `git-scope.js` の `gitInvocations` に委ねた。
-ヒアドキュメントの本文（`maskHereBodies`）・引用符の中・行コメントが走査から外れ、
-引数は**トークン単位**で読まれる。`bash -c "git checkout -b x"` のような
-**本物のコマンド位置は引用符の中でも拾う**（こちらは `0.37.0` が入れた経路）。
+### 査読の中1: `git branch` を除外リストで見ていたため、値をブランチ名として拾っていた
 
-トークンで読むようになった副作用として、次も拾うようになった（いずれも見逃し側の修正）。
+**並べ忘れた値つきオプションの値が、そのままブランチ名になっていた**（査読が実測）。
 
-| 形 | 0.37.2 | 0.37.3 |
+| 形 | 除外リスト方式 | 許可リスト方式 |
 |---|---|---|
-| `git switch --create foo` / `--force-create foo` | 見逃し（長形を見ていなかった） | **検出** |
-| `git checkout -bfoo`（値が同じトークン） | 見逃し（`\s+` を要求していた） | **検出** |
-| `git -C 'D:/my proj' checkout -b foo` | 見逃し（パスの空白で割れていた） | **検出** |
-| `git branch -rv` / `-av`（束ねた一覧形） | 空（たまたま被演算子が無かっただけ） | **除外と判定** |
+| `git branch --points-at HEAD` | **`HEAD` を作成と報告** | 発火しない |
+| `git branch --no-contains HEAD` | **`HEAD` を作成と報告** | 発火しない |
+| `git branch -l foo`（`-l` は `--list`） | **`foo` を作成と報告** | 発火しない |
+| `git branch -v vv1` | 発火しない（**見逃し**） | **`vv1` を検出** |
 
-> **`git checkout --orphan <name>` は引き続き検出しない。** 0.37.2 でも見ていなかったもので、
-> H74 は誤検知の件なので**ここでは足していない**。
+**許可リストへ反転した**（0.35.0 が `pre-commit-check` に当てたのと同じ向き）。
+**作る／作らないは実物の git で確かめた**（2.43.0.windows.1 の使い捨てリポジトリ）——
+`-f` / `-q` / `-t` / `-v` / `--force` / `--quiet` / `--track` / `--no-track` は**作る**。
+`-v` を除外していたのが見逃しの原因で、**一覧かどうかは被演算子の有無で決まる**。
 
-テスト8件追加で**計456件合格**（0.37.2 は448件）。
+あわせて、束ねた短いオプションと `=` 付きの長形も読む（`-qb foo` / `-bq` / `--create=x`）。
+`switch --orphan` も検出する。**`git branch -c`（複製）/ `git worktree add <dir>`（自動で切る形）/
+`git stash branch` / `gh pr checkout` は見送った** —— 理由はソースの冒頭に書いた。
 
-docs 影響: あり（diagrams/05_フック発火タイミング図.md — 検出する形の行を更新済み）
+### 査読の高1 / 高2（本題）: シェルの構文を1つ挟むと deny を素通りしていた
+
+**`post-branch-notice` の見逃しとして出た指摘を裏取りしたら、`git-scope` 側の穴だった。**
+予約語も PowerShell の代入も**区切り文字では割れない**ため、断片の先頭トークンが
+`then` などになり、**その後ろの git を見ていなかった**。
+
+| 形 | 0.37.2 の `isBlockedAdd` | 0.38.0 |
+|---|---|---|
+| `if true; then git add -A; fi` | **false（素通り）** | true |
+| `for i in 1; do git add -A; done` | **false（素通り）** | true |
+| `! git add -A` | **false（素通り）** | true |
+| `$r = git add -A`（PowerShell） | **false（素通り）** | true |
+
+**`0.36.0`（ラッパーを1つ挟むと deny を通っていた）とまったく同じ型**で、
+あちらが `sudo` / `env` を越えたのに対し、こちらはシェルの構文を越える（`stripCommandPrefix`）。
+`parseGit` は全判定の入口なので、**`commit -a` / `stash` / 範囲指定なしの破棄 /
+`guarded-command-ask` の確認 / `pre-push-backlog-check` にも同時に効く**。
+
+> ⚠️ **環境変数の代入を一緒に剥がしてはいけない。** 最初はまとめて剥がしたが、
+> `ENV_ASSIGN_PREFIX` の値の枝（`\S*`）が**引用符を跨いで食う**ため、
+> 剥がした本文を `quotedSubstitutions` に渡すと**引用符の中のコマンド置換が壊れ、
+> 逆に deny を素通りさせた**（既存テスト「H71 ①: 引用符の中の `$(…)` も見る」が落ちて分かった）。
+> 代入は `parseGit` が自分で剥がすので、**コマンド位置を見つける用には要らない。**
+
+**`.claude/hooks/repo-guard.js` にも同じ穴があった** ——
+つまり**このリポジトリ自身の `git add -A` の deny も抜けられた**。2コピーとも直し、
+ProjectTemplete 側のコピーにも反映した（`CLAUDE.md` §9 の3つの置き場）。
+
+> **`pre-commit-check` が報告する断片が1つ変わった。** `if` を予約語として剥がすようになったため、
+> `if true; then printf x > a.ts; git commit -- a.ts; fi` の報告が
+> **`if true`（未知のコマンド扱い）から `printf x > a.ts`（実際に書き込む側）**になった。
+> 検出すること自体は変わらない。テストの期待値を更新した（`CLAUDE.md` §4）。
+
+テスト19件追加で**計467件合格**（0.37.2 は448件）。共有領域は2コピーで同一。
+
+docs 影響: あり（diagrams/05_フック発火タイミング図.md — 「コマンド位置」の範囲 ／
+reference/permissionsベースライン.md — §2 と §3 の残る限界に1件追加。対象は
+`grep -rln "gitInvocations|parseGit|ラッパー|コマンド位置" docs/ templates/ README.md CLAUDE.md tools/` で出し、
+当たった `CLAUDE.md:220` は**ソースの冒頭コメントへの参照**なので直す対象ではないと判断した）
 
 ## [0.37.2] — 査読2本が出した回帰と取りこぼし（全件対応）
 

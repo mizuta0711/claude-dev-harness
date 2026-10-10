@@ -132,6 +132,9 @@
 
 **ラッパー経由の起動も拾う**（harness-core 0.36.0・H70）。**`sudo git push` / `env` / `time` / `timeout` / `nice` / `xargs` / `setsid` / `doas` / フルパスの `git.exe` は確認にかかる** ——`sudo` の付け忘れ・付け足しは実際に起こるので、**拾わないと事故の形で素通りする**。
 **判定はラッパー直後の「最初の実コマンド」で行う**ので、`sudo echo git push` のように**別のコマンドが動く形では鳴らない**。
+**シェルの構文を1つ挟んだ形も拾う**（harness-core 0.38.0）—— **`if` / `then` / `do` / `else` / `while` / `until` / `!` の後ろと、
+PowerShell の `$out = git push` のような代入で受ける形**。いずれも**区切り文字では割れない**ため、
+断片の先頭が予約語や代入になった時点で**その後ろの git を見ていなかった**（実測）。
 
 **引用符の中の `-c` 本体も拾う**（harness-core 0.37.0・H69）。
 `bash -c "git push"` / `sh -c 'git push'` / `eval "git push"` / `sudo bash -c "…"` / 束の `bash -lc "…"` /
@@ -252,7 +255,15 @@
      **`echo` / `cp` は包むコマンドに入れない** —— あれは `git` を実行しないので、
      入れると `echo git add -A` で鳴る。**`parseGit` は全判定の入口なので、
      `commit -a` / `stash` / 範囲指定なしの破棄・`guarded-command-ask` の確認にも効く**
-  3. **本文を別の場所へ書いて、あとで実行する形**（`cat > x.sh <<EOF … EOF` → 別のコマンドで `sh x.sh`、
+  3. ~~**シェルの構文を1つ挟むと見えない**~~ → **harness-core 0.38.0 で解消**。
+     **`if true; then git add -A; fi` / `for i in 1; do git add -A; done` / `! git add -A` /
+     PowerShell の `$r = git add -A` がすべて素通りしていた**（実測）。
+     予約語も代入も**区切り文字では割れない**ため、断片の先頭トークンが `then` などになり、
+     **コマンド位置を見失っていた**。**2 と同じ型**で、あちらが `sudo` / `env` を越えたのに対し、
+     こちらはシェルの構文を越える（`stripCommandPrefix`）。
+     **環境変数の代入はここで剥がしてはいけない** —— 値の枝が引用符を跨いで食うことがあり、
+     剥がした本文を渡すと**引用符の中のコマンド置換が壊れて逆に素通りする**（テストが落ちて分かった）
+  4. **本文を別の場所へ書いて、あとで実行する形**（`cat > x.sh <<EOF … EOF` → 別のコマンドで `sh x.sh`、
      FIFO、`/dev/fd/N`、`git -c alias.x='!sh'`）。
      これは `echo 'git add -A' > x.sh; sh x.sh` でも同じく見えないので、**この解析の範囲外**である
 

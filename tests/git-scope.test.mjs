@@ -1220,3 +1220,61 @@ test("0.37.2 中3: 日常の操作では1つも鳴らない", () => {
     }
   }
 });
+
+// ---------------------------------------------------------------------------
+// H74 の査読: シェルの構文を1つ挟むと deny を素通りしていた
+//
+// `0.37.3` の独立査読が `post-branch-notice` の見逃しとして出したものを裏取りしたら、
+// **同じ穴が `git add -A` の deny も素通りさせていた**（2コピーとも）。
+// **`0.36.0`（ラッパーを1つ挟むと通る）と同じ型**で、あちらが `sudo` / `env` を
+// 越えたのに対し、こちらはシェルの構文を越える。**ケースを消さないこと。**
+// ---------------------------------------------------------------------------
+
+test("H74査読: 制御構文の予約語の後ろでも deny が効く", () => {
+  const cases = [
+    "if true; then git add -A; fi",
+    "if git diff --quiet; then git add -A; fi",
+    "for i in 1; do git add -A; done",
+    "while true; do git add -A; done",
+    "until git add -A; do :; done",
+    "if false; then :; else git add -A; fi",
+    "! git add -A",
+    "if true; then ! git add -A; fi",
+    "if true; then FOO=1 git add -A; fi",
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, `repo-guard も: ${cmd}`);
+  }
+});
+
+test("H74査読: PowerShell の代入で受けても deny が効く", () => {
+  const ps = { shell: "powershell" };
+  for (const cmd of ["$r = git add -A", "$out = git stash", "$x:y = git add ."]) {
+    assert.equal(
+      scope.isBlockedAdd(cmd, ps) || scope.isBlockedStash(cmd, ps),
+      true,
+      cmd
+    );
+    assert.equal(
+      guard.isBlockedAdd(cmd, ps) || guard.isBlockedStash(cmd, ps),
+      true,
+      `repo-guard も: ${cmd}`
+    );
+  }
+});
+
+test("H74査読: 予約語を剥がしても、文字列やコメントでは発火しない", () => {
+  // **剥がす向きに倒したので、誤検知が増えていないことを固定する。**
+  const cases = [
+    'git commit -m "then git add -A"',
+    "echo 'if true; then git add -A; fi'",
+    "echo if git add -A", // `echo` は git を実行しない
+    "ls # then git add -A",
+    "git commit -F - <<'EOF'\nthen git add -A\nEOF",
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, `repo-guard も: ${cmd}`);
+  }
+});

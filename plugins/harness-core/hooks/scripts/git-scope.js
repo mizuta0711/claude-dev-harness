@@ -712,6 +712,52 @@ function gitTokenIndex(tokens) {
 const ENV_ASSIGN_PREFIX = /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/;
 
 /**
+ * コマンド位置の**手前に置ける構文**（制御構文の予約語・否定）。
+ *
+ * ⚠️ **これを剥がさないと「コマンド位置」を見失う。** 予約語は区切り文字では割れないので、
+ * 断片の先頭トークンが `then` などになり、**その後ろの git を見なかった**（いずれも実測）。
+ *
+ * | 形 | 剥がす前 |
+ * |---|---|
+ * | `if true; then git add -A; fi` | **deny を素通り** |
+ * | `for i in 1; do git add -A; done` | **deny を素通り** |
+ * | `! git add -A` | **deny を素通り** |
+ *
+ * **`0.36.0`（ラッパーを1つ挟むと deny を通っていた）と同じ型**で、
+ * あちらが `sudo` / `env` を越えたのに対し、こちらはシェルの構文を越える。
+ * `time` はラッパー側（`COMMAND_WRAPPERS`）が受けるが、**予約語としても書けるので両方に置く**。
+ */
+const SHELL_KEYWORD_PREFIX = /^(?:if|then|elif|else|while|until|do|time|!)\s+/;
+
+/**
+ * PowerShell の**代入で受ける形**（`$out = git …`）。
+ *
+ * 括弧で包む形（`$out = (git …)`）は `(` が区切り文字なので既に割れるが、
+ * **括弧なしの形は割れない**ため先頭に代入が残り、**deny を素通りしていた**（実測）。
+ */
+const PS_ASSIGN_PREFIX = /^\$[A-Za-z_][\w:.]*\s*=\s*/;
+
+/**
+ * コマンド位置の手前にある構文を**無くなるまで**剥がす。
+ *
+ * 1回では足りない（`then ! git …` のように重なる）。
+ *
+ * ⚠️ **環境変数の代入はここで剥がしてはいけない。** `ENV_ASSIGN_PREFIX` は
+ * 値の枝に `\S*` を持つため**引用符を跨いで食う**ことがあり、剥がした本文を
+ * `quotedSubstitutions` に渡すと**引用符の中のコマンド置換が壊れて deny を素通りする**
+ * （実測。`tests/git-scope.test.mjs` の「H71 ①: 引用符の中の `$(…)` も見る」が落ちた）。
+ * 代入は `parseGit` が自分で剥がすので、**コマンド位置を見つける用には要らない**。
+ */
+function stripCommandPrefix(text) {
+  let s = String(text || "");
+  for (;;) {
+    const next = s.replace(SHELL_KEYWORD_PREFIX, "").replace(PS_ASSIGN_PREFIX, "");
+    if (next === s) return s;
+    s = next;
+  }
+}
+
+/**
  * `-c` の後ろを「シェルへ渡す文字列」として読むコマンド。**系ごとに規則が違う。**
  *
  * ⚠️ **一律に「`c` を含むオプション」で見てはいけない。** PowerShell には
@@ -917,12 +963,15 @@ function gitInvocations(cmd, opts, depth) {
   const d = depth || 0;
   const out = [];
   for (const seg of scanCommands(cmd, opts)) {
-    const g = parseGit(seg, opts);
+    // **コマンド位置の手前の構文を剥がしてから見る**（`then` / `do` / `!` / `$out = `）。
+    // 入れ子（`then bash -c "…"`）も同じ形で取り逃すので、剥がした本文を両方に渡す。
+    const bare = { ...seg, text: stripCommandPrefix(seg.text) };
+    const g = parseGit(bare, opts);
     if (g) out.push(g);
     if (d >= MAX_NEST_DEPTH) continue;
-    const inner = wrappedCommand(seg.text, opts);
+    const inner = wrappedCommand(bare.text, opts);
     const nested = inner === null ? [] : [inner];
-    nested.push(...quotedSubstitutions(seg.text, opts));
+    nested.push(...quotedSubstitutions(bare.text, opts));
     for (const n of nested) {
       for (const h of gitInvocations(n, opts, d + 1)) {
         out.push({ ...h, index: seg.index, nested: true });
@@ -1149,8 +1198,14 @@ const TREE_SAFE_COMMANDS = new Set([
 /** ファイルへのリダイレクト（`/dev/null` / `$null` / `NUL` は除く） */
 const FILE_REDIRECT = />>?\s*(?!\/dev\/null\b)(?!\$null\b)(?!nul\b)[^\s&|;<>]/i;
 
-/** 断片の先頭にあるシェルの予約語（`if ...; then git commit` の `then` など）を剥がす */
-const stripKeyword = (seg) => ({ ...seg, text: seg.text.replace(/^(?:then|do|else|elif|time|!)\s+/, "") });
+/**
+ * 断片の先頭にあるシェルの予約語（`if ...; then git commit` の `then` など）を剥がす。
+ *
+ * **予約語の列は `SHELL_KEYWORD_PREFIX` が正**（2つ持つと片方だけ古くなる。H49）。
+ * ここは代入までは剥がさない —— `changesTree` は `$x = 1` を
+ * 「ツリーを変えない」と判定するので、剥がすと `1` を未知のコマンドとして読んでしまう。
+ */
+const stripKeyword = (seg) => ({ ...seg, text: seg.text.replace(SHELL_KEYWORD_PREFIX, "") });
 
 function changesTree(seg, opts) {
   const unquoted = seg.text.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '""');
