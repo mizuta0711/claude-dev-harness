@@ -1,5 +1,10 @@
 # ER図
 
+> **この文書は手で書く。** `tools/scripts/generate-table-docs.ts` が生成するのは
+> `テーブル定義書.md` だけで、**ここは生成されない**。
+> リレーションの意味づけ（どちらが主か・なぜその `onDelete` か）は機械が決められないため。
+> **`prisma/schema.prisma` を変えたら、ここも自分で直すこと。**
+
 ```mermaid
 erDiagram
     %% ここに ER 図を記載

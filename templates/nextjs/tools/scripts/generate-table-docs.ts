@@ -55,6 +55,8 @@ interface IndexDef {
 interface ModelDef {
   name: string;
   tableName: string; // @@map があればそれ、なければ name
+  /** `model` の直上に書かれた `///` コメント（複数行は連結） */
+  description: string | null;
   fields: FieldDef[];
   indexes: IndexDef[];
 }
@@ -215,8 +217,23 @@ function parseSchema(schemaText: string): {
   const lines = schemaText.split("\n");
   let i = 0;
 
+  // ブロックの外で見つけた `///`。次に来る model / enum に紐づける（複数行は連結する）
+  let pendingTopDoc: string | null = null;
+  const appendDoc = (current: string | null, text: string): string | null => {
+    const t = text.trim();
+    if (!t) return current;
+    return current ? `${current} ${t}` : t;
+  };
+
   while (i < lines.length) {
     const line = lines[i].trim();
+
+    const topDocMatch = line.match(/^\/\/\/\s*(.*)/);
+    if (topDocMatch) {
+      pendingTopDoc = appendDoc(pendingTopDoc, topDocMatch[1]);
+      i++;
+      continue;
+    }
 
     // enum ブロック
     const enumMatch = line.match(/^enum\s+(\w+)\s*\{/);
@@ -231,6 +248,7 @@ function parseSchema(schemaText: string): {
         i++;
       }
       enums.push({ name: enumName, values });
+      pendingTopDoc = null;
       i++;
       continue;
     }
@@ -239,6 +257,8 @@ function parseSchema(schemaText: string): {
     const modelMatch = line.match(/^model\s+(\w+)\s*\{/);
     if (modelMatch) {
       const modelName = modelMatch[1];
+      const description = pendingTopDoc;
+      pendingTopDoc = null;
       const fields: FieldDef[] = [];
       const indexes: IndexDef[] = [];
       let tableName = modelName;
@@ -254,7 +274,8 @@ function parseSchema(schemaText: string): {
         // /// ドキュメンテーションコメント行を収集（次のフィールドに紐づける）
         const docCommentMatch = trimmedLine.match(/^\/\/\/\s*(.*)/);
         if (docCommentMatch) {
-          pendingDocComment = docCommentMatch[1].trim() || null;
+          // 複数行に分けて書いた `///` は連結する（上書きすると前の行が消える）
+          pendingDocComment = appendDoc(pendingDocComment, docCommentMatch[1]);
           i++;
           continue;
         }
@@ -300,11 +321,13 @@ function parseSchema(schemaText: string): {
         i++;
       }
 
-      models.push({ name: modelName, tableName, fields, indexes });
+      models.push({ name: modelName, tableName, description, fields, indexes });
       i++;
       continue;
     }
 
+    // model / enum 以外の行（`datasource` / `generator` / 空行以外）が来たら紐づけ先を失う
+    if (line) pendingTopDoc = null;
     i++;
   }
 
@@ -422,6 +445,12 @@ function getVirtualRelations(
   });
 }
 
+/** Markdown の表のセルへ入れる。`|` はそのままだと列が割れる */
+function cell(text: string | null): string {
+  if (!text) return "";
+  return text.replace(/\|/g, "\\|");
+}
+
 function generateMarkdown(
   enums: EnumDef[],
   models: ModelDef[],
@@ -468,7 +497,7 @@ function generateMarkdown(
   lines.push("| # | テーブル名 | モデル名 | 説明 |");
   lines.push("|---|-----------|---------|------|");
   models.forEach((m, idx) => {
-    lines.push(`| ${idx + 1} | ${m.tableName} | ${m.name} | |`);
+    lines.push(`| ${idx + 1} | ${m.tableName} | ${m.name} | ${cell(m.description)} |`);
   });
   lines.push("");
   lines.push("---");
@@ -478,6 +507,10 @@ function generateMarkdown(
   models.forEach((model, idx) => {
     lines.push(`## ${idx + 1}. ${model.name}`);
     lines.push("");
+    if (model.description) {
+      lines.push(model.description);
+      lines.push("");
+    }
 
     // フィールド表（ナビゲーションプロパティは除く）
     const tableFields = model.fields.filter(
