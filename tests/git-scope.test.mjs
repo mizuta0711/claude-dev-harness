@@ -341,20 +341,33 @@ test("H65: 本文がデータのままなら潰す（誤警報を増やさない
 });
 
 // **限界として固定する。** `scanCommands` は**引用符の中を走査しない**ので、
-// `bash -c "…"` / `eval "…"` の中は**ヒアドキュメントが無くても見えない**。
+// `bash -c "…"` / `eval "…"` の中は、**H69（0.37.0）で見るようにした**。
 //
-// > 実測: `bash -c "git add -A"`（ヒアドキュメント無し）も `false` である。
-// > **この修正による回帰ではなく、元からある限界**である。
-// > 引用符の中を走査する形は H50 で「やってはいけない」と決めた側なので、
-// > ここを直すには別の設計が要る（ProjectTemplete の **H69**）。
-test("H65: 引用符の中は見えない（元からの限界。直したら期待値を変える）", () => {
+// **期待値を反転してある**（`CLAUDE.md` の「失敗したケースを消さない。直したら期待値を変える」）。
+// 0.36.3 までは `false` が正しい期待値で、**ヒアドキュメントが無くても素通りしていた**。
+// 直し方は「引用符の中を走査する」ではなく、**`-c` の後ろを取り出して同じ規則で読み直す**
+// （H50 で踏んだ「引用符の中を一緒に走査する」側には寄せていない）。
+test("H69: `bash -c` / `eval` の中も見る（0.37.0 で期待値を反転）", () => {
   const cases = [
     'bash -c "git add -A"',
+    "sh -c 'git add -A'",
     'eval "git add -A"',
+    'sudo bash -c "git add -A"',
+    'bash -lc "git add -A"',
+    // 本文を `bash -c` へ渡す形。**本文が実際に実行される**ので検出する側が正しい
     ["bash -c \"$(cat <<EOF", "git add -A", "EOF", ")\""].join("\n"),
     ["eval \"$(cat <<'EOF'", "git add -A", "EOF", ")\""].join("\n"),
   ];
   for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H69: スクリプトファイルを渡す形は見えない（限界として固定する）", () => {
+  // 中身はファイルの側にある。**読みに行くとフックがファイルシステムに依存する**ので、
+  // 見逃しとして残す。`powershell -EncodedCommand`（base64）も同じ理由で扱わない
+  for (const cmd of ["bash script.sh", "bash ./deploy.sh --yes"]) {
     assert.equal(scope.isBlockedAdd(cmd), false, cmd);
     assert.equal(guard.isBlockedAdd(cmd), false, cmd);
   }
@@ -490,14 +503,8 @@ test("H65: `gh` も本文をデータとして読む（誤警報を減らす）"
 //
 // > 実測: `bash -c "git add -A"`（引用符の中）も `eval git add -A`（引用符なし）も
 // > `sudo git add -A`（ラッパー1つ）も `false` である。
-test("H65: 引用符の中は見えない（元からの限界。ラッパー越しは H70 で直した）", () => {
-  const quoted = [
-    'bash -c "git add -A"',
-    "sh -c 'git add -A'",
-    'eval "git add -A"',
-    ["bash -c \"$(cat <<EOF", "git add -A", "EOF", ")\""].join("\n"),
-    ["eval \"$(cat <<'EOF'", "git add -A", "EOF", ")\""].join("\n"),
-  ];
+test("H65: 引用符の中のヒアドキュメントは、コミットメッセージなら見ない（H69 で反転した分を除く）", () => {
+  const quoted = [];
   // **`wrapped` は H70（0.36.0）で直した。** 期待値を変えてここから外し、
   // 下の「H70」のテストで**検出すること**を固定した（`CLAUDE.md` の
   // 「失敗したケースを消さない。直したら期待値を変える」）。
@@ -939,4 +946,125 @@ test("H49: 共有領域が小さくなりすぎていないか（取り出しの
   // 行数の下限を置いて、黙って無力化されるのを防ぐ。
   const a = sharedSource(path.join(SCRIPTS, "git-scope.js"));
   assert.ok(a.length > 300, `共有領域が ${a.length} 行しか取れていない（切り出しが壊れた可能性）`);
+});
+
+// ---------------------------------------------------------------------------
+// H71 ①: 二重引用符の中のコマンド置換（0.37.0）
+// ---------------------------------------------------------------------------
+
+test("H71 ①: 引用符の中の `$(…)` も見る", () => {
+  const cases = ['echo "$(git add -A)"', 'echo "x $(git clean -fd) y"', 'X="`git add -A`"'];
+  for (const cmd of cases) {
+    assert.equal(
+      scope.isBlockedAdd(cmd) || scope.isBlockedDiscard(cmd),
+      true,
+      cmd
+    );
+  }
+  // **文字列として書いただけなら鳴らさない**（置換ではないので誤検知にしない）
+  assert.equal(scope.isBlockedAdd('echo "see git add -A here"'), false);
+  assert.equal(scope.isBlockedAdd("echo 'git add -A'"), false);
+});
+
+test("H71 ①: コミットメッセージのヒアドキュメントは置換の中でも潰れたまま", () => {
+  // このリポジトリが毎回使う形。**ここが鳴ると実用にならない**
+  const cmd = [
+    "git commit -q -m \"$(cat <<'EOF'",
+    "fix: git add -A を禁じる",
+    "EOF",
+    ')" -- a.js',
+  ].join("\n");
+  assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+  assert.equal(guard.isUnscopedCommit(cmd), false, cmd);
+});
+
+// ---------------------------------------------------------------------------
+// H72: 引数はトークンで見る（0.37.0）
+// ---------------------------------------------------------------------------
+
+// **生の文字列を正規表現で見ていたため、見逃しと誤検知が両方出ていた。**
+// 下の期待値はすべて 0.36.3 で実測した結果からの変更である。
+//
+// | 形 | 0.36.3 | 0.37.0 |
+// |---|---|---|
+// | `git commit -m "a -- b"` | 警告なし（見逃し） | 警告 |
+// | `git commit --` | 警告なし（見逃し） | 警告 |
+// | `git commit -m "docs: --all を禁じる"` | **deny**（誤検知） | 通す |
+// | `git add -- "a -A b.txt"` | **deny**（誤検知） | 通す |
+test("H72: メッセージの中の `--` を区切りと読まない", () => {
+  assert.equal(guard.isUnscopedCommit('git commit -m "a -- b"'), true);
+  assert.equal(guard.isUnscopedCommit('git commit -m "a -- b" -- src/a.js'), false);
+});
+
+test("H72: 後ろにパス指定の無い `--` は「指定あり」ではない", () => {
+  // `git commit --` はインデックス全体が入る
+  assert.equal(guard.isUnscopedCommit("git commit --"), true);
+  // `--amend` は `isUnscopedCommit` の対象外（文面が違うので `isAmendCommit` が見る）
+  assert.equal(guard.isAmendCommit("git commit --amend --"), true);
+  assert.equal(guard.isUnscopedCommit("git commit -- a.js"), false);
+});
+
+test("H72: メッセージの中のオプション名で deny しない", () => {
+  for (const cmd of [
+    'git commit -m "docs: --all を禁じる"',
+    'git commit -m "-a は使わない"',
+    'git add -- "a -A b.txt"',
+    'git stash list -- "show me"',
+  ]) {
+    assert.equal(scope.isBlockedCommitAll(cmd), false, cmd);
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(scope.isBlockedStash(cmd), false, cmd);
+  }
+});
+
+test("H72: `--pathspec-from-file` もパス指定として数える", () => {
+  assert.equal(guard.isUnscopedCommit("git commit --pathspec-from-file=list.txt"), false);
+  assert.equal(guard.isUnscopedCommit("git commit --pathspec-from-file list.txt"), false);
+});
+
+// **値つきオプションの表をサブコマンドで分ける理由**（一律にすると見逃す）
+test("H72: 値つきオプションの表はサブコマンドごとである", () => {
+  // `-e` は clean では値を取り、add では `--edit` で値を取らない。
+  // 一律に値ありとすると `git add -e .` の `.` を飲んで**見逃す**
+  assert.equal(scope.isBlockedAdd("git add -e ."), true, "add の -e は値を取らない");
+  assert.equal(scope.isBlockedDiscard("git clean -e build -fd"), true, "clean の -e は値を取る");
+});
+
+// 0.36.3 で実測した見逃し（いずれも同じ根：生の文字列を見ていた）
+test("H72: まとめて実測した見逃し5件", () => {
+  assert.equal(scope.isBlockedStash("git stash -m show"), true, "値が STASH_SAFE の語");
+  assert.equal(scope.isBlockedAdd("git add -Av"), true, "短縮の束");
+  assert.equal(scope.isBlockedAdd("git add ./"), true, "./ が表に無かった");
+  assert.equal(scope.isBlockedDiscard("git clean -e build -fd"), true, "除外の値を対象と読んだ");
+  assert.equal(scope.isBlockedDiscard("git checkout -s HEAD -- ."), true, "-s の値を対象と読んだ");
+});
+
+test("H72: 確認だけの形は通す（束も見る）", () => {
+  for (const cmd of ["git add -An", "git add -n -A", "git add --dry-run -A", "git clean -nfd"]) {
+    assert.equal(scope.isBlockedAdd(cmd) || scope.isBlockedDiscard(cmd), false, cmd);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// H73: 片側にしか無い実装
+// ---------------------------------------------------------------------------
+
+// **ソース突き合わせ検査は共有領域の中しか見ない。** 外にあるものは手で揃えるしかないので、
+// **どれが片側だけなのかをテストで固定する**（増えたらここが落ちる）。
+test("H73: 片側にしか無い実装の一覧を固定する", () => {
+  // `repo-guard` だけ: このリポジトリ自身の規律（配布物は出さない警告）
+  assert.equal(typeof guard.isAmendCommit, "function", "isAmendCommit は repo-guard だけ");
+  assert.equal(scope.isAmendCommit, undefined, "git-scope には複製しない");
+  // `git-scope` だけ: 配布物のコミット前ゲートが使う（repo-guard はゲートを持たない）
+  assert.equal(typeof scope.changesBeforeCommit, "function", "changesBeforeCommit は git-scope だけ");
+  assert.equal(guard.changesBeforeCommit, undefined, "repo-guard には複製しない");
+});
+
+// `isUnscopedCommit` は**配布側のフックから呼ばれていない**（0.36.3 で判明）。
+// それでも `git-scope` に残すのは、**共有領域をひと続きに保つため**である ——
+// 領域は `SEPARATORS` から `isUnscopedCommit` までで、ここだけ消すと
+// 領域が2つに割れてソース突き合わせ検査が書けなくなる。**YAGNI より検査の単純さを採る。**
+test("H73: `isUnscopedCommit` は共有領域の終端として両方に置く", () => {
+  assert.equal(typeof scope.isUnscopedCommit, "function");
+  assert.equal(typeof guard.isUnscopedCommit, "function");
 });
