@@ -488,7 +488,7 @@ test("H65: `gh` も本文をデータとして読む（誤警報を減らす）"
 //
 // > 実測: `bash -c "git add -A"`（引用符の中）も `eval git add -A`（引用符なし）も
 // > `sudo git add -A`（ラッパー1つ）も `false` である。
-test("H65: 引用符の中とラッパー越しは見えない（元からの限界）", () => {
+test("H65: 引用符の中は見えない（元からの限界。ラッパー越しは H70 で直した）", () => {
   const quoted = [
     'bash -c "git add -A"',
     "sh -c 'git add -A'",
@@ -496,7 +496,9 @@ test("H65: 引用符の中とラッパー越しは見えない（元からの限
     ["bash -c \"$(cat <<EOF", "git add -A", "EOF", ")\""].join("\n"),
     ["eval \"$(cat <<'EOF'", "git add -A", "EOF", ")\""].join("\n"),
   ];
-  const wrapped = ["eval git add -A", "sudo git add -A", "env git add -A", "time git add -A"];
+  // **`wrapped` は H70（0.36.0）で直した。** 期待値を変えてここから外し、
+  // 下の「H70」のテストで**検出すること**を固定した（`CLAUDE.md` の
+  // 「失敗したケースを消さない。直したら期待値を変える」）。
   // **査読が「直った」と思った3形は、限界①へ移っただけである**（5回目の査読の中4）。
   // **引用符を外せば検出できる**（上の `$(…)` の外側のテスト）。
   const quotedSubst = [
@@ -504,7 +506,7 @@ test("H65: 引用符の中とラッパー越しは見えない（元からの限
     ['echo git commit -m "$(cat <<EOF', "git add -A", "EOF", ')" | bash'].join("\n"),
     ["ssh h git commit -m \"$(cat <<EOF", "git add -A", "EOF", ')"'].join("\n"),
   ];
-  for (const cmd of [...quoted, ...wrapped, ...quotedSubst]) {
+  for (const cmd of [...quoted, ...quotedSubst]) {
     assert.equal(scope.isBlockedAdd(cmd), false, cmd);
     assert.equal(guard.isBlockedAdd(cmd), false, cmd);
   }
@@ -625,4 +627,64 @@ test("H65: 読み飛ばしても、本物のグループは見逃さない", () 
     assert.equal(scope.isBlockedAdd(cmd), true, cmd);
     assert.equal(guard.isBlockedAdd(cmd), true, cmd);
   }
+});
+
+// ---- H70: ラッパーを1つ挟むと deny を通っていた ----
+//
+// **`parseGit` が `tokens[0].value !== "git"` で弾いていた。**
+//
+// > 実測: **`sudo git add -A` / `env` / `time` / `eval` / `command` / `nohup` /
+// > `nice` / `xargs` / `/usr/bin/git` が、すべて deny を素通りしていた。**
+//
+// **`sudo` の付け忘れ・付け足しは実際に起こる**ので、
+// **ヒアドキュメント由来の見逃し（H65）より事故の形に近い**。
+
+test("H70: 包むコマンドとパス付きの形を越えて `git` を見る", () => {
+  const cases = [
+    "sudo git add -A",
+    "env git add -A",
+    "time git add -A",
+    "eval git add -A",
+    "command git add -A",
+    "nohup git add -A",
+    "nice git add -A",
+    "xargs git add -A",
+    "/usr/bin/git add -A",
+    "sudo -u u git add -A",
+    "nice -n 10 git add -A",
+    "sudo /usr/bin/git add .",
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H70: `git` を実行しない形では鳴らない（ここが最重要）", () => {
+  // **`echo` や `cp` を包むコマンドに入れると、ここが落ちる。**
+  // あれらは `git` を実行しないので、入れると文書作業で鳴る。
+  const cases = [
+    "echo git add -A",
+    "cp /usr/bin/git add",
+    "sudo ls /usr/bin/git",
+    "command -v git",
+    "grep -rn 'git add -A' docs/",
+    "git status",
+    "git add src/a.ts",
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});
+
+test("H70: 他の判定にも効く（`parseGit` は全判定の入口）", () => {
+  // `isBlockedAdd` だけでなく、`commit -a` / `stash` / 範囲指定なしの破棄も同じ入口を通る。
+  assert.equal(scope.isBlockedCommitAll("sudo git commit -am x"), true);
+  assert.equal(scope.isBlockedStash("sudo git stash"), true);
+  assert.equal(scope.isBlockedDiscard("sudo git checkout -- ."), true);
+  assert.equal(scope.isUnscopedCommit("sudo git commit -m x"), true);
+  // 包まない形は従来どおり
+  assert.equal(scope.isBlockedCommitAll("git commit -- a.md"), false);
+  assert.equal(scope.isUnscopedCommit("git commit -- a.md"), false);
 });

@@ -213,10 +213,13 @@
   1. **引用符の中は見えない** —— `bash -c "git add -A"` / `eval "git add -A"` は
      **ヒアドキュメントが無くても** `false` である（実測）。
      **引用符の中を走査する形は、ここが一度踏んだ事故（H50）の側**なので、直すには別の設計が要る
-  2. **ラッパーを1つ挟むと見えない** —— **`sudo git add -A` / `env git add -A` /
-     `time git add -A` / `eval git add -A` も `false`**（実測）。
-     `parseGit` が**先頭トークンしか見ない**ため。**ヒアドキュメントとは無関係**で、
-     **こちらの方が事故の形に近い**（`sudo` を付け忘れ・付け足しは起こる）
+  2. ~~**ラッパーを1つ挟むと見えない**~~ → **harness-core 0.36.0 で解消**（H70）。
+     **`sudo git add -A` / `env` / `time` / `eval` / `command` / `nohup` / `nice` / `xargs` /
+     `/usr/bin/git` がすべて素通りしていた**（実測）。`parseGit` が**先頭トークンしか見なかった**ため。
+     **包むだけのコマンドとパス付きの形を越えて `git` を探す**ようにした（`gitTokenIndex`）。
+     **`echo` / `cp` は包むコマンドに入れない** —— あれは `git` を実行しないので、
+     入れると `echo git add -A` で鳴る。**`parseGit` は全判定の入口なので、
+     `commit -a` / `stash` / 範囲指定なしの破棄・`guarded-command-ask` の確認にも効く**
   3. **本文を別の場所へ書いて、あとで実行する形**（`cat > x.sh <<EOF … EOF` → 別のコマンドで `sh x.sh`、
      FIFO、`/dev/fd/N`、`git -c alias.x='!sh'`）。
      これは `echo 'git add -A' > x.sh; sh x.sh` でも同じく見えないので、**この解析の範囲外**である

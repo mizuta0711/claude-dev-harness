@@ -52,6 +52,60 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.36.0] — ラッパーを1つ挟むと deny を通っていた（H70）
+
+**`sudo git add -A` が deny を素通りしていた。** `parseGit` が
+`tokens[0].value !== "git"` で弾いていたため。
+
+### 実測（すべて素通りしていた）
+
+```
+sudo git add -A        env git add -A         time git add -A
+eval git add -A        command git add -A     nohup git add -A
+nice git add -A        xargs git add -A       /usr/bin/git add -A
+```
+
+**`sudo` の付け忘れ・付け足しは実際に起こる**ので、
+**ヒアドキュメント由来の見逃し（H65）より事故の形に近い**
+（査読も「H65 のような攻撃的な形より優先度は上」と判断した）。
+
+### 直し方
+
+**包むだけのコマンドとパス付きの形を越えて `git` を探す**（`gitTokenIndex`）。
+
+- 包むコマンド: `sudo` / `env` / `command` / `nohup` / `time` / `nice` /
+  `xargs` / `eval` / `exec` / `stdbuf` / `ionice`
+- **実行ファイル名で比べる**（`/usr/bin/git` / `git.exe` も `git` と見る）
+- **先頭が包むコマンドでなければ探さない** —— `echo git add -A` は
+  `git` を**実行しない**ので、探すと誤検知になる
+
+### `echo` と `cp` を包むコマンドに入れない
+
+**ここを間違えると文書作業で鳴る。** 実測で確かめた静黙:
+
+```
+echo git add -A        cp /usr/bin/git add     sudo ls /usr/bin/git
+command -v git         grep -rn 'git add -A' docs/
+```
+
+### `parseGit` は全判定の入口なので、広く効く
+
+| 判定 | 効果 |
+|---|---|
+| `isBlockedAdd` | `sudo git add -A` を**止める** |
+| `isBlockedCommitAll` | `sudo git commit -am x` を**止める** |
+| `isBlockedStash` / `isBlockedDiscard` | `sudo git stash` / `sudo git checkout -- .` を**止める** |
+| `isUnscopedCommit` | `sudo git commit -m x` を**警告する** |
+| **`guarded-command-ask`** | **`sudo git push` が確認にかかる**（実測） |
+
+**テスト3件追加（計422件合格）。** 2コピー（`git-scope` / `repo-guard`）に当て、
+**`repo-guard` は ProjectTemplete 側にも反映**した。
+
+**H65 で「限界②」として固定していたテストは、期待値を変えた**
+（`CLAUDE.md` の「失敗したケースを消さない。直したら期待値を変える」）。
+
+docs 影響: あり（reference/permissionsベースライン.md — 限界②を解消済みに書き換え）
+
 ## [0.35.3] — `inOpenGroup` が誤警報を増やしていた（H65 の打ち切り・harness-unity 0.5.3 も同時）
 
 **6回目の査読は「push 可（条件なし）・軸②は閉じた・H65 は打ち切ってよい」**だった。

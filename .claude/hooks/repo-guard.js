@@ -718,6 +718,48 @@ const GIT_GLOBAL_VALUE_OPTS = new Set([
 // `--super-prefix` / `--attr-source` は `=` が無いとエラーになる（いずれも実測）。
 
 /**
+ * コマンドを包むだけのコマンド。**この後ろの `git` を見落としてはいけない**（H70）。
+ *
+ * > 実測: **`sudo git add -A` / `env git add -A` / `time git add -A` /
+ * > `eval git add -A` / `/usr/bin/git add -A` が、すべて deny を素通りしていた。**
+ * > `parseGit` が `tokens[0].value !== "git"` で弾いていたため。
+ *
+ * **`sudo` の付け忘れ・付け足しは実際に起こる**ので、**ヒアドキュメント由来の見逃し（H65）より
+ * 事故の形に近い**（査読も「H65 のような攻撃的な形より優先度は上」と判断した）。
+ *
+ * **`echo` や `cp` は入れない。** あれは `git` を**実行しない**ので、
+ * 入れると `echo git add -A` で鳴る（誤検知）。
+ */
+const COMMAND_WRAPPERS = new Set([
+  "sudo", "env", "command", "nohup", "time", "nice", "xargs", "eval", "exec", "stdbuf", "ionice",
+]);
+
+/** トークンから実行ファイル名を取る（ディレクトリと拡張子を落とす） */
+function commandBaseName(value) {
+  const base = String(value).split("/").pop().split(String.fromCharCode(92)).pop();
+  return base.replace(/\.(exe|cmd|bat|com)$/i, "");
+}
+
+/**
+ * `git` の呼び出しの位置を返す。**包むコマンドとパス付きの形を越えて探す**（H70）。
+ *
+ * 先頭が**包むだけのコマンド**なら、その後ろから `git` を探す。
+ * **先頭が包むコマンドでなければ探さない** —— `echo git add -A` は
+ * `git` を実行しないので、探すと誤検知になる。
+ *
+ * @returns `git` のトークンの添字。無ければ -1
+ */
+function gitTokenIndex(tokens) {
+  if (!tokens.length) return -1;
+  if (commandBaseName(tokens[0].value) === "git") return 0;
+  if (!COMMAND_WRAPPERS.has(commandBaseName(tokens[0].value))) return -1;
+  for (let k = 1; k < tokens.length; k++) {
+    if (commandBaseName(tokens[k].value) === "git") return k;
+  }
+  return -1;
+}
+
+/**
  * 断片が `git` の呼び出しなら `{ index, sub, args }` を返す（違えば null）。
  *
  * 先頭の環境変数代入（`FOO=bar git ...`）と、
@@ -738,9 +780,11 @@ function parseGit(seg, opts) {
     ""
   );
   const tokens = tokenize(text, opts);
-  if (!tokens.length || tokens[0].value !== "git") return null;
+  // **包むコマンドとパス付きの形を越えて `git` を探す**（H70）
+  const gi = gitTokenIndex(tokens);
+  if (gi < 0) return null;
 
-  let i = 1;
+  let i = gi + 1;
   while (i < tokens.length && tokens[i].value.startsWith("-")) {
     // 値が同じトークンに付いている形（`-cuser.name=x` / `--git-dir=x`）は1つだけ飛ばす
     i += GIT_GLOBAL_VALUE_OPTS.has(tokens[i].value) ? 2 : 1;
