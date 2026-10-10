@@ -262,3 +262,87 @@ test("現物側が空の衝突で、テンプレート側の行を手がかり�
     );
     assert.match(v.note, /行目付近/, `場所が出ていない: ${v.note}`);
   }));
+
+/**
+ * 行番号は**現物（C）**のものを出す（査読の実測・H53-c ①②）
+ *
+ * **統合結果の中で数えると現物とずれる。** ①自動統合でテンプレート側が挿入した行、
+ * ②先行する衝突のテンプレート側の行、が余分に入る。
+ * 査読は3つの形で最大4行のずれを実測した。**その3つをそのまま検査にしてある。**
+ */
+
+/** 衝突の note から行番号を全部取り出す */
+const places = (note) => (note.match(/(\d+) 行目付近/g) || []).map((x) => Number(x.match(/\d+/)[0]));
+
+test("テンプレートが前半へ行を足していても、現物の行番号を出す", () =>
+  withWork((work) => {
+    const head = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+    const tailA = ["k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "BASE"];
+    const A = [...head, ...tailA].join(NL) + NL;
+    // テンプレートは前半へ3行足し、最後の行も変える
+    const B = [...head, "T1", "T2", "T3", ...tailA.slice(0, -1), "TMPL"].join(NL) + NL;
+    // プロジェクトは最後の行だけを変える（= 23 行目）
+    const C = [...head, ...tailA.slice(0, -1), "PROJ"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    // 現物は head 10 行 + k〜u の 11 行 + PROJ = 22 行目
+    assert.deepEqual(places(v.note), [22], `現物の行番号になっていない: ${v.note}`);
+    assert.match(v.note, /「PROJ」/);
+  }));
+
+test("先行する衝突のテンプレート側の行を、次の衝突の行番号に数えない", () =>
+  withWork((work) => {
+    const pad = (n) => Array.from({ length: n }, (_, i) => `line${i + 1}`);
+    const A = ["x1", ...pad(10), "x2"].join(NL) + NL;
+    // テンプレート側は1つ目の衝突で4行に膨らむ
+    const B = ["T1", "T2", "T3", "T4", ...pad(10), "T5"].join(NL) + NL;
+    const C = ["P1", ...pad(10), "P2"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    // 現物では 1 行目と 12 行目
+    assert.deepEqual(places(v.note), [1, 12], `現物の行番号になっていない: ${v.note}`);
+  }));
+
+test("衝突が多いときも、現物の行番号が1つずつずれていかない", () =>
+  withWork((work) => {
+    // 9行ごとに衝突を作る（現物では 1, 10, 19, 28, 37 行目…）
+    const mk = (mark) => {
+      const out = [];
+      for (let i = 0; i < 7; i++) {
+        out.push(`${mark}${i}`);
+        for (let j = 0; j < 8; j++) out.push(`ctx${i}_${j}`);
+      }
+      return out.join(NL) + NL;
+    };
+    const v = tryTextMerge(".gitignore", mk("base"), mk("tmpl"), mk("proj"), work);
+    assert.equal(v.kind, "conflict");
+    assert.deepEqual(places(v.note), [1, 10, 19, 28, 37], `行番号がずれている: ${v.note}`);
+    assert.match(v.note, /ほか 2 箇所/, `打ち切りの表示が無い: ${v.note}`);
+  }));
+
+test("現物に `=======` に似た行があっても、場所と件数が食い違わない", () =>
+  withWork((work) => {
+    // setext 見出しの下線は `docs/backlog.md` に実際に入りうる
+    const base = ["見出し", "=======", "", "a", "b", "c", "d", "e", "f", "g", "BASE"];
+    const A = base.join(NL) + NL;
+    const B = [...base.slice(0, -1), "TMPL"].join(NL) + NL;
+    const C = [...base.slice(0, -1), "PROJ"].join(NL) + NL;
+    const v = tryTextMerge("docs/backlog.md", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    assert.match(v.note, /行の衝突が 1 箇所/);
+    assert.equal(places(v.note).length, 1, `場所の数が件数と合っていない: ${v.note}`);
+    assert.deepEqual(places(v.note), [11], `現物の行番号になっていない: ${v.note}`);
+  }));
+
+test("現物に `<<<<<<<` で始まる行があっても、件数を超える場所を並べない", () =>
+  withWork((work) => {
+    const base = ["<<<<<<< 自前の行", "a", "b", "c", "d", "e", "f", "g", "h", "BASE"];
+    const A = base.join(NL) + NL;
+    const B = [...base.slice(0, -1), "TMPL"].join(NL) + NL;
+    const C = [...base.slice(0, -1), "PROJ"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    assert.match(v.note, /行の衝突が 1 箇所/);
+    const n = places(v.note).length;
+    assert.ok(n <= 1, `件数（1）より多くの場所を並べている: ${v.note}`);
+  }));

@@ -689,7 +689,6 @@ function lineChanges(before, after) {
 }
 
 /**
-/**
  * **所有マーカー**で中と外の持ち主を分ける対象（§0-4d・H53-b）
  *
  * ## なぜファイル単位では足りないのか
@@ -767,6 +766,11 @@ function tryMarkerMerge(rel, bText, cText, work) {
   };
 }
 
+/** 衝突マーカーの行か（`<<<<<<< ラベル` の形。単独の記号列も許す） */
+function isMarker(line, sign) {
+  return line === sign || line.startsWith(`${sign} `);
+}
+
 /**
  * `git merge-file` が返したマーカー入りの結果から、**衝突した場所**を読む。
  *
@@ -774,33 +778,68 @@ function tryMarkerMerge(rel, bText, cText, work) {
  * 行番号（統合結果の中での位置）と、現物側（`<<<<<<<` の直後）の先頭行を出す。
  * 突き合わせる3ファイル（A/B/C）の置き場は apply の失敗メッセージが案内する。
  *
+ * ## 行番号は**現物（C）**のものを出す
+ *
+ * 統合結果の中で数えると**現物とずれる** —— ①自動統合でテンプレート側が挿入した行、
+ * ②先行する衝突のテンプレート側の行、が余分に入るため（査読の実測で最大4行ずれた）。
+ * **「現物の N 行目」と言うなら、現物を開いたときの位置でなければ意味がない。**
+ *
+ * そこで**文脈行を手がかりに現物の中を前方へ追う**。衝突の直前に一致した文脈行の
+ * 次の行を、そのハンクの位置とする。見つからないときは**番号を出さない**（嘘を言わない）。
+ *
  * @param {string} merged マーカー入りの統合結果
+ * @param {string} cText 現物（C）の全文
+ * @param {number} expected `git merge-file` が返した衝突の数（**偽マーカーの安全弁**）
  * @returns {string} 例: `現物の 12 行目付近「.env*」/ 40 行目付近「dist/」`
  */
-function conflictHunks(merged) {
+function conflictHunks(merged, cText, expected) {
   const lines = merged.split("\n");
+  const cLines = cText.split("\n");
   const out = [];
-  let line = 0; // マーカー行を除いた、統合結果の中での行番号
+  let cursor = 0; // 現物の中で、ここまで照合し終えた位置（0 始まり）
+
+  // 現物の `from` 以降から `text` と同じ行を探す（単調に進める）
+  const findIn = (text, from) => {
+    for (let k = from; k < cLines.length; k++) if (cLines[k] === text) return k;
+    return -1;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (l.startsWith("<<<<<<<")) {
-      let hint = "";
-      for (let j = i + 1; j < lines.length; j++) {
-        const t = lines[j];
-        if (t.startsWith("=======") || t.startsWith(">>>>>>>")) break;
-        if (t.trim()) {
-          hint = t.trim();
-          break;
-        }
-      }
-      out.push(`${line + 1} 行目付近${hint ? `「${hint}」` : ""}`);
+    // **三つ組が順に揃ったものだけをハンクと見る。** 現物に `<<<<<<<` や `=======` に
+    // 似た行（setext 見出しの下線・前回の解決の残骸）があると、件数と場所が食い違う
+    if (!isMarker(l, "<<<<<<<")) {
+      const at = findIn(l, cursor);
+      if (at >= 0) cursor = at + 1;
       continue;
     }
-    if (l.startsWith("=======") || l.startsWith(">>>>>>>")) continue;
-    line++;
+    let sep = -1;
+    let end = -1;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (sep < 0 && isMarker(lines[j], "=======")) sep = j;
+      else if (sep >= 0 && isMarker(lines[j], ">>>>>>>")) {
+        end = j;
+        break;
+      }
+    }
+    if (sep < 0 || end < 0) continue; // 揃っていない = マーカーではない
+
+    const mine = lines.slice(i + 1, sep); // 現物側
+    const hint = mine.map((t) => t.trim()).find(Boolean) || "";
+    // 現物側の最初の行を現物の中で探し、**その位置**を報告する。
+    // 現物側が空（プロジェクトが消した）なら、直前の文脈行の次を指す
+    let at = hint ? findIn(mine.find((t) => t.trim()), cursor) : cursor;
+    if (at < 0) at = -1;
+    out.push({ at, hint });
+    if (at >= 0) cursor = at + Math.max(mine.length, 1);
+    i = end; // ハンクを読み飛ばす
   }
-  if (!out.length) return "";
-  const shown = out.slice(0, 5);
+
+  // **件数は `git merge-file` が返した数が正。** 超えたら読み違えているので場所を出さない
+  if (!out.length || (expected && out.length > expected)) return "";
+  const shown = out.slice(0, 5).map((h) =>
+    `${h.at >= 0 ? `${h.at + 1} 行目付近` : "位置は特定できず"}${h.hint ? `「${h.hint}」` : ""}`
+  );
   return (
     `現物の ${shown.join(" / ")}` +
     (out.length > shown.length ? ` ほか ${out.length - shown.length} 箇所` : "")
@@ -830,7 +869,7 @@ function tryTextMerge(rel, aText, bText, cText, work) {
   if (!r) return null;
 
   if (r.conflicts > 0) {
-    const where = conflictHunks(r.merged);
+    const where = conflictHunks(r.merged, cText, r.conflicts);
     return {
       kind: "conflict",
       note: `行の衝突が ${r.conflicts} 箇所${where ? `（${where}）` : ""}。自動では統合できない`,

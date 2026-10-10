@@ -518,3 +518,76 @@ test("report.json は analyze のたびに作り直される（別コミット�
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// `apply` は改行と BOM を揃え直す。**それを黙ってやらない**（H53-c）
+//
+// 読み込みの時点で CRLF → LF・BOM の除去が起きるため、`apply` は**差分の中身と
+// 関係なくファイル全体の改行を書き換える**ことがある。**差分には現れない**ので、
+// 報告しなければ気づけない（ステージ時の正規化で blob が変わり、他セッションの
+// 作業と食い違った先例がある）。
+// ---------------------------------------------------------------------------
+
+/** 改行・BOM の揃え直しを見るための土台（`template-improvement` を1本だけ持つ） */
+function reshapeScenario(current, rel = "docs/guide.md") {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "h53c-apply-"));
+  const repo = mkTemplateRepo(root, [{ [rel]: "v1\n" }, { [rel]: "v2\n" }]);
+  const project = mkProject(root, repo.commits[0], {});
+  // 現物は**バイト列で**置く（write() は utf-8 文字列を書くので、ここは直接書く）
+  const full = path.join(project, rel);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, current);
+  return { root, repo, project, rel };
+}
+
+test("CRLF の現物へ適用すると、LF に揃えたことを報告する", () => {
+  const { root, repo, project, rel } = reshapeScenario(Buffer.from("v1\r\n"));
+  try {
+    const report = analyze(project, repo.dir);
+    assert.equal(kindOf(report, rel), "template-improvement");
+    const text = run("apply", project, repo.dir, [rel]);
+    assert.match(text, /改行を LF に揃えた（現物は CRLF）/, `報告に出ていない:\n${text}`);
+    // 実際に LF で書かれている
+    assert.ok(!fs.readFileSync(path.join(project, rel), "latin1").includes("\r\n"));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("BOM 付きの現物へ適用すると、BOM を落としたことを報告する", () => {
+  const { root, repo, project, rel } = reshapeScenario(
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("v1\n")]),
+  );
+  try {
+    analyze(project, repo.dir);
+    const text = run("apply", project, repo.dir, [rel]);
+    assert.match(text, /BOM を落とした/, `報告に出ていない:\n${text}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test(".ps1 は BOM を付けた側も言う（黙って変えないことが目的）", () => {
+  const rel = "tools/script.ps1";
+  const { root, repo, project } = reshapeScenario(Buffer.from("v1\n"), rel);
+  try {
+    analyze(project, repo.dir);
+    const text = run("apply", project, repo.dir, [rel]);
+    assert.match(text, /BOM を付けた（\.ps1 の規約）/, `報告に出ていない:\n${text}`);
+    const raw = fs.readFileSync(path.join(project, rel), "latin1");
+    assert.ok(raw.startsWith("\u00ef\u00bb\u00bf"), ".ps1 に BOM が付いていない");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("揃っている現物では、余計なことを言わない", () => {
+  const { root, repo, project, rel } = reshapeScenario(Buffer.from("v1\n"));
+  try {
+    analyze(project, repo.dir);
+    const text = run("apply", project, repo.dir, [rel]);
+    assert.ok(!/改行を LF|BOM を/.test(text), `言わなくてよいことを言っている:\n${text}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
