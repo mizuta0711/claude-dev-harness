@@ -36,6 +36,10 @@ const SKILLS = [
   "plugins/harness-core/skills/complete-feature/SKILL.md",
   "plugins/harness-core/skills/new-feature/SKILL.md",
   "plugins/harness-core/skills/new-feature/開発フローと規模判定.md",
+  // **試作も同じ TEMPLATE を使う**（専用の雛形は作らない）。
+  // `new-prototype` は「`🔵 Phase {n} まで確定` を使わない」と TEMPLATE の値を名指しするので、
+  // **ここに載せないと TEMPLATE 側が変わっても検査が効かない**（0.39.0 の査読が指摘した）。
+  "plugins/harness-core/skills/new-prototype/SKILL.md",
 ];
 
 const NL = String.fromCharCode(10);

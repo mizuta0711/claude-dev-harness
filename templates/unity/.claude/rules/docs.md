@@ -64,7 +64,8 @@ paths:
 - 新規機能開発時は `/harness-core:new-feature` で作成する（スキル同梱のテンプレートが使われる）
 - 命名: `docs/features/yyyymmdd_機能名.md`（**作業中は `docs/features/` 直下**。`planned/` は着手前、`pending/` は一部保留の置き場）
 - **試作・MVP は `docs/features/prototype/` が作業場所**（`/harness-core:new-prototype`）。
-  直下と違うのは**設計書と実装の照合の対象外**という点だけで、**台帳には載せる**
+  直下と違うのは**①機能設計書のステータス照合の対象外②push 前の検査が警告になる**の2点で、
+  **台帳には載せる**（試作中は残っている作業）
 - タスクステータス: 🔵未実施 / 🟡実装中 / ✅完了 / ⏸️保留（理由必須） / ❌却下（理由必須）
 - 全タスク完了時はメタ情報のステータスを 🟢完了 に更新し、
   `/harness-core:complete-feature` で `docs/features/completed/` へ移動する

@@ -234,7 +234,9 @@ function check(projectDir) {
           : `計画「${row.label}」が指す ${rel} が無い`,
         how:
           (dirMissing
-            ? `置き場（\`${dir}/\`）は \`/harness-core:harness-update\` で配られる（harness-core 0.31.2 以降）。**それだけでは設計書は生えない。** あわせて、`
+            ? `置き場（\`${dir}/\`）は \`/harness-core:harness-update\` で配られる（${
+                /^docs\/features\/prototype\//.test(rel) ? "harness-core 0.39.0 以降" : "harness-core 0.31.2 以降"
+              }）。**それだけでは設計書は生えない。** あわせて、`
             : "") +
           `①その作業を進めるなら設計書を作る（\`/harness-core:${
             /^docs\/features\/prototype\//.test(rel) ? "new-prototype" : "new-feature"
@@ -254,7 +256,9 @@ function check(projectDir) {
       findings.push({
         kind: "doc-without-row",
         what: `${doc} が計画節に載っていない`,
-        how: "計画節へ1行足す（`/harness-core:new-feature` が足すはずの行。`#` は空欄でよい）。着手しないものなら `docs/features/pending/` へ移す。",
+        how: `計画節へ1行足す（\`/harness-core:${
+          /^docs\/features\/prototype\//.test(doc) ? "new-prototype" : "new-feature"
+        }\` が足すはずの行。\`#\` は空欄でよい）。着手しないものなら \`docs/features/pending/\` へ移す。`,
       });
     }
   }
