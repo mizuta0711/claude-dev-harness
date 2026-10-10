@@ -357,3 +357,73 @@ test("H65: 引用符の中は見えない（元からの限界。直したら期
     assert.equal(guard.isBlockedAdd(cmd), false, cmd);
   }
 });
+
+// ---- H65: 許可リストへ反転した（禁止リストは3回続けて崩れた） ----
+//
+// | 版 | 前提 | 崩れた形 |
+// |---|---|---|
+// | 0.34.0 | 本文は実行されない | `bash <<EOF` |
+// | 0.34.1 | 受け取るのが `cat` ならデータ | `cat <<EOF \| bash` |
+// | 0.34.2 | 導入部の行に実行系の名前が無ければデータ | `\| $SHELL` / `\| . /dev/stdin` / 関数 / 別の行 |
+//
+// **禁止リストは収束しない。** 名前を足すたびに別名・変数・関数・別の行で抜ける
+// （査読が13形を実測し、**うち5形は実際に本文が実行されることまで確かめた**）。
+//
+// **いまは「確実に安全な形のときだけ潰す」。** 安全な形は有限である。
+
+test("H65: 本文が実行されうる形は、1つも潰さない", () => {
+  const cases = [
+    // パイプ先が実行系（名前でも、変数でも、関数でも）
+    ["cat <<EOF | bash", "git add -A", "EOF"].join("\n"),
+    ["cat <<EOF | $SHELL", "git add -A", "EOF"].join("\n"),
+    ["cat <<EOF | $0", "git add -A", "EOF"].join("\n"),
+    ["SH=bash", "cat <<EOF | $SH", "git add -A", "EOF"].join("\n"),
+    ["r() { bash; }", "cat <<EOF | r", "git add -A", "EOF"].join("\n"),
+    ["cat <<EOF | . /dev/stdin", "git add -A", "EOF"].join("\n"),
+    ["cat <<EOF | while read l; do $l; done", "git add -A", "EOF"].join("\n"),
+    ["cat <<EOF | python3.11", "git add -A", "EOF"].join("\n"),
+    ["cat <<EOF | busybox ash", "git add -A", "EOF"].join("\n"),
+    ["x=ba;y=sh", "cat <<EOF | $x$y", "git add -A", "EOF"].join("\n"),
+    // プロセス置換（`$(` と違い、結果が実行される）
+    ["source <(cat <<EOF", "git add -A", "EOF", ")"].join("\n"),
+    [". <(cat <<EOF", "git add -A", "EOF", ")"].join("\n"),
+    ["exec 3> >(bash)", "cat <<EOF >&3", "git add -A", "EOF"].join("\n"),
+    // 別ファイルへ書いて実行
+    ["cat <<EOF > /tmp/x.sh; bash /tmp/x.sh", "git add -A", "EOF"].join("\n"),
+    // 本文の行き先がシェル自身
+    ["bash <<EOF", "git add -A", "EOF"].join("\n"),
+    // 導入部の行に本物が続く
+    ["cat <<EOF | git add -A", "msg", "EOF"].join("\n"),
+    // `<<` に見えて本文を持たない
+    ["echo $((1 << N))", "git add -A"].join("\n"),
+    ["grep x <<<abc", "git add -A"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H65: 安全な形は潰す（文書を書くだけで鳴らせない）", () => {
+  // **0.34.2 はここを壊していた** —— 導入部の行に `bash` / `node` / `sh` の語が
+  // あるだけで潰さなくなり、**文書を書くだけの操作で鳴った**（H65 が直そうとした問題の再発）。
+  const cases = [
+    ["cat > docs/x.md <<'EOF'", "git add -A と書く", "EOF"].join("\n"),
+    ["cat > docs/node <<'EOF'", "git add -A と書く", "EOF"].join("\n"),
+    ["cat > a.md <<'EOF'   # sh 用の手順", "git add -A と書く", "EOF"].join("\n"),
+    ["cd node && cat > a.md <<'EOF'", "git add -A と書く", "EOF"].join("\n"),
+    ["cat <<EOF > a.md", "git add -A と書く", "EOF"].join("\n"),
+    ["tee d.md <<EOF", "git add -A と書く", "EOF"].join("\n"),
+    ["FOO=1 cat <<EOF", "git add -A と書く", "EOF"].join("\n"),
+    ["sudo cat <<EOF", "git add -A と書く", "EOF"].join("\n"),
+    // git は本文をコマンドとして実行しない
+    ["git commit -F - -- a.md <<'EOF'", "git add -A も止める", "EOF"].join("\n"),
+    ['git commit -m "docs: bash の注意" -F - -- a.md <<EOF', "git add -A", "EOF"].join("\n"),
+    // Claude Code 標準のコミット形（`$(cat` は値になるだけ）
+    ["git commit -m \"$(cat <<'EOF'", "git add -A は使わない", "EOF", ')" -- a.md'].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});

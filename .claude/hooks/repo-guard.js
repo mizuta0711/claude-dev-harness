@@ -176,88 +176,92 @@ function dialect(opts) {
  * @returns {{index: number, text: string}[]} index はコマンド語の開始位置
  */
 /**
- * ヒアドキュメントの本文を受け取るコマンドの名前（パスと拡張子を落とす）。
+ * **本文を潰してよい形**を、許可リストで決める。
  *
- * **本文を潰してよいのは、その本文が「データ」のときだけである。**
- * `bash <<EOF` / `ssh host <<EOF` の本文は**シェルが実行する**ので、
- * 潰すと `git add -A` を見逃す（実測で deny がすり抜けた）。
+ * ## なぜ禁止リストをやめたか
+ *
+ * 0.34.0〜0.34.2 は「実行系を見つけたら潰さない」という**禁止リスト**だった。
+ * **3回続けて前提が崩れ、そのたびに見逃しを作った。**
+ *
+ * | 版 | 前提 | 崩れた形 |
+ * |---|---|---|
+ * | 0.34.0 | 本文は実行されない | `bash <<EOF`（シェルが本文を実行する） |
+ * | 0.34.1 | 受け取るのが `cat` ならデータ | `cat <<EOF \| bash`（`cat` は流すだけ） |
+ * | 0.34.2 | 導入部の行に実行系の名前が無ければデータ | `cat <<EOF \| $SHELL` / `\| . /dev/stdin` / 関数 / 別の行で定義 |
+ *
+ * **禁止リストは収束しない。** 名前を足すたびに、別名・変数・関数・別の行で抜ける
+ * （査読が13形を実測し、**うち5形は実際に本文が実行されることまで確かめた**）。
+ *
+ * ## 許可リストに反転した
+ *
+ * **「確実に安全な形のときだけ潰す」。** 安全な形は**有限**である。
+ *
+ *   ① 本文を受け取るのが `cat` / `tee` / `git` で、
+ *   ② 導入部に**コマンドの区切りも置換も無く**（`|` `;` `&` `` ` `` `$(` `>(` `>&`）、
+ *   ③ `<<DELIM` の**後ろもリダイレクトかコメントだけ**
+ *
+ * **どれか外れたら潰さない＝許容されている誤検知**に倒れる。
+ * 不確かなものは全部そちらへ落ちるので、**見逃しを新しく作らない**。
+ *
+ * **`git` を許すのは** `git commit -F - -- a.md <<EOF` と
+ * Claude Code 標準の `git commit -m "$(cat <<'EOF' … )"` のため
+ * （git は本文をコマンドとして実行しない）。
  */
-// **`git` も入れる** —— `git commit -F - <<EOF` は本文を**コミットメッセージとして読む**。
-// git は本文をコマンドとして実行しないので、潰しても見逃しにならない。
 const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
 
 /**
- * 本文を**実行しうる**コマンド。
- *
- * **「本文を受け取るのが `cat` ならデータ」は誤りだった**（査読で9形の見逃しを指摘された）。
- * `cat` は本文を**出力へ流すだけ**で、その先が `bash` / `eval` なら**実行される**。
- *
- * ```
- * cat <<EOF | bash          ← 本文は bash が実行する
- * eval "$(cat <<'EOF' … )"  ← 同じ
- * bash -c "$(cat <<EOF … )" ← 同じ
- * source <(cat <<EOF … )    ← 同じ
- * ```
- *
- * **そこで導入部の行に実行系があれば潰さない。** 行だけを見るのは粗いが、
- * **粗い側の失敗は「潰さない＝許容されている誤検知」**になる。
- */
-const BODY_EXECUTORS = new Set([
-  "bash", "sh", "zsh", "ksh", "dash", "eval", "source", "exec", "ssh",
-  "xargs", "node", "python", "python3", "perl", "ruby", "php",
-]);
-
-/** `<<` を含む行に、本文を実行しうるコマンドがあるか */
-function executorOnLine(s, at) {
-  let from = s.lastIndexOf("\n", at);
-  from = from < 0 ? 0 : from + 1;
-  let to = s.indexOf("\n", at);
-  if (to < 0) to = s.length;
-  const line = s.slice(from, to);
-  for (const raw of line.split(/[\s;|&()`"'<>]+/)) {
-    if (!raw) continue;
-    const base = raw.split("/").pop().split(String.fromCharCode(92)).pop();
-    const name = base.replace(/\.(exe|cmd|bat)$/i, "");
-    if (BODY_EXECUTORS.has(name)) return true;
-  }
-  return false;
-}
-
-/**
- * 前置きを飛ばす。**環境変数の代入と、コマンドを包むだけのコマンド**が対象。
- *
- * **どちらに倒しても安全である** —— 飛ばした先が `cat` なら潰し（正しい）、
- * `bash` なら潰さない（正しい）。飛ばさないと `FOO=1 cat <<EOF` の sink が
- * `FOO=1` になり、**本文の禁止語で鳴る**（誤警報。実測）。
+ * 前置き。**飛ばしても安全である** —— 飛ばした先が `cat` なら潰し（正しい）、
+ * `bash` なら許可リストから外れて潰さない（正しい）。
  */
 const SINK_PREFIXES = new Set(["sudo", "env", "command", "nohup", "time", "xargs"]);
 
-function heredocSink(s, at) {
+/** コマンドの区切りと置換。**導入部にこれがあれば潰さない** */
+const UNSAFE_IN_INTRODUCER = /[|;&`]|\$\(|>\(|>&/;
+
+/**
+ * `<<` の導入部が「安全な形」かを判定する。
+ *
+ * @param s コマンド全体
+ * @param at `<<` の位置
+ * @param afterDelim `<<DELIM` トークンの直後の位置
+ */
+function isSafeHeredocIntroducer(s, at, afterDelim) {
+  // 手前: 直近の区切り（改行・`;`・`|`・`&`・`(`・バッククォート）から `<<` まで
   let start = 0;
   for (let k = at - 1; k >= 0; k--) {
     const c = s[k];
-    // **`(` も境界にする。** `$(cat <<EOF` で手前まで遡ると最初の語が
-    // `git` になり、**本文を受け取るのが `cat` だと分からない**（実測で H50 の回帰を招いた）。
-    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(") {
+    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`") {
+      // **プロセス置換（`<(` / `>(`）はコマンド置換（`$(`）と違う。**
+      // `source <(cat <<EOF … )` は**本文を `source` が実行する**ので潰してはいけない
+      // （`$(cat <<EOF … )` は値になるだけなので潰してよい）。
+      if (c === "(" && (s[k - 1] === "<" || s[k - 1] === ">")) return false;
       start = k + 1;
       break;
     }
   }
-  const head = s.slice(start, at);
-  for (const raw of head.split(/\s+/)) {
+  const before = s.slice(start, at);
+  if (UNSAFE_IN_INTRODUCER.test(before)) return false;
+
+  // 後ろ: `<<DELIM` から行末まで。リダイレクトとコメントだけなら安全
+  let to = s.indexOf("\n", afterDelim);
+  if (to < 0) to = s.length;
+  const after = s.slice(afterDelim, to);
+  if (!/^\s*(?:>>?\s*[^\s|;&`$(>]+\s*)*(?:#.*)?$/.test(after)) return false;
+
+  // 手前の語を順に見て、前置きを飛ばし、最初の実コマンドが許可リストにあるか
+  for (const raw of before.split(/\s+/)) {
     const token = raw.replace(/^[\s(]+/, "");
     if (!token) continue;
-    // 環境変数の代入（`FOO=1`）は飛ばす
-    if (/^[A-Za-z_][\w]*=/.test(token)) continue;
-    // バックスラッシュと `/` を含むパスから基底名を取る
+    if (/^[A-Za-z_][\w]*=/.test(token)) continue; // 環境変数の代入
     const base = token.split("/").pop().split(String.fromCharCode(92)).pop();
     const name = base.replace(/\.(exe|cmd|bat)$/i, "");
     if (!name) continue;
-    if (SINK_PREFIXES.has(name)) continue; // 包むだけのコマンドは飛ばす
-    return name;
+    if (SINK_PREFIXES.has(name)) continue;
+    return HEREDOC_DATA_SINKS.has(name);
   }
-  return null;
+  return false;
 }
+
 
 /**
  * ヒアドキュメント（`<<EOF`）と PowerShell のヒアストリング（`@"…"@`）の**本文を空白へ潰す**。
@@ -329,10 +333,8 @@ function maskHereBodies(s, ps) {
         // 算術のシフト（`$((1 << N))`）も、ここで自動的に外れる。
         // **許可リストにしてあるのは、知らないコマンドを「潰さない」側へ倒すため** ——
         // 潰さない側の失敗は誤警報だが、潰す側の失敗は **deny のすり抜け**である。
-        const sink = heredocSink(s, i);
-        if (!sink || !HEREDOC_DATA_SINKS.has(sink)) continue;
-        // **パイプ先やコマンド置換の外側が実行系なら潰さない**（査読で9形の見逃し）
-        if (executorOnLine(s, i)) continue;
+        // **安全な形のときだけ潰す**（許可リスト。理由は `isSafeHeredocIntroducer`）
+        if (!isSafeHeredocIntroducer(s, i, i + m[0].length)) continue;
 
         const delim = m[2] || m[3] || m[4];
         const bodyStart = s.indexOf("\n", i + m[0].length);

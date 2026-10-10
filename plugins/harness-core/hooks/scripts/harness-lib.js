@@ -102,121 +102,94 @@ function toolShell(payload) {
  * `git -c user.name=x commit`、`git --no-pager commit`）。
  * **見逃し（ゲート素通り）は不可・誤検知（余計にチェックが走るだけ）は許容**の方針で広めに取る。
  */
-/**
- * ヒアドキュメントの**本文だけ**を空白へ潰す（長さは保つ）。
- *
- * **なぜ必要か**（H65）。`isGitCommit` は素朴な文字列一致で、
- * **本文に書かれた `git commit` を実際のコミットと取り違える**。
- * 方針は「**見逃しは不可・誤検知は許容**」だが、
- * **「誤検知は余計にチェックが走るだけ」という前提が成り立っていなかった** ——
- *
- * > 実測: `commands.typecheck` が失敗する状態で、本文に `git commit` を含む文書を
- * > `cat > docs/x.md <<'EOF' … EOF` で書くと、**文書を書くだけの操作が deny され**、
- * > 「修正してから再度**コミット**してください」と出た。
- *
- * **引用符は潰さない。** `bash -c "git commit -- a.md"` のように
- * **引用符の中に本物のコミットが来る形がある**（潰すと見逃す）。
- *
- * ## 潰す条件を厳しくしてある（**初版は見逃しを6件作った**）
- *
- * **初版は「ヒアドキュメントの本文は実行されない」という前提で潰した。その前提が誤りだった。**
- *
- * | 初版で見逃した形 | なぜ |
- * |---|---|
- * | `cat <<EOF | git commit -F -` | **導入部の行ごと潰していた**ので `| git commit` が消えた |
- * | `bash <<EOF` / `ssh h <<EOF` | **シェルへ渡す本文は実行される** |
- * | `echo $((1 << N))` | **シフト演算**をヒアドキュメントと誤認した |
- * | `grep x <<<abc` | **ヒアストリング**を `<<abc` と読み、終端が無いので後続を全部潰した |
- *
- * そこで次の3つにした。
- *
- * 1. **潰すのは本文の行だけ**（導入部の行は残す）
- * 2. **`<<<`（ヒアストリング）は対象外**
- * 3. **本文を受け取るコマンドが `cat` / `tee` のときだけ潰す。**
- *    **許可リストにしてあるのは、知らないコマンドを「潰さない」側へ倒すため** ——
- *    潰さない側の失敗は**許容されている誤検知**で、潰す側の失敗は**禁じられている見逃し**である。
- *    `bash` / `sh` / `ssh` / 算術 / ヒアストリングは、これで自動的に外れる
- *
- * `git-scope.js` の `maskHereBodies` と役目は近いが、**あちらはコマンドの走査用で
- * 導入部も潰し、配布単位も別**（unity の `plugin-lib.js` からは参照できない）。
- */
-// **`git` も入れる** —— `git commit -F - <<EOF` は本文を**コミットメッセージとして読む**。
-// git は本文をコマンドとして実行しないので、潰しても見逃しにならない。
-const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
-
 /** `<<` の手前にあるコマンド名（パスと拡張子を落とす）。分からなければ null */
 /**
- * 本文を**実行しうる**コマンド。
+ * **本文を潰してよい形**を、許可リストで決める。
  *
- * **「本文を受け取るのが `cat` ならデータ」は誤りだった**（査読で9形の見逃しを指摘された）。
- * `cat` は本文を**出力へ流すだけ**で、その先が `bash` / `eval` なら**実行される**。
+ * ## なぜ禁止リストをやめたか
  *
- * ```
- * cat <<EOF | bash          ← 本文は bash が実行する
- * eval "$(cat <<'EOF' … )"  ← 同じ
- * bash -c "$(cat <<EOF … )" ← 同じ
- * source <(cat <<EOF … )    ← 同じ
- * ```
+ * 0.34.0〜0.34.2 は「実行系を見つけたら潰さない」という**禁止リスト**だった。
+ * **3回続けて前提が崩れ、そのたびに見逃しを作った。**
  *
- * **そこで導入部の行に実行系があれば潰さない。** 行だけを見るのは粗いが、
- * **粗い側の失敗は「潰さない＝許容されている誤検知」**になる。
+ * | 版 | 前提 | 崩れた形 |
+ * |---|---|---|
+ * | 0.34.0 | 本文は実行されない | `bash <<EOF`（シェルが本文を実行する） |
+ * | 0.34.1 | 受け取るのが `cat` ならデータ | `cat <<EOF \| bash`（`cat` は流すだけ） |
+ * | 0.34.2 | 導入部の行に実行系の名前が無ければデータ | `cat <<EOF \| $SHELL` / `\| . /dev/stdin` / 関数 / 別の行で定義 |
+ *
+ * **禁止リストは収束しない。** 名前を足すたびに、別名・変数・関数・別の行で抜ける
+ * （査読が13形を実測し、**うち5形は実際に本文が実行されることまで確かめた**）。
+ *
+ * ## 許可リストに反転した
+ *
+ * **「確実に安全な形のときだけ潰す」。** 安全な形は**有限**である。
+ *
+ *   ① 本文を受け取るのが `cat` / `tee` / `git` で、
+ *   ② 導入部に**コマンドの区切りも置換も無く**（`|` `;` `&` `` ` `` `$(` `>(` `>&`）、
+ *   ③ `<<DELIM` の**後ろもリダイレクトかコメントだけ**
+ *
+ * **どれか外れたら潰さない＝許容されている誤検知**に倒れる。
+ * 不確かなものは全部そちらへ落ちるので、**見逃しを新しく作らない**。
+ *
+ * **`git` を許すのは** `git commit -F - -- a.md <<EOF` と
+ * Claude Code 標準の `git commit -m "$(cat <<'EOF' … )"` のため
+ * （git は本文をコマンドとして実行しない）。
  */
-const BODY_EXECUTORS = new Set([
-  "bash", "sh", "zsh", "ksh", "dash", "eval", "source", "exec", "ssh",
-  "xargs", "node", "python", "python3", "perl", "ruby", "php",
-]);
-
-/** `<<` を含む行に、本文を実行しうるコマンドがあるか */
-function executorOnLine(s, at) {
-  let from = s.lastIndexOf("\n", at);
-  from = from < 0 ? 0 : from + 1;
-  let to = s.indexOf("\n", at);
-  if (to < 0) to = s.length;
-  const line = s.slice(from, to);
-  for (const raw of line.split(/[\s;|&()`"'<>]+/)) {
-    if (!raw) continue;
-    const base = raw.split("/").pop().split(String.fromCharCode(92)).pop();
-    const name = base.replace(/\.(exe|cmd|bat)$/i, "");
-    if (BODY_EXECUTORS.has(name)) return true;
-  }
-  return false;
-}
+const HEREDOC_DATA_SINKS = new Set(["cat", "tee", "git"]);
 
 /**
- * 前置きを飛ばす。**環境変数の代入と、コマンドを包むだけのコマンド**が対象。
- *
- * **どちらに倒しても安全である** —— 飛ばした先が `cat` なら潰し（正しい）、
- * `bash` なら潰さない（正しい）。飛ばさないと `FOO=1 cat <<EOF` の sink が
- * `FOO=1` になり、**本文の禁止語で鳴る**（誤警報。実測）。
+ * 前置き。**飛ばしても安全である** —— 飛ばした先が `cat` なら潰し（正しい）、
+ * `bash` なら許可リストから外れて潰さない（正しい）。
  */
 const SINK_PREFIXES = new Set(["sudo", "env", "command", "nohup", "time", "xargs"]);
 
-function heredocSink(s, at) {
+/** コマンドの区切りと置換。**導入部にこれがあれば潰さない** */
+const UNSAFE_IN_INTRODUCER = /[|;&`]|\$\(|>\(|>&/;
+
+/**
+ * `<<` の導入部が「安全な形」かを判定する。
+ *
+ * @param s コマンド全体
+ * @param at `<<` の位置
+ * @param afterDelim `<<DELIM` トークンの直後の位置
+ */
+function isSafeHeredocIntroducer(s, at, afterDelim) {
+  // 手前: 直近の区切り（改行・`;`・`|`・`&`・`(`・バッククォート）から `<<` まで
   let start = 0;
   for (let k = at - 1; k >= 0; k--) {
     const c = s[k];
-    // **`(` も境界にする。** `$(cat <<EOF` で手前まで遡ると最初の語が
-    // `git` になり、**本文を受け取るのが `cat` だと分からない**（実測で H50 の回帰を招いた）。
-    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(") {
+    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`") {
+      // **プロセス置換（`<(` / `>(`）はコマンド置換（`$(`）と違う。**
+      // `source <(cat <<EOF … )` は**本文を `source` が実行する**ので潰してはいけない
+      // （`$(cat <<EOF … )` は値になるだけなので潰してよい）。
+      if (c === "(" && (s[k - 1] === "<" || s[k - 1] === ">")) return false;
       start = k + 1;
       break;
     }
   }
-  const head = s.slice(start, at);
-  for (const raw of head.split(/\s+/)) {
+  const before = s.slice(start, at);
+  if (UNSAFE_IN_INTRODUCER.test(before)) return false;
+
+  // 後ろ: `<<DELIM` から行末まで。リダイレクトとコメントだけなら安全
+  let to = s.indexOf("\n", afterDelim);
+  if (to < 0) to = s.length;
+  const after = s.slice(afterDelim, to);
+  if (!/^\s*(?:>>?\s*[^\s|;&`$(>]+\s*)*(?:#.*)?$/.test(after)) return false;
+
+  // 手前の語を順に見て、前置きを飛ばし、最初の実コマンドが許可リストにあるか
+  for (const raw of before.split(/\s+/)) {
     const token = raw.replace(/^[\s(]+/, "");
     if (!token) continue;
-    // 環境変数の代入（`FOO=1`）は飛ばす
-    if (/^[A-Za-z_][\w]*=/.test(token)) continue;
-    // バックスラッシュと `/` を含むパスから基底名を取る
+    if (/^[A-Za-z_][\w]*=/.test(token)) continue; // 環境変数の代入
     const base = token.split("/").pop().split(String.fromCharCode(92)).pop();
     const name = base.replace(/\.(exe|cmd|bat)$/i, "");
     if (!name) continue;
-    if (SINK_PREFIXES.has(name)) continue; // 包むだけのコマンドは飛ばす
-    return name;
+    if (SINK_PREFIXES.has(name)) continue;
+    return HEREDOC_DATA_SINKS.has(name);
   }
-  return null;
+  return false;
 }
+
 
 function stripHeredocBodies(command) {
   const s = String(command || "");
@@ -231,10 +204,8 @@ function stripHeredocBodies(command) {
     const m = /^<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\w]*))/.exec(s.slice(i));
     if (!m) continue;
     // **本文を受け取るコマンドを見る。** 知らないコマンドは潰さない（見逃しを作らないため）
-    const sink = heredocSink(s, i);
-    if (!sink || !HEREDOC_DATA_SINKS.has(sink)) continue;
-    // **パイプ先やコマンド置換の外側が実行系なら潰さない**（査読で9形の見逃し）
-    if (executorOnLine(s, i)) continue;
+    // **安全な形のときだけ潰す**（許可リスト。理由は `isSafeHeredocIntroducer`）
+    if (!isSafeHeredocIntroducer(s, i, i + m[0].length)) continue;
 
     const delim = m[2] || m[3] || m[4];
     const stripTabs = m[1] === "-";
