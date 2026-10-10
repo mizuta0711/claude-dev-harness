@@ -39,7 +39,8 @@ claude plugin install harness-nextjs@dev-harness --scope <同じ方>
 | **足場だけでは `/harness-core:build-check` が原理的に通らない** | **足場の直後に Prisma も入れる**（下記） |
 | **生成された `next.config.ts` に `cacheComponents` / `partialPrefetching` が入る** | **外すか、移行まで含めて決める**（下記） |
 | **`npm run dev` のたびに `AGENTS.md` が戻る** | `next.config.ts` に **`agentRules: false`**（下記） |
-| **`next dev` の待ち受けが既定で `0.0.0.0`**（LAN の全端末から見える） | `scripts.dev` を **`next dev -H 127.0.0.1`** に固定する（下記） |
+| **`next dev` の待ち受けが既定で `0.0.0.0`**（LAN の全端末から見える） | `scripts.dev` を **`next dev -p 3000 -H 127.0.0.1`** に固定する（下記） |
+| **`npx tsc --noEmit` だけではクローン直後に落ちる** | 型チェックは **`next typegen` を前置**してある（下記。設定済み） |
 
 `.claude/statusline.js` は Node で直接実行される CommonJS のため `require()` が
 `@typescript-eslint/no-require-imports` に引っかかる。除外しないと**アプリのコードが 0 行の時点で
@@ -65,27 +66,50 @@ npm install prisma @prisma/client
 ```
 
 **`@prisma/client` が入るだけで解消する**（スキーマ定義も `prisma generate` も要らない）。
+`prisma`（CLI）はこの時点では不要だが、**スキーマを書く段で必ず要る**ので一緒に入れている。
 `tsconfig.json` の `exclude` に `tools` を足す解き方は採らない —— **`tools/` の型チェックが
 丸ごと落ちる**ため。
 
 ### `next.config.ts` の生成内容を確かめる
 
-`create-next-app`（16.4.0 で確認）は `next.config.ts` に **`cacheComponents`** と
-**`partialPrefetching`** を書き込む。**Next.js 自体の既定は `cacheComponents: false`** なので、
-これは**足場が足している**ものである。
+`create-next-app`（16.4.0 で確認）は `next.config.ts` に
+**`cacheComponents: true`** と **`partialPrefetching: true`** を書き込む。
+**Next.js 自体の既定は `cacheComponents: false`**（`dist/server/config-shared.js`）なので、
+**これは足場が足しているもの**である。
 
-`cacheComponents` を有効にしたままにするなら、**ルートセグメントの設定を移行する必要がある** ——
-`export const dynamic` は外して `use cache` へ寄せ、`export const runtime = 'edge'` は使えない
-（Cache Components は Node.js ランタイムを要求する）。移行の内容は
-`node_modules/next/dist/docs/01-app/02-guides/migrating-to-cache-components.md` にある。
+有効のままにするなら、**ルートセグメントの設定を移行する必要がある**。
+
+| 書きたいもの | 有効のままだと |
+|---|---|
+| `export const dynamic = 'force-dynamic'` など | **ビルドエラー**（`Route segment config "…" is not compatible with nextConfig.cacheComponents`）。`use cache` へ寄せる |
+| `export const runtime` | **値に関わらずビルドエラー。** 公式文書は `'edge'` の移行しか書いていないが、**`'nodejs'` も同じエラーで落ちることを実測した**（Prisma を使う route handler で最もありそうな形なので注意） |
+
+移行の内容は `node_modules/next/dist/docs/01-app/02-guides/migrating-to-cache-components.md` にある。
 
 **どちらにするかを Phase 0 で決めること。** 決めずに書き進めると、
-**後から `dynamic` / `runtime` を書いた時点でビルドが落ちる**。
+**後から `dynamic` / `runtime` を書いた時点でビルドが落ちる。**
+**有効にしないなら、生成された2行をそのまま消す**（それだけで `dynamic` / `runtime` が通る）:
+
+```ts
+const nextConfig: NextConfig = {
+  // cacheComponents: true,      ← 消す
+  // partialPrefetching: true,   ← 消す
+};
+```
 
 ### `AGENTS.md` を生成物から除外しても、`npm run dev` で戻る
 
-Next.js 16.3 以降の `next dev` は `CLAUDE.md` / `AGENTS.md` に管理ブロックを書き足す。
-**上の表の「除外する」は初回しか効かない。** `next.config.ts` で止める:
+`next dev` は管理ブロックを書き足し、**消しても起動のたびに戻す**。
+**上の表の「除外する」は初回しか効かない。**
+
+**どのファイルに書くかは版で違う**（`dist/server/lib/generate-agent-files.js` を読んで確認）。
+
+| 版 | 書き足す先 |
+|---|---|
+| **16.3.x** | `AGENTS.md` と **`CLAUDE.md` の両方**。`AGENTS.md` が無く `CLAUDE.md` があると**`CLAUDE.md` 側へ入る** —— **上の表の「`AGENTS.md` を除外する」が裏目に出る形**である |
+| **16.4 以降** | `AGENTS.md` だけ（`CLAUDE.md` は触らない） |
+
+**16.3.x では、ハーネスの `CLAUDE.md` が汚染される。** どちらの版でも `next.config.ts` で止まる:
 
 ```ts
 const nextConfig: NextConfig = {
@@ -94,10 +118,15 @@ const nextConfig: NextConfig = {
 };
 ```
 
-**ハーネスでは `CLAUDE.md` が正**で、`CLAUDE.md` 自身が
-`node_modules/next/dist/docs/` を読む指示を既に持っている。**指示書を2枚にしない。**
-新規生成の時点で抑えるなら `create-next-app --no-agents-md` もある
-（止めたいのは `next dev` が**毎回**戻すことなので、`agentRules: false` の方が確実）。
+**ハーネスでは `CLAUDE.md` が正**なので、**指示書を2枚にしない**ために止める。
+新規生成の時点で抑える `create-next-app --no-agents-md` もあるが、
+**止めたいのは `next dev` が毎回戻すこと**なので `agentRules: false` の方が確実である。
+
+> ⚠️ **止めたら、代わりの1枚を埋めること。** Next の版付き文書
+> （`node_modules/next/dist/docs/`）を読ませる指示は、生成直後の時点では
+> **`.claude/harness/environment.md` の TODO コメントの中にしか無い**
+> （`.claude/rules/react-nextjs.md` にもあるが、あちらは `CLAUDE.md` から取り込まれない）。
+> **`agentRules: false` にするときは、その TODO を実際の記述として埋める。**
 
 ### `scripts.dev` の待ち受けを固定する
 
@@ -111,12 +140,25 @@ const nextConfig: NextConfig = {
 **ポートを固定する利点もある** —— 既定は使用中なら勝手にずれるため、
 `browser-test` の URL と食い違う。
 
-> **型チェックは `next typegen` を前置してある。** `harness.config.json` の
-> `commands.typecheck` は `npx next typegen && npx tsc --noEmit` である。
-> Next.js 16 の `LayoutProps` / `PageProps` は**グローバル型で、`.next/types` が生成される
-> まで存在しない**ため、`npx tsc --noEmit` だけだと**クローン直後や `.next` を消した直後に
-> コミット前ゲートが落ちる**。Next.js 自身の文書も CI では
-> `next typegen && tsc --noEmit` を勧めている。
+> **`127.0.0.1` に絞ると、他の端末から開けなくなる**（それが目的だが、
+> WSL2・devcontainer の外側・実機スマホでの確認も塞ぐ）。
+> そうした確認をするなら `-H 0.0.0.0` のまま使い、**ネットワークを選ぶ**こと。
+
+### 型チェックは `next typegen` を前置してある（設定済み・読むだけでよい）
+
+`harness.config.json` の `commands.typecheck` は
+**`npx --no-install next typegen && npx tsc --noEmit`** である。
+
+Next.js 16 の `LayoutProps` / `PageProps` は**グローバル型で、`.next/types` が生成されるまで
+存在しない**ため、`npx tsc --noEmit` だけだと**クローン直後や `.next` を消した直後に
+コミット前ゲートが落ちる**。Next.js 自身の文書も CI 向けに
+`next typegen && tsc --noEmit` を勧めている。
+
+- **`--no-install` を付けてある。** 付けないと、`next` が入っていない状態（Step 2 より前）で
+  **確認なしに `next` と swc バイナリの取得が始まる**。付けておけば**速く・理由の分かる失敗**になる
+- **`next typegen` は production build と同じ段で `next.config.*` を読む。**
+  config が環境変数を要求する構成では、**型エラーが無くても `typecheck` が落ちる**
+  （`tsc --noEmit` 単体のときは config と無関係だった）。落ちたらまず config を疑う
 
 ## Step 3: プロジェクト情報の記入
 

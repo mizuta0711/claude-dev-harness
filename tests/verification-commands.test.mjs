@@ -138,3 +138,67 @@ test("verification.skill が使うコマンドは、そのテンプレートの 
       "\n\n毎回確認プロンプトが出る。壊れてはいないので気づきにくい（H31）"
   );
 });
+
+/**
+ * `harness.config.json` の `commands.*` が、そのテンプレートの allow / ask に載っているか
+ *
+ * ## なぜ要るのか（2026-10-11・nextjs 束の査読）
+ *
+ * `commands.*` と `permissions.allow` の対応は**手で合わせているだけ**だった。
+ * 上の検査は `verification.skill` の SKILL.md しか見ないので、
+ * **`commands.typecheck` を書き換えて allow の追従を落としても、何も落ちない**。
+ *
+ * 実際に落ちた: `npx tsc --noEmit` を `npx --no-install next typegen && npx tsc --noEmit` へ
+ * 変えたとき、allow は `Bash(npx next typegen:*)`（`--no-install` の無い形）のままだった。
+ * **ゲートは通るが、コマンドのたびに確認が出る**（H31 と同じ「壊れてはいないので気づきにくい」）。
+ *
+ * ## 判定
+ *
+ * `commands.*` の値を `&&` / `||` / `;` / `|` で分割し、**各セグメントの先頭が
+ * テンプレートの permissions に載っている実行ファイル**なら、allow / ask が覆っているかを見る。
+ * **鳴りすぎないこと**は上の検査と同じ条件で担保する（言及の無い実行ファイルは見ない）。
+ */
+test("harness.config.json の commands は、そのテンプレートの allow / ask に載っている", () => {
+  const problems = [];
+  let checked = 0;
+
+  for (const env of ENVS) {
+    const cfg = JSON.parse(read(`templates/${env}/.claude/harness.config.json`));
+    const settings = JSON.parse(read(`templates/${env}/.claude/settings.json`));
+    const perms = settings?.permissions ?? {};
+    const rules = [...(perms.allow ?? []), ...(perms.ask ?? [])].map(parseRule).filter(Boolean);
+    const exes = [...new Set(rules.map((r) => r.pattern.split(/\s+/)[0]))].filter((e) =>
+      /^[a-z][a-z0-9.-]*$/.test(e)
+    );
+    if (!exes.length) continue;
+
+    for (const [name, value] of Object.entries(cfg?.commands ?? {})) {
+      if (!value) continue;
+      // `dev` は対象外。**ハーネスは実行しない**（`docs/reference/harness設定契約.md` の
+      // commands の行が「`dev` は実行しない」と明記している）。人が起動するものなので、
+      // 許可は各プロジェクトの settings.local.json に任せる
+      if (name === "dev") continue;
+      // 複合コマンドはセグメントごとに許可が要る（ツール側が操作単位で照合する）
+      for (const seg of value.split(/&&|\|\||;|\|/)) {
+        const line = seg.trim();
+        if (!line) continue;
+        const head = line.split(/\s+/)[0];
+        if (!exes.includes(head)) continue; // 関心の外（鳴りすぎ防止）
+        checked++;
+        const covered = rules.some((r) =>
+          r.prefix ? line === r.pattern || line.startsWith(`${r.pattern} `) : line === r.pattern
+        );
+        if (!covered) problems.push(`${env} / commands.${name}: ${line}`);
+      }
+    }
+  }
+
+  assert.ok(checked > 0, "1件も検査していない。抽出の条件が壊れている可能性がある");
+  assert.deepEqual(
+    problems,
+    [],
+    "commands に書いてあるのに allow / ask に無いコマンド:\n  " +
+      problems.join("\n  ") +
+      "\n\nゲートは通るが毎回確認プロンプトが出る（H31 と同型）"
+  );
+});

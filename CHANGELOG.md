@@ -116,8 +116,12 @@ docs 影響: なし（`generate-table-docs.ts` / `rules/prisma.md` / `docs/設�
 
 ### H42: `commands.typecheck` が `.next/types` の生成前に落ちる
 
-`npx tsc --noEmit` → **`npx next typegen && npx tsc --noEmit`** にし、allow に
-`Bash(npx next typegen:*)` を足した（`&&` で分解されるので両方が allow に要る）。
+`npx tsc --noEmit` → **`npx --no-install next typegen && npx tsc --noEmit`** にし、allow に
+`Bash(npx --no-install next typegen:*)` を足した（`&&` で分解されるので両方が allow に要る）。
+**`--no-install`** は、`next` が入っていない状態（Step 2 より前）で
+**確認なしに `next` と swc バイナリの取得が始まる**のを防ぐためである（速く・理由の分かる失敗になる）。
+**`next typegen` は production build と同じ段で `next.config.*` を読む**ので、
+config が環境変数を要求する構成では型エラーが無くても落ちる —— その切り分けも `SETUP.md` に書いた。
 Next.js 16 の `LayoutProps` / `PageProps` は**グローバル型で、`.next/types` ができるまで
 存在しない**ため、**クローン直後や `.next` を消した直後にコミット前ゲートが落ちる**。
 **Next.js 自身の文書が CI 向けに `next typegen && tsc --noEmit` を勧めている**
@@ -159,7 +163,25 @@ Next.js 16.3 以降の `next dev` は `CLAUDE.md` / `AGENTS.md` に管理ブロ�
 > 実際に踏んだもので、**当該プロジェクトの初期化コミットに対処と理由が残っている**。
 > `next typegen` / `0.0.0.0` / `cacheComponents` の既定は**同梱文書と実装で確認した**。
 
-docs 影響: あり（guide/セットアップガイド.md — `SETUP.md` Step 2 の落とし穴を「4点」と数えていた行。
+### 査読の指摘を全件反映した（同じ版の中で）
+
+| 指摘 | 対応 |
+|---|---|
+| 【高】`runtime` の非互換を **`'edge'` だけに狭めていた** | 対応済み。**値に関わらず落ちる**（`'nodejs'` も `Route segment config … is not compatible` で失敗することが元の実測記録にある）。**公式文書は `'edge'` の移行しか書いていない**ので、文書だけ見ると踏む。`Prisma` を使う route handler では `'nodejs'` が最もありそうな形で、**節の警告に従っても落ちる**状態だった |
+| 【中】`next dev` が `CLAUDE.md` に書き足すという記述が**版で違う** | 対応済み。**16.3.x は `AGENTS.md` と `CLAUDE.md` の両方**（`AGENTS.md` が無いと `CLAUDE.md` 側へ入る ＝ **表の「除外する」が裏目に出る**）、**16.4 以降は `AGENTS.md` だけ**。`dist/server/lib/generate-agent-files.js` を両版で読んで確認した |
+| 【中】「`CLAUDE.md` が既に Next の文書を読む指示を持っている」は**生成直後では偽** | 対応済み。実際の記述は `.claude/harness/environment.md` の **TODO コメントの中**にしか無い（`rules/react-nextjs.md` にもあるが **`CLAUDE.md` から取り込まれない**）。**`agentRules: false` にするなら TODO を埋めること**を足した |
+| 【中】`commands.*` が allow に載っているかを**守る検査が無い** | **対応済み（検査を足した）**。`tests/verification-commands.test.mjs` に、`commands.*` を `&&` / `\|\|` / `;` / `\|` で分割して各セグメントを照合する検査を追加。**この検査が実際に今回の食い違いを捕まえた** —— allow が `--no-install` の無い形のままだった。`dev` は対象外（契約が「実行しない」と明記）。**変異テストで感度を確認**（allow を旧い形に戻すと落ちる） |
+| 【低】契約文書の例が出荷テンプレートと食い違う／複合コマンドの可否が書いていない | 対応済み。`reference/harness設定契約.md` の例を実物に合わせ、**「複合コマンド可・許可はセグメントごと」**を `commands.*` の行に書いた |
+| 【低】`npx` が `next` を黙って取りに行く | 対応済み（`--no-install`） |
+| 【低】`typegen` が `next.config.*` のロードに依存する | 対応済み（切り分けの1行） |
+| 【低】`typegen` の説明が表に無く、無関係な節にぶら下がっていた | 対応済み（独立した `###` ＋ 表に1行） |
+| 【低】表と本文でコマンドの形が違う／`-H 127.0.0.1` の副作用／`prisma` CLI が余る理由／`cacheComponents` を外す手が無い | 全て対応済み（**WSL2・実機確認を塞ぐ**ことの但し書き、CLI は後で要ること、**2行削除**を既定の推奨として明示） |
+
+**見送りは0件。**
+
+docs 影響: あり（guide/セットアップガイド.md ＋ reference/harness設定契約.md — 後者は
+`commands` の例が出荷テンプレートと食い違い、**複合コマンドの可否も書いていなかった**。
+前者は `SETUP.md` Step 2 の落とし穴を「4点」と数えていた行。
 **grep で出した** ——「配布物だから `docs/` 影響なし」と最初は書いたが、
 `grep -rn "SETUP.md" docs/` が1本当てた。**件数を書いている記述は、増えるたびに嘘になる**ので
 数えない形へ直した。`CLAUDE.md` §3 と同じ型）

@@ -7,7 +7,7 @@
       "Bash(npm run build)",
       "Bash(npm run lint)",
       "Bash(npm run dev)",
-      "Bash(npx next typegen:*)",
+      "Bash(npx --no-install next typegen:*)",
       "Bash(npx tsc --noEmit:*)",
       "Bash(npx eslint:*)",
       "Bash(npx prisma generate:*)",

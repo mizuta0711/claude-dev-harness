@@ -17,7 +17,7 @@
 
   "commands": {                        // null = この環境には無い
     "build":     "npm run build",
-    "typecheck": "npx tsc --noEmit",
+    "typecheck": "npx --no-install next typegen && npx tsc --noEmit",   // 複合コマンド可（下記）
     "lint":      "npm run lint",
     "format":    null,
     "test":      null,
@@ -86,7 +86,7 @@
 | `gates.backlogSync` | `pre-push-backlog-check.js` | **push の直前**に**残作業台帳**（`docs/backlog.md`）と `docs/features/` の整合を確かめ、食い違っていれば `permissionDecision:"deny"` を返して `/harness-core:backlog-sync` を案内する。**`"off"` で無効。** 対象は**セッションのプロジェクトではなく push 先**で、フックが受け取る `cwd` から `cd` 系と `-C` を追ってリポジトリのルートまで寄せる。**`--dry-run` は止めない。** 見ているのは**残作業台帳**で、`pre-push-check` が見る**設計書同期台帳**（`designDocs.ledger`）とは別物 |
 | `gates.commitScope` | `pre-commit-scope.js` | 範囲まるごとの git 操作（`add -A` / `commit -a` / `stash` / 範囲指定なしの破棄）を検知したときの扱い。**未設定なら警告のみ**、`"paths"` で `deny`、`"off"` で無効 |
 | `askGuards.sets` | `guarded-command-ask.js` | 選んだ集合（§9）に一致するコマンドに `permissionDecision:"ask"` を返す。**信頼済み環境では何も返さない**。未設定は `git-destructive` ＋ `environment` の既定（§9） |
-| `commands.*` | `build-check` スキル | 非 null を `typecheck → build → lint → format → test` の順で実行。`dev` は実行しない |
+| `commands.*` | `build-check` スキル | 非 null を `typecheck → build → lint → format → test` の順で実行。`dev` は実行しない。**複合コマンド（`a && b`）を書いてよい** —— 実行は `execSync` の既定シェル（cmd.exe / sh）なので `&&` はどちらでも通る。ただし**許可の照合はセグメントごと**なので、**`permissions.allow` には各セグメントが要る**（`tests/verification-commands.test.mjs` が検査する） |
 | `paths.docTriggers` | `post-commit-doc-check.js` | 直近コミットの変更ファイル（`/` 正規化済み）を `pattern` の正規表現で判定し、一致した `docs` を通知 |
 | `paths.source` | `pre-push-check` スキル | ソース変更を含まないコミットを台帳チェックから SKIP |
 | `paths.source` | `new-feature` スキル（Step 0） | 一致する実ファイルが1つも無ければ**未初期化**とみなし、初期化を Phase 0 として含める案を出す |
