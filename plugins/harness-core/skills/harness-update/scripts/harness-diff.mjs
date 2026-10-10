@@ -689,6 +689,46 @@ function lineChanges(before, after) {
 }
 
 /**
+ * `git merge-file` が返したマーカー入りの結果から、**衝突した場所**を読む。
+ *
+ * **「2箇所で衝突した」だけでは、人は現物のどこを見ればよいか分からない。**
+ * 行番号（統合結果の中での位置）と、現物側（`<<<<<<<` の直後）の先頭行を出す。
+ * 突き合わせる3ファイル（A/B/C）の置き場は apply の失敗メッセージが案内する。
+ *
+ * @param {string} merged マーカー入りの統合結果
+ * @returns {string} 例: `現物の 12 行目付近「.env*」/ 40 行目付近「dist/」`
+ */
+function conflictHunks(merged) {
+  const lines = merged.split("\n");
+  const out = [];
+  let line = 0; // マーカー行を除いた、統合結果の中での行番号
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.startsWith("<<<<<<<")) {
+      let hint = "";
+      for (let j = i + 1; j < lines.length; j++) {
+        const t = lines[j];
+        if (t.startsWith("=======") || t.startsWith(">>>>>>>")) break;
+        if (t.trim()) {
+          hint = t.trim();
+          break;
+        }
+      }
+      out.push(`${line + 1} 行目付近${hint ? `「${hint}」` : ""}`);
+      continue;
+    }
+    if (l.startsWith("=======") || l.startsWith(">>>>>>>")) continue;
+    line++;
+  }
+  if (!out.length) return "";
+  const shown = out.slice(0, 5);
+  return (
+    `現物の ${shown.join(" / ")}` +
+    (out.length > shown.length ? ` ほか ${out.length - shown.length} 箇所` : "")
+  );
+}
+
+/**
  * 行単位のマージを試す。
  * 統合できたら `auto-merge` を返し、結果を work/merged/<rel> へ書く。
  * 衝突が残れば `conflict` のまま、**何箇所か**を note に載せて返す。
@@ -711,7 +751,11 @@ function tryTextMerge(rel, aText, bText, cText, work) {
   if (!r) return null;
 
   if (r.conflicts > 0) {
-    return { kind: "conflict", note: `行の衝突が ${r.conflicts} 箇所（自動では統合できない）` };
+    const where = conflictHunks(r.merged);
+    return {
+      kind: "conflict",
+      note: `行の衝突が ${r.conflicts} 箇所${where ? `（${where}）` : ""}。自動では統合できない`,
+    };
   }
   if (r.merged === cText) return { kind: "already-applied", note: "同じ変更が既に入っている" };
 
@@ -1006,14 +1050,35 @@ function cmdApply(opts) {
     const content = readText(src);
     if (content === null) fail(`${rel} は「あるべき姿」に存在しません。パスを確認してください。`);
     const dest = path.join(opts.project, rel);
+    // **書く前に、現物の改行と BOM を見る。**
+    // readText が CRLF を LF へ、BOM を無しへ揃えるので、apply は差分の中身と関係なく
+    // **ファイル全体の改行を書き換える**ことがある。**差分には現れないので黙って起きる**
+    // （ステージ時の正規化で blob が変わり、他セッションの作業と食い違った先例がある）。
+    const rawBefore = (() => {
+      try {
+        return fs.readFileSync(dest, "latin1");
+      } catch {
+        return null;
+      }
+    })();
+    const reshaped = [];
+    if (rawBefore !== null) {
+      const keepsBom = path.extname(dest).toLowerCase() === ".ps1";
+      const hadBom = rawBefore.startsWith("\xEF\xBB\xBF");
+      if (rawBefore.includes("\r\n")) reshaped.push("改行を LF に揃えた（現物は CRLF）");
+      if (hadBom && !keepsBom) reshaped.push("BOM を落とした");
+      if (!hadBom && keepsBom) reshaped.push("BOM を付けた（.ps1 の規約）");
+    }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     // 出力規約は create-project と同じ（UTF-8 BOM 無し・LF、.ps1 のみ BOM 付き）
     const bom = path.extname(dest).toLowerCase() === ".ps1" ? "﻿" : "";
     fs.writeFileSync(dest, bom + content, "utf-8");
-    applied.push(rel);
+    applied.push({ rel, reshaped });
   }
   console.log(`適用しました（${applied.length} 件）:`);
-  for (const f of applied) console.log(`  ${f}`);
+  for (const f of applied) {
+    console.log(`  ${f.rel}${f.reshaped.length ? ` — ${f.reshaped.join("、")}` : ""}`);
+  }
   console.log(`\n適用が完了したら finalize を実行して baseline を更新してください。`);
 }
 

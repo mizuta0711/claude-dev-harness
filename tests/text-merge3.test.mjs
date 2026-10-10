@@ -194,3 +194,71 @@ test("骨格の見出しを改名しても、プロジェクトが足した行�
     assert.ok(merged.includes("| 1 | 一覧画面 | 出る | `a.md` |"), "プロジェクトの行が消えた");
     assert.ok(!merged.includes("マイルストーン"), "旧い見出しが残っている");
   }));
+
+/**
+ * 衝突の「どこが」（H53-c）
+ *
+ * **「2箇所で衝突した」だけでは、人は現物のどこを見ればよいか分からない。**
+ * 行番号と現物側の手がかりを note に載せる。**人が読む文面なので、ここで形を固定する。**
+ */
+
+test("衝突の note に、行番号と現物側の手がかりが入る", () =>
+  withWork((work) => {
+    const A = ["*.log", "", "# OS", ".DS_Store"].join(NL) + NL;
+    // 同じ行をテンプレートとプロジェクトが別々に書き換える（＝衝突する）
+    const B = ["*.log", "", "# OS", "Thumbs.db"].join(NL) + NL;
+    const C = ["*.log", "", "# OS", ".DS_Store_project"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    assert.match(v.note, /行の衝突が 1 箇所/);
+    assert.match(v.note, /現物の \d+ 行目付近/, `場所が入っていない: ${v.note}`);
+    // 手がかりは**現物側**の行（<<<<<<< の直後）であること
+    assert.match(v.note, /\.DS_Store_project/, `現物側の手がかりが入っていない: ${v.note}`);
+    assert.ok(!/Thumbs\.db/.test(v.note), `テンプレート側の行を現物として見せている: ${v.note}`);
+  }));
+
+test("衝突が複数あれば、場所を並べて出す", () =>
+  withWork((work) => {
+    // **離して置く。** 近いと git は1つのハンクにまとめてしまう（実測）
+    const pad = (from) => Array.from({ length: 10 }, (_, i) => `line${from + i}`);
+    const base = ["a", "b", ...pad(1), "f", "g"];
+    const A = base.join(NL) + NL;
+    const B = ["a", "B2", ...pad(1), "F2", "g"].join(NL) + NL;
+    const C = ["a", "B3", ...pad(1), "F3", "g"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    assert.match(v.note, /行の衝突が 2 箇所/);
+    const places = v.note.match(/\d+ 行目付近/g) || [];
+    assert.equal(places.length, 2, `場所が2つ出ていない: ${v.note}`);
+    assert.match(v.note, /B3/);
+    assert.match(v.note, /F3/);
+  }));
+
+test("行番号はマーカー行を数に入れない（現物を開いたときの位置に合わせる）", () =>
+  withWork((work) => {
+    // 7行目だけが衝突する
+    const base = ["1", "2", "3", "4", "5", "6", "x", "8"];
+    const A = base.join(NL) + NL;
+    const B = [...base.slice(0, 6), "tmpl", "8"].join(NL) + NL;
+    const C = [...base.slice(0, 6), "proj", "8"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    // マーカー（<<<<<<< / ======= / >>>>>>>）を数えていれば 8 以上になる
+    const n = Number((v.note.match(/(\d+) 行目付近/) || [])[1]);
+    assert.equal(n, 7, `行番号がずれている（マーカーを数えている可能性）: ${v.note}`);
+  }));
+
+test("現物側が空の衝突で、テンプレート側の行を手がかりに出さない", () =>
+  withWork((work) => {
+    // プロジェクトは行を消し、テンプレートは同じ行を書き換えた（＝現物側が空のハンク）
+    const A = ["keep", "old", "tail"].join(NL) + NL;
+    const B = ["keep", "tmplonly", "tail"].join(NL) + NL;
+    const C = ["keep", "tail"].join(NL) + NL;
+    const v = tryTextMerge(".gitignore", A, B, C, work);
+    assert.equal(v.kind, "conflict");
+    assert.ok(
+      !/tmplonly/.test(v.note),
+      `テンプレート側の行を現物の手がかりとして出している: ${v.note}`
+    );
+    assert.match(v.note, /行目付近/, `場所が出ていない: ${v.note}`);
+  }));
