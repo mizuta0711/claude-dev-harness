@@ -30,8 +30,13 @@ allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git status:*), Bash(git mv:*
 
 ## Step 1: 検査する
 
+**⚠️ 対象のリポジトリを間違えないこと。** フックが止めたときは、deny のメッセージに
+**`対象: <パス>`** が入っている。**そこを検査する**（`cd <別リポジトリ> && git push` で
+止まった場合、いまのカレントとは別のリポジトリである）。
+
 ```bash
-node -e "const m=require('${CLAUDE_PLUGIN_ROOT}/hooks/scripts/backlog-sync.js');console.log(JSON.stringify(m.check(process.cwd()),null,2))"
+# <対象> は deny の「対象:」のパス。フック以外から呼ぶときはそのリポジトリのルート
+node -e "const m=require('${CLAUDE_PLUGIN_ROOT}/hooks/scripts/backlog-sync.js');console.log(JSON.stringify(m.check('<対象>'),null,2))"
 ```
 
 **`applicable: false` が返ったら、そこで終わる。** 検査の対象外である。

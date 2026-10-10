@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.32.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
+| 対応ハーネス版 | harness-core 0.32.1 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
 | 最終更新 | 2026-10-10 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
@@ -81,7 +81,7 @@
 | `commands.*` + `gates.preCommit` | `pre-commit-check.js` | `gates.preCommit` の各キーを `commands` から引き、非 null のものを順に実行。1つでも失敗したら `permissionDecision:"deny"` でブロック |
 | `audit.intervalDays` | `session-start-context.js` | 前回の利用実績監査からこの日数を超えたら**知らせる**（止めない）。未設定は 30 日、`0` で無効。前回日は `.claude/.harness-audit.json`、無ければ `harness-baseline.json` の `appliedAt` から数える |
 | `update.intervalDays` | `session-start-context.js` | 前回の**テンプレート層の追従**からこの日数を超えたら**知らせる**（止めない）。未設定は 30 日、`0` で無効。前回日は `harness-baseline.json` の `appliedAt`（`harness-diff.mjs` の `finalize` が追従のたびに更新するので**専用マーカーは無い**）。**プラグイン層は marketplace が運ぶので対象外** |
-| `gates.backlogSync` | `pre-push-backlog-check.js` | **push の直前**に**残作業台帳**（`docs/backlog.md`）と `docs/features/` の整合を確かめ、食い違っていれば `permissionDecision:"deny"` を返して `/harness-core:backlog-sync` を案内する。**`"off"` のときだけ検査しない。** 見ているのは**残作業台帳**で、`pre-push-check` が見る**設計書同期台帳**（`designDocs.ledger`）とは別物 |
+| `gates.backlogSync` | `pre-push-backlog-check.js` | **push の直前**に**残作業台帳**（`docs/backlog.md`）と `docs/features/` の整合を確かめ、食い違っていれば `permissionDecision:"deny"` を返して `/harness-core:backlog-sync` を案内する。**`"off"` で無効。** 対象は**セッションのプロジェクトではなく push 先**で、フックが受け取る `cwd` から `cd` 系と `-C` を追ってリポジトリのルートまで寄せる。**`--dry-run` は止めない。** 見ているのは**残作業台帳**で、`pre-push-check` が見る**設計書同期台帳**（`designDocs.ledger`）とは別物 |
 | `gates.commitScope` | `pre-commit-scope.js` | 範囲まるごとの git 操作（`add -A` / `commit -a` / `stash` / 範囲指定なしの破棄）を検知したときの扱い。**未設定なら警告のみ**、`"paths"` で `deny`、`"off"` で無効 |
 | `askGuards.sets` | `guarded-command-ask.js` | 選んだ集合（§9）に一致するコマンドに `permissionDecision:"ask"` を返す。**信頼済み環境では何も返さない**。未設定は `git-destructive` ＋ `environment` の既定（§9） |
 | `commands.*` | `build-check` スキル | 非 null を `typecheck → build → lint → format → test` の順で実行。`dev` は実行しない |
@@ -107,6 +107,8 @@
 | `gates.preCommit` のキーが `commands` に**存在しない**（typo 疑い） | 警告を出しつつ、そのキーはスキップして続行（ブロックしない） | — |
 | `gates.commitScope` 未設定 / config 不在 | **警告は出す**（素通りさせない）。ブロックはしない | 「止めたいなら `"paths"` を設定」と案内 |
 | `gates.backlogSync` 未設定 / config 不在 | **検査する**（既定で deny まで行く）。config が読めなくても止める | — |
+| `pre-push-backlog-check` で `git push --dry-run` / `-n` | **検査しない**（何も送らないので、台帳が合っていなくても害が無い） | — |
+| `pre-push-backlog-check` で対象リポジトリを解決できない／解決先が実在しない | **検査しない。** `cd` 系と `-C` を追って対象を決め、**リポジトリのルートまで寄せる**。**間違った台帳で止めるより見逃す**（誤って deny すると正常な作業が止まる） | — |
 | `docs/backlog.md` が無い / 残作業台帳に計画節が無い | **検査せず素通りする。ただし素通りしたことを知らせる**（黙って通ると「検査された」と誤解される）。0.27.0 より前のプロジェクトが該当 | 「検査の対象外」と報告して終わる |
 | `askGuards` で config が存在しない | **素通り**（確認を出さない）。harness-core は user スコープでも入るため、未導入のリポジトリで止め始めないように | — |
 | `askGuards` で config の JSON が壊れている | **`git-destructive` だけで止める**（`environment` も読めないので、環境の既定は足さない）。**fail-open にしない**（`permissions.ask` 時代は config が壊れても確認が出ていたため） | — |

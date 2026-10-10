@@ -203,3 +203,62 @@ test("resolveTarget は push でないコマンドに null を返す", () => {
   assert.equal(hook.resolveTarget("git status", opts, base), null);
   assert.equal(hook.resolveTarget("git push", opts, base).dir, base);
 });
+
+// ---- 再査読（0.32.1）で出た「間違ったリポジトリを検査する」形の回帰 ----
+
+test("PowerShell の `Set-Location` / `sl` も追う", () => {
+  // `cd` / `pushd` しか見ていなかったため、**別リポジトリの push を
+  // セッション側の台帳で判定していた**（査読 M2）。
+  const broken = mkProject({ rows: ["|  | a | b | `docs/features/x.md` |"] });
+  const clean = mkProject({
+    rows: ["|  | a | b | `docs/features/20261010_a.md` |"],
+    docs: ["docs/features/20261010_a.md"],
+  });
+  const opts = { shell: "powershell" };
+  for (const cmd of [`Set-Location ${posix(clean)}; git push`, `sl ${posix(clean)}; git push`]) {
+    assert.equal(hook.resolveTarget(cmd, opts, broken).dir, clean, cmd);
+  }
+});
+
+test("Git Bash 形式のパス（`/d/...`）を解決する", () => {
+  // 直さないと `D:\d\...` になって実在せず、検査が素通りしていた（査読 M2）。
+  if (process.platform !== "win32") return;
+  assert.equal(hook.fromGitBash("/d/Develop/x"), "D:/Develop/x");
+  assert.equal(hook.fromGitBash("/c/Users/x"), "C:/Users/x");
+  // それ以外は触らない
+  assert.equal(hook.fromGitBash("/no/such/dir"), "/no/such/dir");
+  assert.equal(hook.fromGitBash("D:/already"), "D:/already");
+});
+
+test("サブディレクトリから push してもリポジトリのルートを検査する", () => {
+  // `cd src && git push` で `.../src` を見て素通りしていた（査読 L1）。
+  const dir = mkProject({ rows: ["|  | a | b | `docs/features/x.md` |"] });
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  const out = run(dir, "cd src && git push");
+  assert.equal(decisionOf(out), "deny", "ルートまで寄せれば台帳が見つかる");
+});
+
+test("起点はフックが受け取った `cwd`（セッションのプロジェクトを当てにしない）", () => {
+  // Bash ツールのカレントは呼び出しをまたいで残るので、
+  // `CLAUDE_PROJECT_DIR` とは違うことがある（査読 M3）。
+  const broken = mkProject({ rows: ["|  | a | b | `docs/features/x.md` |"] });
+  const clean = mkProject({
+    rows: ["|  | a | b | `docs/features/20261010_a.md` |"],
+    docs: ["docs/features/20261010_a.md"],
+  });
+  // payload の cwd は clean、CLAUDE_PROJECT_DIR は broken
+  const payload = JSON.stringify({
+    cwd: clean,
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "git push" },
+  });
+  const out = execFileSync(process.execPath, [HOOK], {
+    input: payload,
+    encoding: "utf-8",
+    cwd: clean,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: broken },
+  });
+  assert.equal(decisionOf(out.trim() ? JSON.parse(out) : {}), null);
+});

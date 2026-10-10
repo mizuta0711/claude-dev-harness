@@ -77,19 +77,27 @@ function parsePlanRows(markdown) {
   const rows = [];
   let inPlan = false;
   let inComment = false;
+  let inFence = false;
   let docCol = null;
-  let seenHeader = false;
 
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, "");
+  const cellsOf = (line) => line.split("|").slice(1, -1).map((c) => c.trim());
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\s+$/, "");
+
+    // コードフェンスの中は本文ではない。中の `# …` を見出しと読むと節が切れる（査読 L3）
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
 
     // **1行に閉じと開きが混在する形を正しく扱う**（`<!-- a --> <!-- b`）。
     // 「`-->` を含むから開いていない」と見ると、後続のコメント内を拾う（査読 L1）。
     if (inComment) {
       const close = line.lastIndexOf("-->");
       if (close < 0) continue;
-      const reopen = line.indexOf("<!--", close);
-      inComment = reopen >= 0;
+      inComment = line.indexOf("<!--", close) >= 0;
       continue;
     }
     {
@@ -101,29 +109,37 @@ function parsePlanRows(markdown) {
     }
 
     if (line.startsWith("#")) {
-      inPlan = matchPlanHeading(line).plan;
-      docCol = null;
-      seenHeader = false;
+      // **`###` 以降で節を抜けない。** 小見出しで表を分ける書き方があり、
+      // 抜けると**以降の行をすべて失う** —— `## 計画` は網羅を約束する形なので、
+      // **設計書が全件「載っていない」と誤報告される**（査読 M1）。
+      const level = /^#+/.exec(line)[0].length;
+      if (level <= 2) {
+        inPlan = matchPlanHeading(line).plan;
+        docCol = null;
+      }
       continue;
     }
     if (!inPlan || !line.startsWith("|")) continue;
 
-    const cells = line.split("|").slice(1, -1).map((c) => c.trim());
+    const cells = cellsOf(line);
     if (!cells.length) continue;
     if (isSeparatorRow(cells)) continue;
 
-    // 見出し行: 「設計書」を含むセルの位置を覚える
-    if (!seenHeader) {
-      seenHeader = true;
+    // **見出し行は「次の行が区切り行」で見分ける**（Markdown の表の規則）。
+    // 節ごとに1回しか見ないと、**同じ節に2つ目の表があるとその見出し行を
+    // データ行として読み、`row-without-doc` の deny を出す**（査読 M1）。
+    const next = (lines[i + 1] || "").replace(/\s+$/, "");
+    if (next.startsWith("|") && isSeparatorRow(cellsOf(next))) {
       const idx = cells.findIndex((c) => c.replace(/\*/g, "").includes("設計書"));
       docCol = idx >= 0 ? idx : null;
       continue;
     }
+
     // 空のプレースホルダ行（`| | | | |`）は行ではない
     if (cells.every((c) => c === "")) continue;
 
     const cell = cells[docCol !== null && docCol < cells.length ? docCol : cells.length - 1] || "";
-    const paths = [...cell.matchAll(/(docs\/features\/[^`|\s]+\.md)/g)].map((m) => m[1]);
+    const paths = [...cell.matchAll(/(docs\/features\/[^`|\s,、]+\.md)/g)].map((m) => m[1]);
     const num = cells[0].replace(/\*/g, "").trim();
     rows.push({
       num,

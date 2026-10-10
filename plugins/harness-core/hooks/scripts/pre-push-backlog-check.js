@@ -24,38 +24,82 @@
  */
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const lib = require("./harness-lib");
 const scope = require("./git-scope");
 const backlog = require("./backlog-sync");
 
+/** ディレクトリを移動するコマンド（PowerShell の別名も含む。査読 M2） */
+const CD_COMMANDS = new Set([
+  "cd",
+  "pushd",
+  "chdir",
+  "set-location",
+  "sl",
+  "push-location",
+]);
+
+/**
+ * Git Bash 形式のパス（`/d/Develop/x`）を Windows のパスへ直す。
+ *
+ * **直さないと `D:\d\Develop\x` に解決されて実在せず、検査が素通りする**（査読 M2）。
+ * このリポジトリのセッションは Bash ツールでこの形を日常的に使う。
+ */
+function fromGitBash(p) {
+  if (process.platform !== "win32") return p;
+  const m = /^\/([A-Za-z])\/(.*)$/.exec(p);
+  return m ? `${m[1].toUpperCase()}:/${m[2]}` : p;
+}
+
+/** そのディレクトリを含む git リポジトリのルート。取れなければ null */
+function repoRoot(dir) {
+  try {
+    const out = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: dir,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5000,
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * **push の対象リポジトリ**を解決する。
  *
- * `lib.projectDir()`（＝`CLAUDE_PROJECT_DIR`）をそのまま使うと、
- * **別リポジトリの push を、このセッションのプロジェクトの台帳で止める**。
- * `cd <別リポジトリ> && git push` は実際の作法である
- * （ProjectTemplete から `claude-dev-harness` を push するのがそれ）。
+ * **セッションのプロジェクト（`CLAUDE_PROJECT_DIR`）を当てにしない。**
+ * `cd <別リポジトリ> && git push` は実際の作法で（ProjectTemplete から
+ * `claude-dev-harness` を push するのがそれ）、**別リポジトリの push を
+ * こちらの台帳で止めてはいけない**。起点はフックが受け取る `cwd` にする
+ * （Bash ツールのカレントは呼び出しをまたいで残るため、`CLAUDE_PROJECT_DIR`
+ * とは違うことがある。査読 M3）。
  *
- * `cd` と `-C` を追うだけの**浅い解決**にしてある。解決できた先が実在しなければ
+ * **リポジトリのルートまで寄せる。** `cd src && git push` のように下位から
+ * 打たれると、そのままでは `docs/backlog.md` が見つからず素通りする（査読 L1）。
+ *
+ * 解決は `cd` 系と `-C` を追うだけの**浅いもの**にしてある。解決先が実在しなければ
  * **検査しない** —— **間違った台帳で止めるより、見逃す方がましである**
  * （誤って deny すると正常な作業が止まる）。
  *
  * @returns {{dir: string, args: string}|null}
  */
-function resolveTarget(command, opts, projectDir) {
-  let cwd = projectDir;
+function resolveTarget(command, opts, startDir) {
+  let cwd = startDir;
   for (const seg of scope.scanCommands(command, opts)) {
     const toks = scope.tokenize(seg.text, opts).map((t) => t.value);
     if (!toks.length) continue;
-    if ((toks[0] === "cd" || toks[0] === "pushd") && toks[1]) {
-      cwd = path.resolve(cwd, toks[1]);
+    if (CD_COMMANDS.has(toks[0].toLowerCase()) && toks[1]) {
+      cwd = path.resolve(cwd, fromGitBash(toks[1]));
       continue;
     }
     const push = scope.gitInvocations(seg.text, opts).find((g) => g.sub === "push");
     if (!push) continue;
     const ci = toks.indexOf("-C");
-    const dir = ci >= 0 && toks[ci + 1] ? path.resolve(cwd, toks[ci + 1]) : cwd;
-    return { dir, args: push.args || "" };
+    const dir = ci >= 0 && toks[ci + 1] ? path.resolve(cwd, fromGitBash(toks[ci + 1])) : cwd;
+    if (!fs.existsSync(dir)) return { dir, args: push.args || "" };
+    return { dir: repoRoot(dir) || dir, args: push.args || "" };
   }
   return null;
 }
@@ -85,7 +129,8 @@ function main() {
   // **push の判定は `git-scope` に任せる。** 引用符・`-C` / `--git-dir`・行継続・
   // ヒアドキュメントの落とし穴を実測で潰してきた蓄積があり、**二重実装すると
   // 片方だけ古くなる**（H49 がまさにそれ）。
-  const target = resolveTarget(command, opts, lib.projectDir());
+  // 起点は**フックが受け取った `cwd`**（査読 M3）。無ければセッションのプロジェクト
+  const target = resolveTarget(command, opts, payload.cwd || lib.projectDir());
   if (!target) lib.passThrough();
 
   // **`--dry-run` は止めない。** 何も送らないので、台帳が合っていなくても害が無い。
@@ -125,4 +170,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { main, resolveTarget };
+module.exports = { main, resolveTarget, fromGitBash, CD_COMMANDS };

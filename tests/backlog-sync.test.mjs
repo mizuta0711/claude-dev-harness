@@ -308,3 +308,71 @@ test("置き場が無いときの案内は、設計書の作成にも触れる",
   assert.match(f.how, /harness-update/);
   assert.match(f.how, /new-feature/);
 });
+
+// ---- 再査読（0.32.1）で出た誤検出の回帰 ----
+
+test("同じ計画節に2つ目の表があっても、その見出し行をデータ行と読まない", () => {
+  // 初版は見出し行を節ごとに1回しか見ず、2つ目の表の見出しを行として読んで
+  // `row-without-doc` の deny を出していた（査読 M1）。
+  const body = [
+    "# 残作業", "", "## 計画", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | a | b | `docs/features/20261010_a.md` |", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | c | d | `docs/features/20261010_c.md` |", "",
+  ].join("\n");
+  const dir = mkProject({
+    "docs/backlog.md": body,
+    "docs/features/20261010_a.md": "# a",
+    "docs/features/20261010_c.md": "# c",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+  assert.equal(bs.parsePlanRows(body).length, 2);
+});
+
+test("`###` の小見出しで表を分けても、節を抜けない", () => {
+  // 抜けると以降の行をすべて失い、`## 計画` は網羅を約束する形なので
+  // **設計書が全件「載っていない」と誤報告される**（査読 M1）。
+  const body = [
+    "# 残作業", "", "## 計画", "",
+    "### 第1期", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | a | b | `docs/features/20261010_a.md` |", "",
+    "### 第2期", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | c | d | `docs/features/20261010_c.md` |", "",
+  ].join("\n");
+  const dir = mkProject({
+    "docs/backlog.md": body,
+    "docs/features/20261010_a.md": "# a",
+    "docs/features/20261010_c.md": "# c",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+  assert.equal(bs.parsePlanRows(body).length, 2);
+});
+
+test("`##` の別見出しが来たら節を抜ける", () => {
+  // `###` で抜けないことと混同しないこと。`## 残作業` 以降は計画節ではない。
+  const body = [
+    "# 残作業", "", "## 計画", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | a | b | `docs/features/20261010_a.md` |", "",
+    "## 残作業", "",
+    "| # | 内容 | 参照 |", "|---|---|---|",
+    "|  | 何か | `docs/features/存在しない.md` |", "",
+  ].join("\n");
+  const dir = mkProject({ "docs/backlog.md": body, "docs/features/20261010_a.md": "# a" });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("コードフェンスの中の `#` を見出しと読まない", () => {
+  const body = [
+    "# 残作業", "", "## 計画", "",
+    "```bash", "# これはコメント", "```", "",
+    "| # | やること | 狙い | 設計書 |", "|---|---|---|---|",
+    "|  | a | b | `docs/features/20261010_a.md` |", "",
+  ].join("\n");
+  const dir = mkProject({ "docs/backlog.md": body, "docs/features/20261010_a.md": "# a" });
+  assert.deepEqual(bs.check(dir).findings, []);
+  assert.equal(bs.parsePlanRows(body).length, 1);
+});
