@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const hook = require(
-  path.join(ROOT, "plugins", "harness-nextjs", "hooks", "scripts", "pre-migrate-backup.js")
-);
+const HOOK = path.join(ROOT, "plugins", "harness-nextjs", "hooks", "scripts", "pre-migrate-backup.js");
+const hook = require(HOOK);
 
 // ---------------------------------------------------------------------------
 // 「実行しようとしているか」の判定
@@ -187,6 +187,193 @@ test("AC1: provider を省略すると従来どおり検査する（判定不能
   try {
     assert.equal(hook.backupTargetsConfigured(dir).ok, false);
     assert.equal(hook.backupTargetsConfigured(dir, null).ok, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// フック本体（main）を通す
+//
+// 判定関数の単体テストでは**配線**が守られない。查読の指摘どおり、
+// `backupTargetsConfigured(root, provider)` の第2引数を落としても単体テストは全部通る。
+// ここでは実際に stdin へ payload を流してフックを起動する。
+//
+// **`npx tsx` は走らせない。** 適用済みマイグレーションが1つでもあり、かつ検査を
+// 通過した場合だけバックアップが実行されるので、テストはその手前で止まる形
+// （初回 migrate / 検査でブロック）だけを見る。
+// ---------------------------------------------------------------------------
+
+/**
+ * `npx` の偽物を置く。**本物を走らせない。**
+ *
+ * フックはバックアップを `npx tsx tools/export-to-sql.ts` で実行する。テストから本物を
+ * 呼ぶと、ネットワークとキャッシュに結果が左右される（実測: 1回 約2秒かかり、
+ * 中身の無いスタブが「成功」になった）。終了コードを指定できる偽物を PATH の先頭に置く。
+ *
+ * \returns PATH に足すディレクトリ
+ */
+function fakeNpx(dir, exitCode) {
+  const bin = path.join(dir, ".fakebin");
+  fs.mkdirSync(bin, { recursive: true });
+  // bash 用（CI の ubuntu）
+  const sh = path.join(bin, "npx");
+  fs.writeFileSync(sh, `#!/bin/sh\necho "fake npx $\\" >&2\nexit ${exitCode}\n`, "utf-8");
+  fs.chmodSync(sh, 0o755);
+  // cmd 用（Windows の execSync は cmd.exe 経由）
+  fs.writeFileSync(
+    path.join(bin, "npx.cmd"),
+    `@echo off\r\necho fake npx %* 1>&2\r\nexit /b ${exitCode}\r\n`,
+    "utf-8",
+  );
+  return bin;
+}
+
+/** 一時プロジェクトでフックを起動し、返った JSON を読む（**出力が1つであることも検査する**） */
+function runHook(dir, command = "npx prisma migrate dev", { npxExit } = {}) {
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  if (npxExit !== undefined) env.PATH = fakeNpx(dir, npxExit) + path.delimiter + env.PATH;
+  const out = execFileSync(process.execPath, [HOOK], {
+    input: JSON.stringify({
+      cwd: dir,
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command },
+    }),
+    encoding: "utf-8",
+    cwd: dir,
+    env,
+  });
+  // **stdout は JSON オブジェクト1つでなければならない**（公式仕様）。
+  // 2つ並ぶと Claude Code がパースできず、continue:false が無効化される。
+  // JSON.parse はここで落ちる —— それがこの検査である
+  return out.trim() ? JSON.parse(out) : {};
+}
+
+/** 適用済みマイグレーションを1つ置く（初回スキップに入らないようにする） */
+function addMigration(dir) {
+  fs.mkdirSync(path.join(dir, "prisma", "migrations", "0_init"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "prisma", "migrations", "0_init", "migration.sql"), "-- x\n", "utf-8");
+}
+
+test("main: migrate でないコマンドでは何もしない", () => {
+  const dir = mkProject({ provider: "postgresql", orderedTables: [] });
+  try {
+    addMigration(dir);
+    assert.deepEqual(runHook(dir, "npm run build"), {});
+    assert.deepEqual(runHook(dir, "npx prisma migrate status"), {});
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("main: postgresql で一覧が空ならブロックする", () => {
+  const dir = mkProject({ provider: "postgresql", orderedTables: [] });
+  try {
+    addMigration(dir);
+    const out = runHook(dir);
+    assert.equal(out.continue, false);
+    assert.match(out.stopReason, /ORDERED_TABLES/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("main: sqlite で一覧が空でもブロックしない（AC1 の配線）", () => {
+  const dir = mkProject({ provider: "sqlite", orderedTables: [] });
+  try {
+    addMigration(dir);
+    const out = runHook(dir, "npx prisma migrate dev", { npxExit: 0 });
+    // ブロックしない。**ここで continue:false が返るなら provider の配線が落ちている**
+    assert.notEqual(out.continue, false);
+    assert.match(JSON.stringify(out), /backup completed/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("main: バックアップが失敗したら止める", () => {
+  const dir = mkProject({ provider: "sqlite", orderedTables: [] });
+  try {
+    addMigration(dir);
+    const out = runHook(dir, "npx prisma migrate dev", { npxExit: 1 });
+    assert.equal(out.continue, false);
+    assert.match(out.stopReason, /backup failed/i);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("main: 非対応 provider では一覧の記入を案内しない（誤誘導を避ける）", () => {
+  const dir = mkProject({ provider: "mysql", orderedTables: [] });
+  try {
+    addMigration(dir);
+    const out = runHook(dir);
+    assert.equal(out.continue, false);
+    assert.match(out.stopReason, /mysql/);
+    assert.doesNotMatch(out.stopReason, /3点同期/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("main: 初回 migrate はスキップし、案内文を provider 別に出す", () => {
+  const pg = mkProject({ provider: "postgresql", orderedTables: [] });
+  try {
+    // migrations が無い ＝ 初回。検査せずスキップする
+    const out = runHook(pg);
+    assert.notEqual(out.continue, false);
+    const text = JSON.stringify(out);
+    assert.match(text, /ORDERED_TABLES/);
+  } finally {
+    fs.rmSync(pg, { recursive: true, force: true });
+  }
+  const lite = mkProject({ provider: "sqlite", orderedTables: [] });
+  try {
+    const out = runHook(lite);
+    assert.notEqual(out.continue, false);
+    const text = JSON.stringify(out);
+    assert.match(text, /sqlite/);
+    assert.match(text, /記入は不要/);
+  } finally {
+    fs.rmSync(lite, { recursive: true, force: true });
+  }
+});
+
+test("main: 一覧の命名が違えば警告して通す（黙って通さない）", () => {
+  const dir = mkProject({ provider: "postgresql" });
+  try {
+    addMigration(dir);
+    fs.writeFileSync(
+      path.join(dir, "tools", "export-to-sql.ts"),
+      "const somethingElse: string[] = [];\n",
+      "utf-8",
+    );
+    const out = runHook(dir, "npx prisma migrate dev", { npxExit: 0 });
+    assert.notEqual(out.continue, false);
+    assert.match(JSON.stringify(out), /判定できませんでした/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ⚠️ **このケースで stdout に JSON が2つ出ていた**（警告 → バックアップ結果）。
+// Claude Code は「stdout は JSON オブジェクトのみ」でパースするため、
+// **continue:false が無効化され、バックアップ失敗で止まらなくなっていた。**
+// 上の runHook の JSON.parse がこれを検出する。
+test("main: 警告とブロックが重なっても出力は1つ（止まることが消えない）", () => {
+  const dir = mkProject({ provider: "postgresql" });
+  try {
+    addMigration(dir);
+    fs.writeFileSync(
+      path.join(dir, "tools", "export-to-sql.ts"),
+      "const somethingElse: string[] = [];\n",
+      "utf-8",
+    );
+    const out = runHook(dir, "npx prisma migrate dev", { npxExit: 1 });
+    assert.equal(out.continue, false, "警告があってもブロックは効く");
+    assert.match(out.stopReason, /backup failed/i);
+    assert.match(out.systemMessage || "", /判定できませんでした/, "警告も同じ1つに入る");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

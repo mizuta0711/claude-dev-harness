@@ -600,6 +600,7 @@ async function main() {
   if (failed.length > 0) {
     const failedPath = "tools/dump.failed.sql";
     writeFileSync(failedPath, fullSql);
+    // 実データを含む。テンプレートの .gitignore で除外してある
     console.error(`\nExport FAILED: ${failed.length} table(s) could not be exported.`);
     for (const name of failed) console.error(`  - ${name}`);
     console.error(`  Partial output (for diagnosis only): ${failedPath}`);
@@ -609,6 +610,13 @@ async function main() {
 
   const outputPath = "tools/dump.sql";
   writeFileSync(outputPath, fullSql);
+
+  // 前回の失敗の残骸を消す（残っていると、成功したのかどうかが読み取れない）
+  const failedPath = "tools/dump.failed.sql";
+  if (existsSync(failedPath)) {
+    unlinkSync(failedPath);
+    console.log(`  Removed stale ${failedPath}`);
+  }
 
   console.log(`\nExport completed!`);
   console.log(`  File: ${outputPath}`);

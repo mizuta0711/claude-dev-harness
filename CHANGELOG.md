@@ -93,19 +93,50 @@ provider ごとの表に書き換え、`tools/README.md` も同じ形に揃え�
 | 事前検査 | `ORDERED_TABLES` の各モデル名が Prisma クライアントと `DB_TABLE_MAP` の両方にあるかを、**1件も書き出す前に**確かめる |
 | モデル不在 | 従来は warning を出して**空で続行**していた（そのテーブルだけ静かに漏れる）。失敗として扱う |
 | 版表記 | 出力見出しの `v1.0.0` 直書きをやめ、`TOOL_VERSION` 1箇所に寄せた（冒頭コメントと食い違っていた）。v1.2.0 |
+| 後片付け | 成功したら古い `dump.failed.sql` を消す（残っていると成功したのか読み取れない）。`.gitignore` にも追加した —— **実データを含むため** |
+
+⚠️ **`DB_TABLE_MAP` が実質必須になった（破壊的変更）。** これまで `?? modelName` の
+フォールバックで動いていた構成（`@@map` 無しの小文字モデル）は、事前検査で弾かれる。
+移行先では `ORDERED_TABLES` の全モデルを `DB_TABLE_MAP` に書くこと。
 
 **`DB_TABLE_MAP` に無いモデル名のフォールバック（`?? modelName`）は死んだ経路になった。**
 以前はここを通って**引用符なしのテーブル名で SQL を生成**しており、コメントの
 「ここに無いモデルは出力されない」も実装と食い違っていた（実際は出力され、復元できない）。
 
+### 同時に直した実害: 出力の JSON が2つ並んでいた
+
+**フック本体を通すテストを足したら、既存の欠陥が落ちた。**
+一覧の命名が判定できないときに警告を即 `emit` し、そのあとバックアップ結果でもう1つ
+`emit` していたため、**stdout に JSON オブジェクトが2つ並んでいた**。
+Claude Code は「stdout は JSON オブジェクトのみ」を前提にパースするので、
+**`continue: false` が無効化され、バックアップ失敗で migrate が止まらなくなる**
+（このファイルのヘッダが `stdio: pipe` について戒めているのと同じ形）。出力を1つに畳んだ。
+
+H43 で失敗が終了コード 1 になったぶん、この経路を踏む確率は上がっていた。
+
+### 非対応 provider のときの案内
+
+一覧が空で止めるとき、`mysql` などでは「`ORDERED_TABLES` を記入してください」は遠回りになる
+（記入しても `export-to-sql.ts` が方言で止まる）。provider を見て原因の方を言う。
+
 ### 自動テスト
 
-フック側は `tests/pre-migrate-backup.test.mjs` に4本足した（provider の読み取り・sqlite の
-素通り・postgresql の従来どおり・provider 省略時の既定）。**`export-to-sql.ts` 側は自動テストが無い**
-——`@prisma/client` に依存するテンプレート層の TS で、このリポジトリの「依存パッケージを使わない」
-方針では回せない。型チェック（`tsc --noEmit --strict`）までで止めてある。
+`tests/pre-migrate-backup.test.mjs` を 10 本 → 18 本に増やした。
 
-docs 影響: あり（templates/nextjs/.claude/rules/prisma.md — 3点同期の provider 別化／templates/nextjs/tools/README.md — 取り方と失敗時の挙動）
+| 追加 | 守るもの |
+|---|---|
+| 4本（判定関数） | provider の読み取り（`generator` の provider と混ぜない）・sqlite の素通り・postgresql の従来どおり・provider 省略時の既定 |
+| 8本（`main` を通す） | **配線**（`backupTargetsConfigured(root, provider)` の第2引数を落とすと落ちる）・ブロックの文面・初回スキップの provider 別案内・**出力が JSON 1つであること** |
+
+`main` を通すテストは `npx` の偽物を PATH の先頭に置く（終了コードを指定できる）。
+**本物を呼ぶとネットワークとキャッシュに結果が左右される** —— 実測で1回 約2秒かかり、
+中身の無いスタブが「成功」として通ってしまった。
+
+**`export-to-sql.ts` 側は自動テストが無い** ——`@prisma/client` に依存するテンプレート層の TS で、
+このリポジトリの「依存パッケージを使わない」方針では回せない。
+型チェック（`tsc --noEmit --strict`）までで止めてある。
+
+docs 影響: あり（templates/nextjs/.claude/rules/prisma.md — 3点同期の provider 別化／templates/nextjs/tools/README.md — 取り方と失敗時の挙動／templates/nextjs/.claude/harness/environment.md — 3点同期とフックの説明／templates/nextjs/.gitignore／diagrams/05_フック発火タイミング図.md — 対象一覧の表／guide/運用ガイド.md — フック一覧）
 
 ## [0.39.1] — 壊れた config で確認が黙って減る件を直した（H51）
 

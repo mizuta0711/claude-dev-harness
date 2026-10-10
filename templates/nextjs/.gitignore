@@ -42,6 +42,7 @@ next-env.d.ts
 
 # database backup（実データを含むためコミットしない）
 tools/dump.sql
+tools/dump.failed.sql
 tools/backup/
 
 # browser test evidence（スクリーンショットは成果物として残さない）

@@ -279,24 +279,41 @@ function main() {
   }
 
   const configured = backupTargetsConfigured(root, provider);
+  // **出力は最後の1つに畳む。** ここで警告を即 emit すると、このあとの
+  // バックアップ結果の emit と合わせて **stdout に JSON が2つ並ぶ**。
+  // Claude Code は「stdout は JSON オブジェクトのみ」を前提にパースするため、
+  // **continue:false が無効化され、バックアップ失敗で止まらなくなる**
+  // （下の execSync で stdio を pipe にしているのと同じ理由。
+  //  テストで再現した: 命名が判定できず、かつバックアップが失敗する組み合わせ）。
+  const notes = [];
   if (configured.ok && configured.unknown) {
     // 判定できなかった。**通すが黙らない。**
     // 黙って通すと「ブロックが効いている」と誤認したまま運用が続く（実測で発生した）。
-    lib.emit({
-      systemMessage:
-        `[harness] ${EXPORT_TOOL} のバックアップ対象一覧を判定できませんでした` +
+    notes.push(
+      `[harness] ${EXPORT_TOOL} のバックアップ対象一覧を判定できませんでした` +
         `（テンプレートの ORDERED_TABLES とは別の命名の可能性）。\n` +
         `バックアップ自体はこのあと実行しますが、**「対象が空でないか」のチェックは行われていません**。\n` +
-        `対象: ${EXPORT_TOOL}。命名を確認し、.claude/rules/prisma.md の3点同期の記述を実態に合わせてください。`,
-    });
+        `対象: ${EXPORT_TOOL}。命名を確認し、.claude/rules/prisma.md の3点同期の記述を実態に合わせてください。`
+    );
   }
+  /** 溜めた警告を本文の前に付ける（出力は1つにする） */
+  const withNotes = (text) => (notes.length ? notes.join("\n") + "\n\n" + text : text);
   if (!configured.ok) {
+    // provider が postgresql でも sqlite でもないときは、一覧を記入しても
+    // `export-to-sql.ts` が「この方言の SQL は出せない」で止まる。
+    // 一覧の記入を案内すると遠回りさせるので、原因の方を言う
+    const knownProvider = provider === null || provider === "postgresql";
     lib.emit({
       continue: false,
+      ...(notes.length ? { systemMessage: notes.join("\n") } : {}),
       stopReason:
         `DB バックアップを実行できません: ${configured.reason}\n` +
-        `対処: ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP を実テーブルに合わせて記入してください` +
-        `（.claude/rules/prisma.md の「3点同期」）。\n` +
+        (knownProvider
+          ? `対処: ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP を実テーブルに合わせて記入してください` +
+            `（.claude/rules/prisma.md の「3点同期」）。\n`
+          : `なお datasource provider は "${provider}" です。${EXPORT_TOOL} が出力できるのは ` +
+            `PostgreSQL 方言の SQL だけなので、一覧を記入しても実行時に止まります。\n` +
+            `この provider 向けのバックアップ手段へ差し替えてください。\n`) +
         `まだテーブルが1つも無い初回マイグレーションでバックアップ不要と判断できる場合は、` +
         `ユーザー自身が migrate を実行してください。`,
     });
@@ -313,7 +330,7 @@ function main() {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 30000,
     });
-    lib.notify("PreToolUse", "DB backup completed before migrate.");
+    lib.notify("PreToolUse", withNotes("DB backup completed before migrate."));
   } catch (e) {
     const excerpt = ((e.stdout || "") + "\n" + (e.stderr || ""))
       .split("\n")
@@ -322,6 +339,7 @@ function main() {
       .join("\n");
     lib.emit({
       continue: false,
+      ...(notes.length ? { systemMessage: notes.join("\n") } : {}),
       stopReason:
         "DB backup failed. Fix before running migrate: " +
         e.message +
