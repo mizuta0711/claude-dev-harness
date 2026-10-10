@@ -497,7 +497,84 @@ test("H65: 引用符の中とラッパー越しは見えない（元からの限
     ["eval \"$(cat <<'EOF'", "git add -A", "EOF", ")\""].join("\n"),
   ];
   const wrapped = ["eval git add -A", "sudo git add -A", "env git add -A", "time git add -A"];
-  for (const cmd of [...quoted, ...wrapped]) {
+  // **査読が「直った」と思った3形は、限界①へ移っただけである**（5回目の査読の中4）。
+  // **引用符を外せば検出できる**（上の `$(…)` の外側のテスト）。
+  const quotedSubst = [
+    ['eval git commit -m "$(cat <<EOF', "msg", "git add -A", "EOF", ')"'].join("\n"),
+    ['echo git commit -m "$(cat <<EOF', "git add -A", "EOF", ')" | bash'].join("\n"),
+    ["ssh h git commit -m \"$(cat <<EOF", "git add -A", "EOF", ')"'].join("\n"),
+  ];
+  for (const cmd of [...quoted, ...wrapped, ...quotedSubst]) {
+    assert.equal(scope.isBlockedAdd(cmd), false, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), false, cmd);
+  }
+});
+
+// ---- H65: 軸②の残り（5回目の査読） ----
+
+test("H65: ブレースグループと関数定義の中は潰さない", () => {
+  // **`(` は塞いだのに `{` を忘れていた**（査読の高1・実行確認つき）。
+  // **1行だけ遡る方式では足りない** —— `{` が別の行にあると境界が改行になる。
+  const cases = [
+    ["{ cat <<EOF", "git add -A", "EOF", "} | bash"].join("\n"),
+    ["{ tee f <<EOF", "git add -A", "EOF", "} | bash"].join("\n"),
+    ["{", "cat <<EOF", "git add -A", "EOF", "}|bash"].join("\n"),
+    ["{ git commit -F - <<EOF", "git add -A", "EOF", "} | bash"].join("\n"),
+    ["(", "cat <<EOF", "git add -A", "EOF", ") | bash"].join("\n"),
+    // 関数定義も「後で実行される」ので潰さない
+    ["f() {", "cat <<EOF", "git add -A", "EOF", "}", "f | bash"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H65: `$(…)` の外側は「先頭が git」でなければ潰さない", () => {
+  // **どこかに `git` があれば通していた**（査読の高2・実行確認つき）。
+  // `eval git commit -m "$(cat <<EOF … )"` は本文の改行以降がコマンドとして走る。
+  // **引用符を外した形で検出できることを確かめる**（引用符つきは限界①）。
+  const cases = [
+    ["eval git commit -m $(cat <<EOF", "git add -A", "EOF", ")"].join("\n"),
+    ["echo git commit -m $(cat <<EOF", "git add -A", "EOF", ") | bash"].join("\n"),
+  ];
+  for (const cmd of cases) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+});
+
+test("H65: `git` のグローバルオプションの値をサブコマンドと取り違えない", () => {
+  // `git -C commit bisect run sh <<EOF` の `commit` は **`-C` の値**である（査読の中3）。
+  const unsafe = [
+    ["git -C commit bisect run sh <<EOF", "git add -A", "EOF"].join("\n"),
+    ["git --git-dir tag submodule foreach bash <<EOF", "git add -A", "EOF"].join("\n"),
+  ];
+  for (const cmd of unsafe) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+  // 正しい `-C` は潰す
+  const safe = ["git -C /d commit -F - <<EOF", "git add -A", "EOF"].join("\n");
+  assert.equal(scope.isBlockedAdd(safe), false, safe);
+  assert.equal(guard.isBlockedAdd(safe), false, safe);
+});
+
+test("H65: `gh` もサブコマンドを限る（`git` と対称にする）", () => {
+  // `gh alias set x '!bash'; gh x <<EOF` のように**別名を定義してから実行する形**がある（査読の低5）。
+  const unsafe = [
+    ["gh x <<EOF", "git add -A", "EOF"].join("\n"),
+    ["gh alias set x !bash", "gh x <<EOF", "git add -A", "EOF"].join("\n"),
+  ];
+  for (const cmd of unsafe) {
+    assert.equal(scope.isBlockedAdd(cmd), true, cmd);
+    assert.equal(guard.isBlockedAdd(cmd), true, cmd);
+  }
+  const safe = [
+    ["gh pr create --body-file - <<'EOF'", "git add -A と書く", "EOF"].join("\n"),
+    ["gh issue create -F - <<EOF", "git add -A と書く", "EOF"].join("\n"),
+  ];
+  for (const cmd of safe) {
     assert.equal(scope.isBlockedAdd(cmd), false, cmd);
     assert.equal(guard.isBlockedAdd(cmd), false, cmd);
   }

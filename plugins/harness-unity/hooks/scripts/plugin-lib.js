@@ -84,6 +84,39 @@ const SINK_PREFIXES = new Set(["sudo", "env", "command", "nohup", "time", "xargs
  * `git -c alias.x='!bash' x <<EOF` は**本文を bash が実行する**。
  * `git bisect run sh <<EOF` / `git submodule foreach bash <<EOF` も同型。
  */
+/**
+ * `git` のグローバルオプションのうち、**次のトークンを値として取る**もの。
+ * `parseGit` の `GIT_GLOBAL_VALUE_OPTS` と同じ役目だが、**あちらはこの位置より後ろで定義される**
+ * ため別に持つ（内容が食い違ったら `tests/git-scope.test.mjs` が落ちる）。
+ */
+const GIT_VALUE_OPTS = new Set(["-C", "--git-dir", "--work-tree", "--namespace", "--config-env"]);
+
+/**
+ * `gh` で本文を潰してよいサブコマンド。**`git` と同じく絞る。**
+ *
+ * **`gh` だけ制限が無いのは非対称だった**（査読の低5）——
+ * `gh alias set x '!bash'; gh x <<EOF` のように**別名を定義してから実行する形**がある。
+ */
+const GH_DATA_SUBCOMMANDS = new Set(["pr", "issue", "release", "gist", "api"]);
+
+/** `gh …` が本文をデータとして読む形か */
+function isGhDataForm(text) {
+  const tokens = String(text)
+    .split(/\s+/)
+    .map((t) => t.replace(/^[\s(]+/, ""))
+    .filter(Boolean)
+    .filter((t) => !/^[A-Za-z_][\w]*=/.test(t));
+  if (firstCommandName(text) !== "gh") return false;
+  const gi = tokens.findIndex((t) => t.split("/").pop().replace(/\.(exe|cmd|bat)$/i, "") === "gh");
+  if (gi < 0) return false;
+  for (let k = gi + 1; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.startsWith("-")) continue;
+    return GH_DATA_SUBCOMMANDS.has(t);
+  }
+  return false;
+}
+
 const GIT_MESSAGE_SUBCOMMANDS = new Set(["commit", "tag", "notes", "merge", "revert", "cherry-pick"]);
 
 /** コマンドの区切りと置換。**導入部にこれがあれば潰さない** */
@@ -92,7 +125,7 @@ const UNSAFE_IN_INTRODUCER = /[|;&`]|\$\(|>\(|>&/;
 /** 文字列の先頭から、前置きを飛ばした最初の実コマンド名。無ければ null */
 function firstCommandName(text) {
   for (const raw of String(text).split(/\s+/)) {
-    const token = raw.replace(/^[\s({]+/, "");
+    const token = raw.replace(/^[\s(]+/, "");
     if (!token) continue;
     if (/^[A-Za-z_][\w]*=/.test(token)) continue; // 環境変数の代入
     const base = token.split("/").pop().split(String.fromCharCode(92)).pop();
@@ -108,9 +141,13 @@ function firstCommandName(text) {
 function isGitMessageForm(text) {
   const tokens = String(text)
     .split(/\s+/)
-    .map((t) => t.replace(/^[\s({]+/, ""))
+    .map((t) => t.replace(/^[\s(]+/, ""))
     .filter(Boolean)
     .filter((t) => !/^[A-Za-z_][\w]*=/.test(t));
+  // **`git` は前置きを飛ばした「最初の」コマンドでなければならない。**
+  // どこかに `git` があれば通していたため、`eval git commit -m "$(cat <<EOF … )"` と
+  // `echo git commit -m "$(…)" | bash` が素通りした（査読の高2・実行確認つき）。
+  if (firstCommandName(text) !== "git") return false;
   const gi = tokens.findIndex((t) => {
     const base = t.split("/").pop().split(String.fromCharCode(92)).pop();
     return base.replace(/\.(exe|cmd|bat)$/i, "") === "git";
@@ -120,10 +157,54 @@ function isGitMessageForm(text) {
     const t = tokens[k];
     // **`-c` を認めない。** `git -c alias.x='!bash' x <<EOF` は本文が実行される
     if (t === "-c" || t.startsWith("-c") || t === "--exec-path" || t.startsWith("--exec-path")) return false;
+    // **グローバルオプションの「値」をサブコマンドと取り違えない。**
+    // `git -C commit bisect run sh <<EOF` の `commit` は `-C` の値である（査読の中3）。
+    if (GIT_VALUE_OPTS.has(t)) {
+      k++;
+      continue;
+    }
     if (t.startsWith("-")) continue;
     return GIT_MESSAGE_SUBCOMMANDS.has(t);
   }
   return false;
+}
+
+/**
+ * `at` の位置が、閉じていない**素のグループ**（`(` / `{`）の中にあるか。
+ *
+ * **1行だけ遡る方式では足りなかった**（査読の高1の残り）——
+ * `{` が**別の行**にあると境界が改行になり、グループの中だと分からない。
+ *
+ * ```
+ * {
+ * cat <<EOF
+ * git add -A
+ * EOF
+ * }|bash        ← **閉じ括弧の後ろで実行される**
+ * ```
+ *
+ * **`$(` と `${` は数えない。** あれは値になるだけで、
+ * 外側が `git` のメッセージ引数なら潰してよい（標準のコミット形）。
+ * 値が実行される形は `isSafeHeredocIntroducer` の `$(` の分岐で別に見る。
+ */
+function inOpenGroup(s, at) {
+  let depth = 0;
+  let sq = false;
+  for (let i = 0; i < at; i++) {
+    const c = s[i];
+    if (c === "'") {
+      sq = !sq;
+      continue;
+    }
+    if (sq) continue;
+    if (c === "(" || c === "{") {
+      if (s[i - 1] === "$") continue; // `$(` / `${` は値
+      depth++;
+    } else if (c === ")" || c === "}") {
+      if (depth > 0) depth--;
+    }
+  }
+  return depth > 0;
 }
 
 /**
@@ -134,13 +215,15 @@ function isGitMessageForm(text) {
  * @param afterDelim `<<DELIM` トークンの直後の位置
  */
 function isSafeHeredocIntroducer(s, at, afterDelim) {
+  // **閉じていない素のグループの中なら潰さない**（`{ … } | bash` / `( … ) | bash`）
+  if (inOpenGroup(s, at)) return false;
   // 手前: 直近の区切りから `<<` まで。**どの区切りで切れたかで外側の扱いが変わる**
   let start = 0;
   let boundary = null;
   let boundaryAt = -1;
   for (let k = at - 1; k >= 0; k--) {
     const c = s[k];
-    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`") {
+    if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`" || c === "{") {
       boundary = c;
       boundaryAt = k;
       start = k + 1;
@@ -148,7 +231,12 @@ function isSafeHeredocIntroducer(s, at, afterDelim) {
     }
   }
 
-  if (boundary === "`") return false; // バッククォートの中は値が実行されうる
+  // バッククォートの中は値が実行されうる
+  if (boundary === "`") return false;
+  // **ブレースグループ。** `{ cat <<EOF … EOF` の次に `} | bash` が来る形は
+  // **閉じ括弧の後ろで実行される**（素のサブシェルと同型。`(` は塞いだのに
+  // `{` を忘れていた。査読の高1・実行確認つき）。
+  if (boundary === "{") return false;
 
   if (boundary === "(") {
     const prev = s[boundaryAt - 1];
@@ -160,7 +248,7 @@ function isSafeHeredocIntroducer(s, at, afterDelim) {
       let outerStart = 0;
       for (let k = boundaryAt - 2; k >= 0; k--) {
         const c = s[k];
-        if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`") {
+        if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === "`" || c === "{") {
           outerStart = k + 1;
           break;
         }
@@ -185,8 +273,9 @@ function isSafeHeredocIntroducer(s, at, afterDelim) {
   const name = firstCommandName(before);
   if (!name) return false;
   if (!HEREDOC_DATA_SINKS.has(name)) return false;
-  // **`git` はサブコマンドを限る**（`-c` / `bisect` / `submodule` は本文が実行されうる）
+  // **`git` / `gh` はサブコマンドを限る**（`-c` / `bisect` / `submodule` / `alias` は本文が実行されうる）
   if (name === "git") return isGitMessageForm(before);
+  if (name === "gh") return isGhDataForm(before);
   return true;
 }
 
