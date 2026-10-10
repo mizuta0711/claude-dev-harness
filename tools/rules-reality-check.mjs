@@ -42,25 +42,54 @@ export function globToRegExp(glob) {
     "(?:" + inner.split(",").map((x) => x.trim()).join("|") + ")"
   );
   // `**` はディレクトリをまたぐ。`*` はまたがない。**正規表現を使わずに置き換える**
-  out = out.split("**").join("\u0000").split("*").join("[^/]*").split("\u0000").join(".*");
+  // **`**` + `/` は0階層にも一致させる。** させないと `src/**` + `/*.ts` が `src/a.ts` に
+  // 当たらず、**誤って「一度もロードされない」と断定する**（査読 中5）。
+  out = out
+    .split("**/").join("\u0001")
+    .split("**").join("\u0000")
+    .split("*").join("[^/]*")
+    .split("\u0001").join("(?:.*/)?")
+    .split("\u0000").join(".*");
   return new RegExp("^" + out + "$");
 }
 
 /** frontmatter の paths を読む */
 export function parsePaths(markdown) {
-  const m = /^---\n([\s\S]*?)\n---/.exec(String(markdown || "").replace(/\r\n/g, "\n"));
+  // **BOM を落とす**（付いていると frontmatter の `---` に一致しない。査読 中6）
+  const text = String(markdown || "").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+  const m = /^---\n([\s\S]*?)\n---/.exec(text);
   if (!m) return [];
+
+  /** 引用符と行末コメントを落とす。**落とさないと glob として使えない**（査読 中6） */
+  const clean = (raw) => {
+    let v = raw.trim().replace(/\s+#.*$/, "").trim();
+    const q = v.slice(0, 1);
+    if ((q === String.fromCharCode(34) || q === "'") && v.endsWith(q)) v = v.slice(1, -1);
+    return v.trim();
+  };
+
   const out = [];
   let inPaths = false;
   for (const line of m[1].split("\n")) {
+    // インライン配列（`paths: ["a", "b"]`）にも対応する
+    const inline = /^paths:\s*\[(.*)\]\s*$/.exec(line);
+    if (inline) {
+      for (const part of inline[1].split(",")) {
+        const v = clean(part);
+        if (v) out.push(v);
+      }
+      inPaths = false;
+      continue;
+    }
     if (/^paths:\s*$/.test(line)) {
       inPaths = true;
       continue;
     }
     if (inPaths) {
-      const item = /^\s*-\s*"?([^"]+?)"?\s*$/.exec(line);
+      const item = /^\s*-\s*(.+?)\s*$/.exec(line);
       if (item) {
-        out.push(item[1]);
+        const v = clean(item[1]);
+        if (v) out.push(v);
         continue;
       }
       if (/^\S/.test(line)) inPaths = false;
@@ -110,10 +139,68 @@ const GENERIC = new Set([
  * 拾うのはコードスパンの中だけで、さらに呼び出しの形（foo() / Foo.bar()）と注釈（@X）に限る。
  * パス・glob・拡張子つき・空白を含むもの（コマンド）は拾わない。
  */
+/**
+ * 否定・禁止の言い方。**この文脈の識別子は候補にしない。**
+ *
+ * **禁止の規約は、禁止する対象の名前を本文に書く。** そのため
+ * **規約が正しいほど B に引っかかる**（査読で指摘された構造的な欠陥）。
+ *
+ * > 実測（SimplePhone）: 初版は3件報告したが**全部誤報**だった ——
+ * > 「DI は導入していないので `hiltViewModel()` は**使えない**」
+ * > 「`collectAsStateWithLifecycle()` は … **入れていないため使えない**」
+ * > 「`fallbackToDestructiveMigration()` は利用者のデータを**消す**ので … **限る**」。
+ * > **3件とも、査読の指摘を受けて直したあとの正しい文面**である。
+ * > 適用時の文面（`49f2058`）は「ViewModel は `viewModel()` / `hiltViewModel()` で**取得する**」で、
+ * > **そちらが H27 の欠陥**だった。否定を外さないと、**直す前と直した後を区別できない**。
+ */
+const NEGATIVE = [
+  "使えない", "使わない", "使用しない", "使うな", "避ける", "禁止", "非推奨",
+  "導入していない", "入れていない", "しない", "せず", "ではなく", "代わりに",
+  "に限る", "消す", "選択肢にならない", "できない", "やめる", "外す", "不要",
+];
+
+/** その行が否定・禁止の文脈か */
+export function isNegativeContext(line) {
+  return NEGATIVE.some((w) => String(line).includes(w));
+}
+
+/**
+ * 本文を**文**へ切る。
+ *
+ * **行でも箇条書きの項目でも粗すぎる。** 否定は識別子と同じ文に現れるが、
+ * **隣の文には別の識別子についての否定がある**。
+ *
+ * > 実測（SimplePhone の適用時の文面）:
+ * > 「ViewModel は `viewModel()` / `hiltViewModel()` で**取得する**。」の**次の行**が
+ * > 「自分で `remember { MyViewModel() }` **しない**」だった。
+ * > 行や項目で見ると、**この否定が `hiltViewModel` に掛かっていると誤って読み**、
+ * > **本物の欠陥を落とす**（実測で落とした）。
+ */
+export function toSentences(markdown) {
+  const src = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  // 折り返しの行を前の行へ畳む（箇条書き・見出し・表・空行は新しい塊の始まり）
+  const items = [];
+  for (const line of src) {
+    const starts = /^\s*(?:[-*+]\s|\d+\.\s|#|\||>|```|\s*$)/.test(line);
+    if (starts || !items.length) items.push(line);
+    else items[items.length - 1] += " " + line;
+  }
+  // 句点で文へ切る
+  return items.flatMap((item) => item.split("。"));
+}
+
 export function extractIdentifiers(markdown) {
-  const spans = [...String(markdown || "").matchAll(/`([^`\n]+)`/g)].map((m) => m[1].trim());
   const found = new Set();
-  for (const span of spans) {
+  for (const sentence of toSentences(markdown)) {
+    if (isNegativeContext(sentence)) continue;
+    collectFromLine(sentence, found);
+  }
+  return [...found].sort();
+}
+
+function collectFromLine(line, found) {
+  for (const m of line.matchAll(/`([^`\n]+)`/g)) {
+    const span = m[1].trim();
     if (!span || /\s/.test(span)) continue;
     if (span.includes("/") || /\.(md|json|ts|tsx|kt|cs|xaml|js|mjs|yml|yaml)$/.test(span)) continue;
     const call = /^(@?[A-Za-z_][\w.]*)\s*\(/.exec(span);
@@ -125,7 +212,6 @@ export function extractIdentifiers(markdown) {
     if (bare.length < 4) continue;
     found.add(name);
   }
-  return [...found].sort();
 }
 
 /** 依存の宣言ファイルの中身（まとめて1本の文字列にする） */

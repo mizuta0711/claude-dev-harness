@@ -77,10 +77,10 @@ find src/app -name "page.tsx" | wc -l            # ページ数
 
 **実測: 2プロジェクトで同じ結末になった。**
 
-| プロジェクト | 経緯 | 結果 |
-|---|---|---|
-| A | 育てたが実装に追従しなかった | `02_database_design` / `03_api_design` / `05_type_definitions` / `06_service_repository_design` / `07_hooks_design` / `08_ai_prompt_design` の**6本すべて削除** |
-| B | テンプレート同梱のまま**誰も書き換えなかった**（2年） | 同じ6本 + `color_system` / `typography` / `icon_system`（1,837行）を**削除** |
+> | プロジェクト | 経緯 | 結果 |
+> |---|---|---|
+> | A | 育てたが実装に追従しなかった | `02_database_design` / `03_api_design` / `05_type_definitions` / `06_service_repository_design` / `07_hooks_design` / `08_ai_prompt_design` の**6本すべて削除** |
+> | B | テンプレート同梱のまま**誰も書き換えなかった**（2年） | 同じ6本 + `color_system` / `typography` / `icon_system`（1,837行）を**削除** |
 
 **死に方は違うが、どちらも生き残っていない。**
 B のケースは中身が別アプリの設計書のままで、**実装と真逆のことが書かれた文書が配られ続けていた**。

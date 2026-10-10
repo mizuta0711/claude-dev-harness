@@ -34,6 +34,10 @@ function isWatchedPath(rel) {
   // git の出力はつねに `/` 区切りなので、正規化は要らない
   const p = String(rel || "");
   if (p.startsWith("docs/")) return false;
+  // **`environment.md` は実態を書く場所である**（H55。スタックの実際の版・構成・固有の注意点）。
+  // ハーネスが「プロジェクト所有・配り切り」と決めた唯一の常時ファイルなので、
+  // ここに同じ基準を当ててはいけない（実測: CommSim の「WPF アプリが3本ある」等で鳴った）。
+  if (p.endsWith(".claude/harness/environment.md")) return false;
   return (
     p === "CLAUDE.md" ||
     p === "constitution.md" ||
@@ -97,25 +101,44 @@ function isSkippedLine(line) {
 const PATTERNS = [
   {
     name: "日付つきの但し書き",
-    // 「2026-08-16 時点」「2026/08/16 現在」「2026-08-16 の棚卸しで確認」
-    // **実物では誤検出0件だった**（「実測（2026-08-17）」のような出典表記には当たらない）
-    re: /\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*(?:時点|現在|の(?:棚卸し|調査|実測|確認|点検))/,
+    // ISO と**年月日表記**の両方を見る。日本語の文書では「2026年8月16日時点」が自然に出る（査読 中3）
+    re: /(?:\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?|\d{4}年\d{1,2}月(?:\d{1,2}日)?)\s*(?:時点|現在|の(?:棚卸し|調査|実測|確認|点検)|確認済み|確認した)/,
     why: "**書きたくなったら、それは実態を書こうとしている合図**（指示書 §3-5）。但し書きごと消す。",
   },
   {
     name: "存在の件数",
     // 数＋単位の後ろに**存在を述べる言葉**が続くものだけ。
-    // 「1箇所に集約する」「最大5ファイル」のような方針の言い方は当てない。
-    re: /\d+\s*(?:箇所|ファイル|本|件|行)[^。\n]{0,14}?(?:すべて|全て|ある(?:[。、）」]|$)|あった|あり、|存在|残って|残る|見つか|違反|使って|使用して)/,
+    // 単位は「個・画面」まで広げた（査読 中3。「26個のファイル」「10画面ある」）。
+    // **「つ」は入れない** —— 日本語の散文でいちばん汎用の助数詞で、
+    // 「決まりが3つある」「手作業が1つ残る」のような**方針の説明に当たってしまう**（実測）。
+    // **「N件ずつ」は様態**なので外す（「1件ずつ使用して」。査読 中1）
+    re: /\d+\s*(?:箇所|ファイル|本|件|行|個|画面)(?!ずつ)[^。\n]{0,14}?(?:すべて|全て|ある(?:[。、）」]|$)|あった|あり、|あります|存在|残って|残る|見つか|違反|使って|使用して)/,
     why: "**数は `grep` とファイルシステムが常に持っている**（指示書 §3-5）。数を消して、方針だけ残す。",
   },
   {
     name: "ゼロ件の主張",
-    // 「0件」「0箇所」は**今そこに無い**という実態そのもの。方針では出てこない
     re: /(?:^|[^\d])0\s*(?:件|箇所|本)/,
     why: "**「今は無い」は実態である**（指示書 §3-5）。無いことが前提の方針なら、方針として書く。",
   },
+  {
+    name: "現在の件数",
+    // 「現在 14 件」「全14ファイル」（査読 中3）
+    re: /(?:現在|全)\s*\d+\s*(?:件|箇所|本|ファイル|個|画面)/,
+    why: "**数は `grep` とファイルシステムが常に持っている**（指示書 §3-5）。",
+  },
 ];
+
+/**
+ * 条件・仮定の文か。**外す。**
+ *
+ * **これは実態ではなく方針である** —— 「違反が**1件でも**見つかっ**たら**直す」
+ * 「同じ処理が**3箇所に**残ってい**たら**共通化する」「**0件になるまで**直す」。
+ * 初版はこれらで鳴り、**判定が語彙の偶然に依存していた**
+ * （「1件ずつ取得せず」は鳴らないのに「1件ずつ使用して」は鳴る、という状態だった。査読 中1）。
+ */
+function isConditional(line) {
+  return /(?:たら|なら|れば|ならば|場合|とき|以上|未満|以下|超え|まで|でも)/.test(line);
+}
 
 /**
  * 1行を判定する。
@@ -123,9 +146,56 @@ const PATTERNS = [
  * @returns {{name: string, why: string}[]} 当たったパターン（空配列なら問題なし）
  */
 function scanLine(line) {
-  if (isSkippedLine(line) || isHistoryRow(line)) return [];
+  if (isSkippedLine(line) || isHistoryRow(line) || isConditional(line)) return [];
   const text = stripCode(line);
   return PATTERNS.filter((p) => p.re.test(text)).map(({ name, why }) => ({ name, why }));
+}
+
+/**
+ * **ファイル全体を状態つきで検査する。**
+ *
+ * **`scanLine` だけでは足りない。** `isSkippedLine` は1行しか見ないので、
+ * **複数行にわたる HTML コメントとコードフェンスの中身が検査されてしまう**（査読 中2）。
+ * `git diff -U0` には文脈が無いため、**ファイルを読まないと範囲が分からない**。
+ *
+ * > 実測: `templates/nextjs/.claude/rules/typescript.md` の「26本すべてが kebab-case」は
+ * > **複数行の HTML コメントの中**にあり、「本物の実態」ではなく**除外の取りこぼし**だった。
+ *
+ * @returns {{lineNo: number, line: string, hits: {name: string, why: string}[]}[]}
+ */
+function scanText(content) {
+  const out = [];
+  let inFence = false;
+  let inComment = false;
+  const lines = String(content || "").replace(/\r\n/g, "\n").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const t = line.trim();
+
+    if (/^(```|~~~)/.test(t)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    if (inComment) {
+      const close = t.lastIndexOf("-->");
+      if (close < 0) continue;
+      inComment = t.indexOf("<!--", close) >= 0;
+      continue;
+    }
+    {
+      const open = t.lastIndexOf("<!--");
+      if (open >= 0 && t.indexOf("-->", open) < 0) {
+        inComment = true;
+        continue;
+      }
+    }
+
+    const hits = scanLine(line);
+    if (hits.length) out.push({ lineNo: i + 1, line, hits });
+  }
+  return out;
 }
 
 /**
@@ -155,4 +225,4 @@ function scanDiff(diff) {
   return out;
 }
 
-module.exports = { scanDiff, scanLine, isWatchedPath, isHistoryRow, isSkippedLine, PATTERNS };
+module.exports = { scanDiff, scanLine, scanText, isWatchedPath, isHistoryRow, isSkippedLine, isConditional, PATTERNS };

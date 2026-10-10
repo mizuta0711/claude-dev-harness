@@ -84,8 +84,11 @@ function repoRoot(dir) {
  * （誤って deny すると正常な作業が止まる）。
  *
  * @returns {{dir: string, args: string}|null}
+ * **`sub` で探すサブコマンドを変えられる**（既定は `push`。`commit` を渡せば
+ * コミット前のフックからも同じ解決を使える —— 二重実装すると片方だけ古くなる）。
+ *
  */
-function resolveTarget(command, opts, startDir) {
+function resolveTarget(command, opts, startDir, sub = "push") {
   let cwd = startDir;
   for (const seg of scope.scanCommands(command, opts)) {
     const toks = scope.tokenize(seg.text, opts).map((t) => t.value);
@@ -94,7 +97,7 @@ function resolveTarget(command, opts, startDir) {
       cwd = path.resolve(cwd, fromGitBash(toks[1]));
       continue;
     }
-    const push = scope.gitInvocations(seg.text, opts).find((g) => g.sub === "push");
+    const push = scope.gitInvocations(seg.text, opts).find((g) => g.sub === sub);
     if (!push) continue;
     const ci = toks.indexOf("-C");
     const dir = ci >= 0 && toks[ci + 1] ? path.resolve(cwd, fromGitBash(toks[ci + 1])) : cwd;

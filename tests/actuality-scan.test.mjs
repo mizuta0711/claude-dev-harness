@@ -137,11 +137,14 @@ test("削除されたファイルで取り違えない（`+++ /dev/null`）", ()
 
 // ---- 配っているテンプレート自身に当てる（鳴りすぎを機械で押さえる） ----
 
-test("テンプレートの指示文書に当てて、鳴る行が3行を超えない", () => {
+test("配っているテンプレートの指示文書では1行も鳴らない", () => {
   // **この検査自身が鳴りすぎていないかを、配り物で測る。**
-  // 初版は 56行に当たった。較正後は2行（うち1件は本物の実態 ——
-  // `templates/nextjs/.claude/rules/typescript.md` の「26本すべてが kebab-case」）。
-  // **閾値を緩めたくなったら、それは判定が粗いという合図である。**
+  // 初版は 56行に当たった（判定を字面どおりに作ったため）。
+  //
+  // **閾値（`<= 3`）で逃げない。** 査読の指摘どおり、閾値だと**後退を見逃す**。
+  // **0件でなければ落とす** —— 配り物に実態が1行でもあれば、
+  // それを配られた全プロジェクトで鳴り続ける（実測: `01_development_docs/README.md` の
+  // 実測の表が5プロジェクトで鳴っていた。引用へ移して解消した）。
   const walk = (dir, out = []) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, e.name);
@@ -155,11 +158,86 @@ test("テンプレートの指示文書に当てて、鳴る行が3行を超え�
     if (!file.endsWith(".md")) continue;
     const rel = file.split(path.sep).join("/").replace(/^.*\/templates\/[^/]+\//, "");
     if (!scan.isWatchedPath(rel)) continue;
-    fs.readFileSync(file, "utf-8")
-      .split(/\r?\n/)
-      .forEach((line, i) => {
-        if (scan.scanLine(line).length) hits.push(`${rel}:${i + 1} ${line.trim().slice(0, 80)}`);
-      });
+    for (const h of scan.scanText(fs.readFileSync(file, "utf-8"))) {
+      hits.push(`${rel}:${h.lineNo} ${h.line.trim().slice(0, 80)}`);
+    }
   }
-  assert.ok(hits.length <= 3, `鳴りすぎている（${hits.length}行）:\n${hits.join("\n")}`);
+  assert.deepEqual(hits, [], `配り物に実態が残っている:${hits.join("\n")}`);
 });
+
+// ---- 査読（0.33.0 の初版）で出た穴の回帰 ----
+
+test("条件・方針の文では鳴らない（査読 中1）", () => {
+  // 初版はこれらで鳴り、**判定が語彙の偶然に依存していた**
+  //（「1件ずつ取得せず」は鳴らないのに「1件ずつ使用して」は鳴る、という状態だった）。
+  for (const line of [
+    "違反は1件でも見つかったら直す",
+    "同じ処理が3箇所に残っていたら共通化する",
+    "1件でも使用していたら削除しない",
+    "3本以上使っているなら抽出する",
+    "3ファイル以上に残っていれば",
+    "0件になるまで直す",
+    "ファイルが 0 件の場合は何もしない",
+    "N=0件のとき",
+    "1件ずつ使用して",
+    "1件ずつ取得せず",
+  ]) {
+    assert.deepEqual(scan.scanLine(line), [], line);
+  }
+});
+
+test("取りこぼしていた書き方を捕まえる（査読 中3）", () => {
+  // **日本語の文書では「年月日」表記と「現在 N 件」が自然な書き方である。**
+  // 元の事故は ISO 日付だったが、次に起きるのは別の書き方かもしれない。
+  for (const line of [
+    "2026年8月16日時点の構成",
+    "2026-08 時点",
+    "(2026-08-16 確認済み)",
+    "2026-08-16 確認した",
+    "現在 14 件",
+    "全14ファイル",
+    "26個のファイルがある",
+    "hooks は 5本あります",
+  ]) {
+    assert.ok(scan.scanLine(line).length, line);
+  }
+});
+
+test("「つ」は単位に入れない（散文でいちばん汎用の助数詞）", () => {
+  // 入れると「決まりが3つある」「手作業が1つ残る」のような**方針の説明に当たる**（実測）。
+  for (const line of ["そのための決まりが3つある。", "消したかった手作業が1つ残る"]) {
+    assert.deepEqual(scan.scanLine(line), [], line);
+  }
+});
+
+test("`environment.md` は検査しない（あれは実態を書く場所）", () => {
+  // H55 で「プロジェクト所有・配り切り」と決めた唯一の常時ファイルで、
+  // **スタックの実際の版・構成・固有の注意点を書く場所**である。
+  // 実測: CommSim の「WPF アプリが3本ある」「テストは2本立てで既に存在する」で鳴った。
+  assert.ok(!scan.isWatchedPath(".claude/harness/environment.md"));
+  assert.ok(scan.isWatchedPath(".claude/harness/core.md"));
+});
+
+test("複数行の HTML コメントとコードフェンスの中身は検査しない（査読 中2）", () => {
+  // `scanLine` は1行しか見ないので、**範囲を追うには本文を読む必要がある**。
+  // `git diff -U0` には文脈が無い。
+  const text = [
+    "<!--",
+    "3箇所すべてがこうなっている",   // コメントの中
+    "-->",
+    "```bash",
+    "0件のとき",                      // フェンスの中
+    "```",
+    "現在 14 件",                     // ここだけ鳴る
+  ].join("\n");
+  const hits = scan.scanText(text);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].lineNo, 7);
+});
+
+test("scanText は行番号を返す（警告でどこを直すか示すため）", () => {
+  const hits = scan.scanText(["方針の行", "現在 14 件"].join("\n"));
+  assert.equal(hits[0].lineNo, 2);
+});
+
+

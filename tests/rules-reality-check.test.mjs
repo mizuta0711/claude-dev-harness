@@ -104,7 +104,7 @@ test("1件でも一致すれば報告しない", () => {
 
 // ---- 検査 B: 名指しした API が無い ----
 
-test("ソースにも依存にも無い識別子を報告する（H27 の元の指摘）", () => {
+test("ソースにも依存にも無い識別子を報告する", () => {
   const dir = mkProject({
     ".claude/rules/compose-ui.md": rule(["src/**"], "`hiltViewModel()` で取得する"),
     "src/Screen.kt": "fun Screen() {}",
@@ -123,7 +123,11 @@ test("ソースに有れば報告しない", () => {
   assert.deepEqual(rc.check(dir).apiFindings, []);
 });
 
-test("依存の宣言に有れば報告しない（まだ使っていないだけ）", () => {
+test("依存の宣言に識別子名が出ていれば報告しない", () => {
+  // ⚠️ **照合は「識別子名が宣言ファイルの文字列に出てくるか」である。**
+  // 依存は**成果物の名前**（`lifecycle-runtime-compose`）で書かれ、API 名とは違うので、
+  // **「依存を入れたがまだ使っていない」は候補に出る**。これは割り切りで、
+  // 候補として確かめれば済む（査読の指摘どおり、依存宣言の効果そのものは検証できていない）。
   const dir = mkProject({
     ".claude/rules/compose-ui.md": rule(["src/**"], "`hiltViewModel()` で取得する"),
     "src/Screen.kt": "fun Screen() {}",
@@ -174,5 +178,66 @@ test("テンプレートの rules 自身は、生成直後に paths で鳴らな
         assert.doesNotThrow(() => rc.globToRegExp(g), `${env}/${f}: ${g}`);
       }
     }
+  }
+});
+
+// ---- 査読（0.33.0 の初版）で出た誤報の回帰 ----
+
+test("否定・禁止の文では報告しない（ここが最重要）", () => {
+  // **禁止の規約は、禁止する対象の名前を本文に書く。** そのため
+  // **規約が正しいほど鳴る**。初版は SimplePhone に3件報告したが**全部誤報**で、
+  // **3件とも査読の指摘を受けて直したあとの正しい文面**だった。
+  for (const body of [
+    "- **DI（Hilt / Koin / Dagger）は導入していない**ので `hiltViewModel()` は使えない",
+    "`collectAsStateWithLifecycle()` は **`lifecycle-runtime-compose` を入れていないため使えない**",
+    "`fallbackToDestructiveMigration()` は利用者のデータを消すので、意図的に選ぶ場合に限る",
+  ]) {
+    assert.deepEqual(rc.extractIdentifiers(body), [], body);
+  }
+});
+
+test("否定が隣の文にあっても、肯定の指示は報告する", () => {
+  // **ここを間違えると本物の欠陥を落とす。**
+  // 適用時の SimplePhone の文面は、次の行が別の識別子についての否定だった:
+  //   「ViewModel は `viewModel()` / `hiltViewModel()` で取得する。」
+  //   「**自分で `remember { MyViewModel() }` しない**（構成変更で作り直される）」
+  // 行や項目で見ると、この「しない」が `hiltViewModel` に掛かっていると誤って読む（実測で落とした）。
+  const body = [
+    "- ViewModel は `viewModel()` / `hiltViewModel()` で取得する。",
+    "  **自分で `remember { MyViewModel() }` しない**（構成変更で作り直され、状態が消える）",
+  ].join("\n");
+  assert.ok(rc.extractIdentifiers(body).includes("hiltViewModel"), JSON.stringify(rc.extractIdentifiers(body)));
+});
+
+test("否定が同じ文の後ろにあれば報告しない（折り返しも畳む）", () => {
+  // 箇条書きは折り返すので、**否定が次の行にあることがある**。
+  const body = [
+    "- **スキーマを変えたらマイグレーションを書く。** `fallbackToDestructiveMigration()` は",
+    "  **利用者のデータを消す**ので、開発中のみ・意図的に選ぶ場合に限る",
+  ].join("\n");
+  assert.deepEqual(rc.extractIdentifiers(body), []);
+});
+
+test("paths の書き方の揺れを読む（査読 中6）", () => {
+  // どれかで落ちると `parsePaths` が空配列になり、**そのルールが素通りする**
+  //（素通りしたことは出力されない）。
+  const expect = ["src/**", "app/**"];
+  assert.deepEqual(rc.parsePaths(["---", "paths:", "  - 'src/**'", "  - \"app/**\"", "---"].join("\n")), expect);
+  assert.deepEqual(rc.parsePaths(["---", 'paths: ["src/**", "app/**"]', "---"].join("\n")), expect);
+  assert.deepEqual(rc.parsePaths(["---", "paths:", '  - "src/**"  # コメント', "---"].join("\n")), ["src/**"]);
+  // BOM 付き
+  assert.deepEqual(rc.parsePaths("\uFEFF" + ["---", "paths:", '  - "src/**"', "---"].join("\n")), ["src/**"]);
+});
+
+test("`**` + `/` は0階層にも一致する（査読 中5）", () => {
+  // 一致させないと、**小規模プロジェクトや直下配置で誤って
+  // 「一度もロードされない」と断定する**。
+  for (const [g, f] of [
+    ["src/**/*.ts", "src/a.ts"],
+    ["src/app/**/page.tsx", "src/app/page.tsx"],
+    ["Assets/**/*.cs", "Assets/A.cs"],
+    ["**/*.kt", "a.kt"],
+  ]) {
+    assert.ok(rc.globToRegExp(g).test(f), `${g} ← ${f}`);
   }
 });
