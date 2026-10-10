@@ -16,18 +16,28 @@ tools/
 
 ## `export-to-sql.ts` — DB 全量バックアップ
 
-PostgreSQL の全テーブルを TRUNCATE + INSERT 形式の SQL としてエクスポートし、zip 圧縮する。
-
 ```bash
 npx tsx tools/export-to-sql.ts
 ```
 
-**出力**
+**取り方は datasource provider で変わる**
 
-- `tools/dump.sql` — 最新の SQL
-- `tools/backup/dump_YYYYMMDD.zip` — 日付付きバックアップ（同日2回目以降は `_2`, `_3` ...）
+| provider | 何をするか | 出力 |
+|---|---|---|
+| `postgresql` | 全テーブルを TRUNCATE + INSERT 形式の SQL にして zip 圧縮する | `tools/dump.sql` / `tools/backup/dump_YYYYMMDD.zip`（同日2回目以降は `_2`, `_3` ...） |
+| `sqlite` | **DB ファイルをコピーする**（WAL の `-wal` / `-shm` も一緒に） | `tools/backup/<db>.<時刻>.bak` |
+| それ以外 | **止まる。** この SQL 方言を出力できないため（復元できないダンプを「成功」と報告しない） | — |
 
 古い世代は自動的に削除される（既定10世代）。
+
+**失敗したら成功で終わらせない**
+
+1テーブルでも書き出せなければ**終了コード 1** で終わる。
+
+- 既存の `tools/dump.sql` は**上書きしない**（最後に成功したダンプを壊さないため）。
+  部分的な出力は診断用に `tools/dump.failed.sql` へ書く
+- `ORDERED_TABLES` のモデル名が Prisma クライアントに無い、または `DB_TABLE_MAP` に
+  テーブル名が無い場合は、**1件も書き出す前に**止まる
 
 **呼ばれるタイミング**
 
@@ -39,10 +49,11 @@ npx tsx tools/export-to-sql.ts
 
 1. `prisma/schema.prisma`
 2. `docs/設計書/テーブル定義書.md`（自動生成）
-3. `tools/export-to-sql.ts` の `ORDERED_TABLES` + `DB_TABLE_MAP`
+3. `tools/export-to-sql.ts` の `ORDERED_TABLES` + `DB_TABLE_MAP` — **PostgreSQL のときだけ。**
+   SQLite はファイルコピーなので、この一覧を読まない（書いても使われず腐る）
 
-<!-- TODO: 初回に ORDERED_TABLES をこのプロジェクトのテーブル構成へ書き換える
-     （外部キー制約を考慮した順序にすること）。 -->
+<!-- TODO: PostgreSQL なら、初回に ORDERED_TABLES をこのプロジェクトのテーブル構成へ
+     書き換える（外部キー制約を考慮した順序にすること）。SQLite なら記入は不要。 -->
 
 ---
 

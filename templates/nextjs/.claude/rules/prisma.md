@@ -38,13 +38,37 @@ paths:
 |---|------|---------|
 | 1 | スキーマ | `prisma/schema.prisma` |
 | 2 | 設計書 | `npx tsx tools/scripts/generate-table-docs.ts` を実行して自動生成 |
-| 3 | バックアップツール | `tools/export-to-sql.ts`（`ORDERED_TABLES` + `DB_TABLE_MAP`） |
+| 3 | バックアップツール | `tools/export-to-sql.ts`（`ORDERED_TABLES` + `DB_TABLE_MAP`）。**PostgreSQL のときだけ**（下記） |
 
-**1つでも更新漏れがあると、バックアップが不完全になる。**
+**1つでも更新漏れがあると、バックアップが不完全になる**（3点目は PostgreSQL のとき）。
 
-> `ORDERED_TABLES` はテンプレート出荷時は空（TODO）である。空のままだと空のダンプが
-> できてしまうため、`harness-nextjs` の `pre-migrate-backup` hook がこれを検出して
+### 3点目は provider で変わる
+
+**バックアップの取り方が `prisma/schema.prisma` の datasource provider で違う。**
+
+| provider | バックアップの取り方 | `ORDERED_TABLES` / `DB_TABLE_MAP` |
+|---|---|---|
+| `postgresql` | SQL ダンプ（`tools/dump.sql` ＋ zip 世代） | **必要。** ここから漏れたテーブルはバックアップに入らない |
+| `sqlite` | **DB ファイルのコピー**（`tools/backup/<db>.<時刻>.bak`） | **不要。** `export-to-sql.ts` は読まずに `return` する |
+| それ以外 | **取れない**（この SQL 方言を出力できないため、ツールが止まる） | — |
+
+> `ORDERED_TABLES` はテンプレート出荷時は空（TODO）である。PostgreSQL では空のままだと
+> 空のダンプができてしまうため、`harness-nextjs` の `pre-migrate-backup` hook がこれを検出して
 > `prisma migrate` をブロックする。最初の migrate の前に必ず記入すること。
+>
+> **SQLite ではブロックしない**（AC1。以前は provider を見ずに検査していたため、
+> **バックアップが使わない一覧を書かないと2回目以降の migrate が止まっていた**。
+> 書いた一覧は誰にも使われないので、必ず腐る）。
+
+### 1件でも失敗したら migrate は進まない
+
+`export-to-sql.ts` は**テーブル単位の失敗を握り潰さない**（H43）。1件でも書き出せなければ
+**終了コード 1** で終わり、`pre-migrate-backup` がそこで `prisma migrate` を止める。
+
+- 既存の `tools/dump.sql` は**上書きしない**（最後に成功したダンプを壊さないため）。
+  部分的な出力は診断用に `tools/dump.failed.sql` へ書く
+- `ORDERED_TABLES` のモデル名が Prisma クライアントに無い、または `DB_TABLE_MAP` に
+  テーブル名が無い場合は、**1件も書き出す前に**止まる
 
 ## 補足情報の置き場（重要）
 

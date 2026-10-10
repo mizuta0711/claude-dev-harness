@@ -148,6 +148,29 @@ function runsPrismaMigrate(raw, shell) {
 }
 
 /**
+ * `prisma/schema.prisma` の datasource provider を読む（AC1）。
+ *
+ * `tools/export-to-sql.ts` の `readDatasourceProvider()` と**同じ見方をする**
+ * （`datasource` ブロックの中だけを見る。`generator` の `provider` と紛れないため）。
+ * プラグインをまたいで require できないので、必要な分だけここに置く。
+ *
+ * **読めなければ null。** schema の位置が標準でないプロジェクトもあるため、
+ * 「読めない ＝ 非対応」とは扱わない（ツール側と同じ扱い）。
+ */
+function readDatasourceProvider(root) {
+  let src;
+  try {
+    src = fs.readFileSync(path.join(root, "prisma", "schema.prisma"), "utf-8");
+  } catch {
+    return null;
+  }
+  const block = src.match(/datasource\s+\w+\s*\{([\s\S]*?)\}/);
+  if (!block) return null;
+  const m = block[1].match(/provider\s*=\s*"([^"]+)"/);
+  return m ? m[1] : null;
+}
+
+/**
  * バックアップ対象テーブルが設定済みかを調べる。
  *
  * `tools/export-to-sql.ts` の `ORDERED_TABLES` はテンプレート出荷時 TODO（空配列）である。
@@ -159,9 +182,17 @@ function runsPrismaMigrate(raw, shell) {
  * 名前が違うと判定できないが、**黙って通すとチェックが効いていないことに誰も気づかない**。
  * その場合は `unknown: true` を返し、呼び出し側が**警告を出したうえで先へ進める**。
  *
- * @returns {{ok: true, unknown?: true} | {ok: false, reason: string}}
+ * **SQLite では検査しない（AC1）。** `export-to-sql.ts` は `provider === "sqlite"` なら
+ * DB ファイルのコピーで済ませ、`ORDERED_TABLES` を**読まない**。それでも空を検査していたため、
+ * **バックアップが使わない一覧を書かないと2回目以降の migrate が止まっていた**
+ * （書いた一覧は誰にも使われず、必ず腐る）。
+ *
+ * @param {string} root プロジェクトルート
+ * @param {string|null} [provider] datasource provider。省略時は従来どおり一覧を検査する
+ * @returns {{ok: true, unknown?: true, skipped?: string} | {ok: false, reason: string}}
  */
-function backupTargetsConfigured(root) {
+function backupTargetsConfigured(root, provider) {
+  if (provider === "sqlite") return { ok: true, skipped: "sqlite" };
   const file = path.join(root, EXPORT_TOOL);
   let src;
   try {
@@ -229,6 +260,7 @@ function main() {
   if (!runsPrismaMigrate(command, shell)) process.exit(0);
 
   const root = lib.projectDir();
+  const provider = readDatasourceProvider(root);
 
   if (isFirstMigration(root)) {
     // 画面と Claude の文脈の両方へ（#23）
@@ -236,13 +268,17 @@ function main() {
       "PreToolUse",
       "初回マイグレーションのため DB バックアップをスキップしました" +
         "（prisma/migrations/ に適用済みマイグレーションが無く、保護すべき既存データが存在しないため）。\n" +
-        `2回目以降は ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP が必要になります。` +
-        "スキーマが固まった時点で記入してください（.claude/rules/prisma.md の「3点同期」）。"
+        // SQLite はファイルコピーでバックアップするので、一覧の記入は要らない（AC1）
+        (provider === "sqlite"
+          ? `provider は sqlite なので、2回目以降は ${EXPORT_TOOL} が DB ファイルをコピーします` +
+            "（ORDERED_TABLES / DB_TABLE_MAP の記入は不要）。"
+          : `2回目以降は ${EXPORT_TOOL} の ORDERED_TABLES / DB_TABLE_MAP が必要になります。` +
+            "スキーマが固まった時点で記入してください（.claude/rules/prisma.md の「3点同期」）。")
     );
     process.exit(0);
   }
 
-  const configured = backupTargetsConfigured(root);
+  const configured = backupTargetsConfigured(root, provider);
   if (configured.ok && configured.unknown) {
     // 判定できなかった。**通すが黙らない。**
     // 黙って通すと「ブロックが効いている」と誤認したまま運用が続く（実測で発生した）。
@@ -299,4 +335,10 @@ function main() {
 // （囲わないと require した瞬間に stdin を読みに行って固まる）。
 if (require.main === module) main();
 
-module.exports = { blankQuoted, runsPrismaMigrate, backupTargetsConfigured, isFirstMigration };
+module.exports = {
+  blankQuoted,
+  runsPrismaMigrate,
+  readDatasourceProvider,
+  backupTargetsConfigured,
+  isFirstMigration,
+};

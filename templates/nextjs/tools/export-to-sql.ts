@@ -1,5 +1,5 @@
 // npx tsx tools/export-to-sql.ts
-// データベースエクスポートツール (v1.1.0)
+// データベースエクスポートツール (v1.2.0)
 //
 // 機能:
 // - 全テーブルの TRUNCATE + INSERT 文を生成
@@ -7,12 +7,14 @@
 // - text[] 配列、JSON、日付、boolean に対応
 // - zip 圧縮バックアップ（同日複数回対応）
 // - 古い世代の自動削除（BACKUP_GENERATIONS 世代を残す）
+// - 1件でも失敗したら終了コード 1（部分的なダンプをバックアップ済みと誤認させない）
 //
 // 使用方法:
 // npx tsx tools/export-to-sql.ts
 //
 // 出力:
-// tools/dump.sql                    - PostgreSQL 用 SQL ファイル
+// tools/dump.sql                    - PostgreSQL 用 SQL ファイル（全テーブル成功時のみ）
+// tools/dump.failed.sql             - 1件でも失敗したときの診断用（dump.sql は上書きしない）
 // tools/backup/dump_YYYYMMDD.zip   - 日付付きバックアップ
 // tools/backup/dump_YYYYMMDD_2.zip - 同日2回目以降
 // tools/backup/<db>.<timestamp>.bak - SQLite のファイルコピー
@@ -33,6 +35,12 @@ import * as path from "path";
 
 const prisma = new PrismaClient();
 const execAsync = promisify(exec);
+
+/**
+ * このツールの版。**出力の見出しもこれを使う。**
+ * 以前は見出しに v1.0.0 を直書きしていて、冒頭コメントの v1.1.0 と食い違っていた（H43）。
+ */
+const TOOL_VERSION = "1.2.0";
 
 // ========================================
 // テーブル定義
@@ -64,8 +72,10 @@ const ORDERED_TABLES: string[] = [
  *
  * ⚠️ TODO（テンプレート出荷時は空。**ORDERED_TABLES と対で必ず記入すること**）
  *
- * ORDERED_TABLES に載っているのにここに無いモデルは出力されない
- * （＝そのテーブルだけ静かにバックアップから漏れる）。両方を同時に更新すること。
+ * ORDERED_TABLES に載っているのにここに無いモデルは、**実行前の検査で止まる**（v1.2.0・H43）。
+ * それまでは `DB_TABLE_MAP[modelName] ?? modelName` のフォールバックで、
+ * **引用符なしのテーブル名のまま SQL を生成していた**（復元できないダンプが静かにできる）。
+ * 両方を同時に更新すること。
  */
 const DB_TABLE_MAP: Record<string, string> = {
   // user: 'public."User"',
@@ -387,9 +397,39 @@ function backupSqliteFile(): void {
 // エクスポート処理
 // ========================================
 
+/**
+ * ORDERED_TABLES の各モデル名が、**Prisma クライアントと DB_TABLE_MAP の両方にあるか**を
+ * エクスポートの前に調べる（H43）。
+ *
+ * 1テーブルでも欠けていれば、そこだけ中身の無いダンプができる。
+ * **実行してから気づくのでは遅い**（ダンプを「成功」として信じたまま migrate へ進む）ので、
+ * 1件も書き出す前に全部そろっているかを確かめる。
+ *
+ * @returns 問題の説明。空配列なら問題なし
+ */
+function validateTableConfig(): string[] {
+  const problems: string[] = [];
+  const client = prisma as unknown as Record<string, { findMany?: unknown } | undefined>;
+  for (const modelName of ORDERED_TABLES) {
+    if (typeof client[modelName]?.findMany !== "function") {
+      problems.push(
+        `${modelName}: Prisma クライアントに該当モデルがありません` +
+          `（schema.prisma のモデル名を、先頭小文字のキャメルケースで書く）`
+      );
+      continue;
+    }
+    if (!DB_TABLE_MAP[modelName]) {
+      problems.push(
+        `${modelName}: DB_TABLE_MAP にテーブル名がありません（例: '${modelName}: public."X"'）`
+      );
+    }
+  }
+  return problems;
+}
+
 async function exportTable(
   modelName: string
-): Promise<{ sql: string; rowCount: number }> {
+): Promise<{ sql: string; rowCount: number; failed?: true }> {
   try {
     const model = (
       prisma as unknown as Record<
@@ -398,8 +438,10 @@ async function exportTable(
       >
     )[modelName];
     if (!model?.findMany) {
-      console.warn(`  Model ${modelName} not found, skipping...`);
-      return { sql: "", rowCount: 0 };
+      // validateTableConfig() が先に止めるので通常は来ない。
+      // **来たら失敗として扱う**（黙って飛ばすと、そのテーブルだけ抜けたダンプが成功になる）
+      console.error(`  Error: Model ${modelName} not found`);
+      return { sql: `-- ERROR: Model ${modelName} not found`, rowCount: 0, failed: true };
     }
 
     const dbTable = DB_TABLE_MAP[modelName] ?? modelName;
@@ -436,6 +478,7 @@ async function exportTable(
     return {
       sql: `-- ERROR: Failed to export ${modelName}: ${error}`,
       rowCount: 0,
+      failed: true,
     };
   }
 }
@@ -490,13 +533,24 @@ async function main() {
     process.exit(1);
   }
 
+  // 1件も書き出す前に、対象がそろっているかを確かめる（H43）
+  const problems = validateTableConfig();
+  if (problems.length > 0) {
+    console.error("Error: バックアップ対象の設定に問題があります。");
+    for (const p of problems) console.error(`  - ${p}`);
+    console.error(
+      "  .claude/rules/prisma.md の「3点同期」に従い、ORDERED_TABLES と DB_TABLE_MAP を直してください。"
+    );
+    process.exit(1);
+  }
+
   console.log("Starting database export...\n");
   ensureBackupDirectory();
 
   const sqlChunks: string[] = [];
 
   // ヘッダー
-  sqlChunks.push("-- Database Export (v1.0.0)");
+  sqlChunks.push(`-- Database Export (v${TOOL_VERSION})`);
   sqlChunks.push(`-- Generated at: ${new Date().toISOString()}`);
   sqlChunks.push(
     "-- Tables are ordered by foreign key dependencies (parents first)"
@@ -511,9 +565,11 @@ async function main() {
 
   let totalTables = 0;
   let totalRows = 0;
+  const failed: string[] = [];
 
   for (const tableName of ORDERED_TABLES) {
     const result = await exportTable(tableName);
+    if (result.failed) failed.push(tableName);
     if (result.sql) {
       sqlChunks.push(result.sql);
       totalTables++;
@@ -534,6 +590,23 @@ async function main() {
   sqlChunks.push(`-- Generated at: ${new Date().toISOString()}`);
 
   const fullSql = sqlChunks.join("\n\n");
+
+  // **1件でも失敗したら成功で終わらせない（H43）。**
+  // 以前は `-- ERROR:` を SQL に書いて続行し、終了コード 0 で終わっていたため、
+  // pre-migrate-backup フックが**一部の欠けたダンプをバックアップ成功として migrate を通した**。
+  //
+  // 既存の `tools/dump.sql` は**上書きしない**（最後に成功したダンプを壊さない）。
+  // 診断用に別名で書き出し、zip も作らない（zip があると「世代が残っている」と誤認する）。
+  if (failed.length > 0) {
+    const failedPath = "tools/dump.failed.sql";
+    writeFileSync(failedPath, fullSql);
+    console.error(`\nExport FAILED: ${failed.length} table(s) could not be exported.`);
+    for (const name of failed) console.error(`  - ${name}`);
+    console.error(`  Partial output (for diagnosis only): ${failedPath}`);
+    console.error("  tools/dump.sql is left untouched. Fix the errors above and run again.");
+    process.exit(1);
+  }
+
   const outputPath = "tools/dump.sql";
   writeFileSync(outputPath, fullSql);
 

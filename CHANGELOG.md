@@ -57,6 +57,56 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [nextjs 0.5.3] — Prisma のバックアップを provider 別にし、失敗を握り潰さなくした（AC1・AC2・H43）
+
+**3件は同じ束である。** `pre-migrate-backup` フックと `tools/export-to-sql.ts` が
+**datasource provider を見ていない**こと、**失敗を成功として返す**ことが根にあった。
+
+### AC1: SQLite で、誰も使わない一覧を書かないと migrate が止まっていた
+
+`export-to-sql.ts` は `provider === "sqlite"` なら `backupSqliteFile()` で DB ファイルを
+コピーして `return` し、**`ORDERED_TABLES` を読まない**。にもかかわらずフックは provider を
+見ずに一覧の空を検査していたため、**バックアップが使わない一覧を書かないと2回目以降の
+migrate がブロックされた**。書いた一覧は誰にも使われず、必ず腐る。
+
+フックが `prisma/schema.prisma` の datasource provider を読むようにし（ツール側の
+`readDatasourceProvider()` と同じ見方 —— `datasource` ブロックの中だけを見る）、
+**sqlite では一覧を検査しない**。初回 migrate をスキップしたときの案内文も provider 別にした。
+**読めなかったときは従来どおり検査する**（ツール側も同じ倒し方なので挙動が揃う）。
+
+### AC2: 「3点同期」が provider 別になっていなかった
+
+`rules/prisma.md` の3点目（`ORDERED_TABLES` / `DB_TABLE_MAP`）と
+「1つでも更新漏れがあるとバックアップが不完全になる」は、**SQLite では成り立たない**。
+provider ごとの表に書き換え、`tools/README.md` も同じ形に揃えた。
+
+### H43: テーブル単位の失敗を握り潰し、終了コード 0 で終わっていた
+
+`exportTable()` の `catch` が `-- ERROR:` を SQL に書いて続行していたため、
+**一部が欠けたダンプをフックがバックアップ成功として migrate に通していた**。
+
+| 変更 | 内容 |
+|------|------|
+| 失敗の集約 | 1件でも失敗したら **終了コード 1**。フックがそこで migrate を止める |
+| `tools/dump.sql` | **上書きしない**（最後に成功したダンプを壊さない）。部分出力は `tools/dump.failed.sql` へ |
+| zip 世代 | 失敗時は**作らない**（zip があると「世代が残っている」と誤認する） |
+| 事前検査 | `ORDERED_TABLES` の各モデル名が Prisma クライアントと `DB_TABLE_MAP` の両方にあるかを、**1件も書き出す前に**確かめる |
+| モデル不在 | 従来は warning を出して**空で続行**していた（そのテーブルだけ静かに漏れる）。失敗として扱う |
+| 版表記 | 出力見出しの `v1.0.0` 直書きをやめ、`TOOL_VERSION` 1箇所に寄せた（冒頭コメントと食い違っていた）。v1.2.0 |
+
+**`DB_TABLE_MAP` に無いモデル名のフォールバック（`?? modelName`）は死んだ経路になった。**
+以前はここを通って**引用符なしのテーブル名で SQL を生成**しており、コメントの
+「ここに無いモデルは出力されない」も実装と食い違っていた（実際は出力され、復元できない）。
+
+### 自動テスト
+
+フック側は `tests/pre-migrate-backup.test.mjs` に4本足した（provider の読み取り・sqlite の
+素通り・postgresql の従来どおり・provider 省略時の既定）。**`export-to-sql.ts` 側は自動テストが無い**
+——`@prisma/client` に依存するテンプレート層の TS で、このリポジトリの「依存パッケージを使わない」
+方針では回せない。型チェック（`tsc --noEmit --strict`）までで止めてある。
+
+docs 影響: あり（templates/nextjs/.claude/rules/prisma.md — 3点同期の provider 別化／templates/nextjs/tools/README.md — 取り方と失敗時の挙動）
+
 ## [0.39.1] — 壊れた config で確認が黙って減る件を直した（H51）
 
 **`guarded-command-ask` は、`harness.config.json` の JSON が壊れていると

@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,4 +89,105 @@ test("PowerShell では `\` はエスケープではない", () => {
   const cmd = String.raw`cd "D:\w"; npx prisma migrate deploy`;
   assert.equal(hook.runsPrismaMigrate(cmd, "powershell"), true);
   assert.notEqual(hook.blankQuoted(cmd, "powershell"), null, "引用符は閉じている");
+});
+
+// ---------------------------------------------------------------------------
+// AC1: datasource provider を見ずに ORDERED_TABLES の空を検査していた
+//
+// `export-to-sql.ts` は provider が sqlite なら DB ファイルのコピーで済ませ、
+// `ORDERED_TABLES` を**読まない**。それでも空を検査していたため、
+// **バックアップが使わない一覧を書かないと2回目以降の migrate が止まっていた。**
+// ---------------------------------------------------------------------------
+
+/** schema.prisma と export-to-sql.ts を置いた一時プロジェクトを作る */
+function mkProject({ provider, orderedTables } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-migrate-"));
+  if (provider !== undefined) {
+    fs.mkdirSync(path.join(dir, "prisma"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "prisma", "schema.prisma"),
+      [
+        'generator client {',
+        '  provider = "prisma-client-js"',
+        "}",
+        "",
+        "datasource db {",
+        `  provider = "${provider}"`,
+        '  url      = env("DATABASE_URL")',
+        "}",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+  }
+  fs.mkdirSync(path.join(dir, "tools"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "tools", "export-to-sql.ts"),
+    `const ORDERED_TABLES: string[] = [${(orderedTables || []).map((t) => `"${t}"`).join(", ")}];\n`,
+    "utf-8",
+  );
+  return dir;
+}
+
+test("AC1: datasource ブロックの provider を読む（generator の provider と混ぜない）", () => {
+  const dir = mkProject({ provider: "sqlite" });
+  try {
+    assert.equal(hook.readDatasourceProvider(dir), "sqlite");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  const pg = mkProject({ provider: "postgresql" });
+  try {
+    assert.equal(hook.readDatasourceProvider(pg), "postgresql");
+  } finally {
+    fs.rmSync(pg, { recursive: true, force: true });
+  }
+  // schema が無い構成では判定しない（「読めない ＝ 非対応」とは扱わない）
+  const none = mkProject({});
+  try {
+    assert.equal(hook.readDatasourceProvider(none), null);
+  } finally {
+    fs.rmSync(none, { recursive: true, force: true });
+  }
+});
+
+test("AC1: sqlite では ORDERED_TABLES が空でも止めない", () => {
+  const dir = mkProject({ provider: "sqlite", orderedTables: [] });
+  try {
+    const r = hook.backupTargetsConfigured(dir, "sqlite");
+    assert.equal(r.ok, true);
+    assert.equal(r.skipped, "sqlite");
+    // 一覧の命名が違っても「判定できない」警告を出さない（読まない一覧なので）
+    assert.equal(r.unknown, undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("AC1: postgresql では従来どおり空を検出して止める", () => {
+  const dir = mkProject({ provider: "postgresql", orderedTables: [] });
+  try {
+    const r = hook.backupTargetsConfigured(dir, "postgresql");
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /ORDERED_TABLES/);
+    // 記入済みなら通る
+    const filled = mkProject({ provider: "postgresql", orderedTables: ["user"] });
+    try {
+      assert.deepEqual(hook.backupTargetsConfigured(filled, "postgresql"), { ok: true });
+    } finally {
+      fs.rmSync(filled, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("AC1: provider を省略すると従来どおり検査する（判定不能のときの既定）", () => {
+  const dir = mkProject({ orderedTables: [] });
+  try {
+    assert.equal(hook.backupTargetsConfigured(dir).ok, false);
+    assert.equal(hook.backupTargetsConfigured(dir, null).ok, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
