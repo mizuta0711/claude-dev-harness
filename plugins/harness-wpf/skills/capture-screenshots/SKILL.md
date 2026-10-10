@@ -20,7 +20,7 @@ allowed-tools: "PowerShell, Read, Glob"
 1. **ソフトウェアレンダリングへ切替**（必須）：WPFはハードウェアレンダリングのままだとGDIキャプチャが「タイトルバーだけで中身が真っ白」になる。`Set-WpfSoftwareRender`（`HKCU\…\Avalon.Graphics\DisableHWAcceleration=1`）を実行する。
 2. **対象アプリを起動**：スクショにデモデータを写したい場合は、あらかじめ用意したサンプルデータを引数に起動する。
 3. **画面操作**：UIAutomationのヘルパー（`Invoke-MenuItem` / `Invoke-Button` / `Toggle-Button`）を使う。自前描画コントロール（AutomationPeerが無くUIAに出ない要素）はウィンドウ実枠＋座標で叩く（`Invoke-ClickPoint` / `Click-RelativePoint`。オフセット値は対象コントロールのレイアウトに合わせて実測して渡す）。ファイル選択は `Invoke-Button '…' 'ファイルを開く'` → `Load-OpenFileDialog @(paths)`（最下部EditへWM_SETTEXT＋開くボタンBM_CLICK）。
-4. **撮影**：`Capture-AppWindow '<タイトル一部>' screenshots/<画面名>_<yyyymmdd>.png`（AttachThreadInputで前面化＋DWM実枠をCopyFromScreen）。**保存先が無ければ先に作る**（`New-Item -ItemType Directory -Force screenshots`）。
+4. **撮影**：`Capture-AppWindow '<タイトル一部>' 'screenshots/<画面名>_<yyyymmdd>.png'`（AttachThreadInputで前面化＋DWM実枠をCopyFromScreen）。**保存先が無ければ先に作る**（`New-Item -ItemType Directory -Force screenshots`）。**保存先は引用符で囲む**（`<` は PowerShell の予約演算子なので、プレースホルダ表記のまま打つとパースエラーになる）。
 
    > ⚠️ **リポジトリのルート直下に `out.png` のような名前で落とさない。**
    > 撮り直すたびに上書きされ、消し忘れがルートに散る。**保存先はプロジェクトが決めた
@@ -43,6 +43,12 @@ allowed-tools: "PowerShell, Read, Glob"
 - 撮影用PowerShellドライバを一時ファイルで作る場合、Windows PowerShell 5.1はBOM無しUTF-8をCP932と誤読して日本語が化けるため、実行前に**UTF-8 BOM付き**へ再エンコードする（`[System.IO.File]::WriteAllText($p,$t,(New-Object System.Text.UTF8Encoding($true)))`）。
   同じ理由で、同梱の `ui-capture.ps1` 自体も UTF-8 BOM 付きで配布している。
 - スクショの格納先は `screenshots/`（既定）や `docs/`・`assets/` 配下など、プロジェクトで決めた場所に統一する。
+- **この手順のコマンドは、テンプレートの `permissions.allow` では覆えない**（2026-10-11 実測・H36）。
+  ドットソース（`. "<パス>"`）は**完全一致しか通らず**、`${CLAUDE_PLUGIN_ROOT}` の展開先には
+  ユーザー名が入るため、**`templates/` に書ける形が存在しない**
+  （実測表は `docs/reference/permissionsベースライン.md` §4）。
+  `default` / `plan` モードで確認が出るのが煩わしい場合は、**各プロジェクトの
+  `settings.local.json`**（Git 管理外）に実パスの完全一致で足す。`bypassPermissions` では出ない。
 
 ## 結果報告
 

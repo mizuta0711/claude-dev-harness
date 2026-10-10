@@ -86,7 +86,9 @@ private async Task SaveAsync(CancellationToken ct)   // ct は自動で渡され
 Core のイベントはバックグラウンドスレッドから発火してよい。**UI へ反映する時に ViewModel が Dispatcher で切り替える。**
 
 ```csharp
-_service.StateChanged += (_, s) =>
+_service.StateChanged += OnStateChanged;   // 解除できる形（下の「イベント購読の解除」）
+
+private void OnStateChanged(object? sender, string s) =>
     Application.Current.Dispatcher.BeginInvoke(() => Status = s);
 ```
 
@@ -106,7 +108,9 @@ public void Cleanup() => _service.StateChanged -= OnStateChanged;
   イベント経由で参照され続けて解放されない
 - **画面や対象を動的に追加・削除する作りでは、解除漏れは使うほど積み上がる**
 - 解除は破棄処理（`Cleanup()` / `Dispose()` 等）に集約し、**購読と同じ場所で対にして書く**
-- ラムダで購読すると `-=` で外せない。**解除する購読はメソッド参照にする**
+- **ラムダはデリゲートを保持しない書き方では `-=` で外せない。** 解除する購読はメソッド参照にする
+- **`Cleanup()` / `Dispose()` を誰が呼ぶかまで決める。** WPF の ViewModel は自動で破棄されない
+  —— `Window.Closed`・画面遷移の離脱・親 ViewModel が子を捨てる箇所のどれかで呼ぶ
 
 ## ViewModel 間の通信（Messenger）
 

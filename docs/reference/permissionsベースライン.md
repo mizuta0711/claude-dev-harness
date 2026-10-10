@@ -318,8 +318,10 @@ Claude Code **2.1.295** / headless `claude -p` + `--output-format json` の
 | `PowerShell(*ui-capture.ps1*)` | `. "C:/…/tools/ui-capture.ps1"` | ❌ deny |
 | `PowerShell(. *ui-capture.ps1*)` | 同上 | ❌ deny |
 | `PowerShell(. "C:/…/<親ディレクトリ>/*)` | 同上 | ❌ deny |
+| `PowerShell(. "C:/…/<親ディレクトリ>/*")` | 同上 | ❌ deny（**引用符を閉じても同じ** —— 不正形のせいではない） |
 | `PowerShell(. "C:/Users/*)` | 同上 | ❌ deny |
 | `PowerShell(.:*)` | 同上 | ❌ deny |
+| `PowerShell(. C:/…/<親ディレクトリ>/*)` | `. C:/…/ui-capture.ps1`（**引用符なし**） | ❌ deny |
 
 **ドットソース（`. "<パス>"`）は完全一致しか通らない。** `PowerShell` ツールは
 コマンドを操作単位に分解して照合し（deny の理由に
@@ -330,6 +332,19 @@ Claude Code **2.1.295** / headless `claude -p` + `--output-format json` の
 `${CLAUDE_PLUGIN_ROOT}` の展開先は `C:\Users\<名前>\.claude\plugins\…` で、
 完全一致しか効かないなら**ルールにユーザー名が入る**。
 `templates/` に個人の値を入れない方針（`CLAUDE.md` §7）と両立しない。
+
+> **測っていないこと**（断定の範囲を限るために書いておく）。
+> ① `PowerShell(. "${CLAUDE_PLUGIN_ROOT}/tools/ui-capture.ps1")` という**展開前の文字列**での完全一致。
+> 照合の対象は**提出されたコマンド文字列**で、実在プロジェクトに溜まっていた allow は
+> 展開後の絶対パスだった（`${CLAUDE_PLUGIN_ROOT}` は素の PowerShell では展開されない → H21）ため
+> **一致しないと見ているが、測ってはいない**。
+> ② 上表は `.`（ドットソース）についての結果で、`&`（呼び出し演算子）・`powershell -File` は未測。
+
+**決定（2026-10-11・ユーザー判断）: テンプレートの `permissions.allow` には入れない。**
+覆える形が無いので、**許可は各プロジェクトの `settings.local.json`**（Git 管理外・実パスの
+完全一致）に任せる。`bypassPermissions` では確認そのものが出ないため、
+**実害は `default` / `plan` モードで使うときだけ**に限られる。
+同じ旨を `plugins/harness-wpf/skills/capture-screenshots/SKILL.md` の補足にも書いた。
 
 > ⚠️ **プロジェクト側に溜まった allow も、この形だと効いていない可能性がある。**
 > 実在のプロジェクトの `settings.local.json` には

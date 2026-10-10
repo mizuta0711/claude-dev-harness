@@ -30,15 +30,25 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  * **鳴りすぎないこと**が要件（R3）。拾うのは「テンプレートが permissions で言及している
  * 実行ファイル」で始まる行だけにする。**そのテンプレートが関心を持っていないコマンドは見ない。**
  *
- * ## 何を検査できないか（2026-10-11 実測・H36）
+ * ## wpf については、実質1行も検査していない（2026-10-11 実測）
  *
- * **PowerShell のドットソース行（`. "<パス>"`）は、そもそも allow で覆えない。**
- * あの形は**完全一致しか通らず**、前方一致もワイルドカードも効かない
- * （`docs/reference/permissionsベースライン.md` §4 の実測表）。
+ * 理由は2つあり、**どちらもコマンドの書き方とは別**である。
+ *
+ * 1. **同名スキルを `listDirs("plugins")` の先頭一致で解決している。** `plugins/` は
+ *    `harness-android` が先に来るため、`templates/wpf` の
+ *    `verification.skill: capture-screenshots` は **android 側の SKILL.md** に解決される
+ *    （`plugins/harness-wpf/skills/capture-screenshots/SKILL.md` は実在するのに読まれない）。
+ *    **環境ごとのプラグインを優先する解決にしないと直らない**（別途起票）
+ * 2. wpf の permissions が言及する実行ファイルは `dotnet` だけなので、
+ *    どちらの SKILL.md を読んでも**該当行が0件**になる
+ *
+ * ## そもそも allow で覆えない形がある（H36・2026-10-11 実測）
+ *
+ * **PowerShell のドットソース行（`. "<パス>"`）は完全一致しか通らない。**
+ * 前方一致もワイルドカードも効かない（`docs/reference/permissionsベースライン.md` §4 の実測表）。
  * プラグイン同梱スクリプトのパスにはユーザー名が入るため、
- * **テンプレートに書ける allow が存在しない**。
- * wpf の `capture-screenshots` がこの形なので、**この検査は wpf では
- * dotnet 系しか見ていない**（`exes` が小文字始まりに限られることとは別の理由）。
+ * **テンプレートに書ける allow が存在しない**。wpf の `capture-screenshots` はこの形なので、
+ * **この検査が将来 wpf のスキルを読めるようになっても、あの行は検査対象にならない。**
  */
 
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf-8");

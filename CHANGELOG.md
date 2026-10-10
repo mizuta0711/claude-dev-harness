@@ -61,6 +61,26 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 
 **還元の束。** いずれも「どう直すかまで分かっていて、判断が要らない」ものを1回にまとめた。
 
+### 査読2本の指摘を全件反映した（同じ版の中で）
+
+| 指摘 | 対応 |
+|---|---|
+| 【高】`tools/README.md` のコマンド例が、引用ブロックの中で行継続が崩れて**そのままでは動かない**形になっていた（コマンドの途中に `>` が残り、bash ではリダイレクトになる） | 対応済み。例をコードブロックとして引用の外に出した。**「正しい書き方」を示す唯一の行が実行できない**のは嘘を書いたのと同じ |
+| 【中】`Capture-AppWindow` に相対パスを渡すと、**.NET の `Bitmap.Save` が `[Environment]::CurrentDirectory` で解決する**（PowerShell の `$PWD` と同期しない）。`screenshots/` を作った場所と保存先が食い違う | **ライブラリ側で根治した**（下記）。手順を絶対パスに書き換えるより、**全呼び出しに効く**ほうを採った |
+| 【中】`tests/verification-commands.test.mjs` に足したコメントが**実挙動と違っていた**（「wpf では dotnet 系しか見ていない」と書いたが、実際は**1行も見ていない**） | 対応済み。原因も違った —— **同名スキルを `listDirs("plugins")` の先頭一致で解決している**ため、wpf の `verification.skill` は **android 側の SKILL.md** に解決される（実測）。コメントを実挙動に直し、**解決そのものの不備は別途起票**（§6） |
+| 【中】`rules/mvvm-viewmodel.md` の Dispatcher の例が**ラムダ購読**で、同じ文書に足した「解除できる形で書く」と矛盾していた | 対応済み。例を名前付きハンドラに直し、`Cleanup()` の例と地続きにした |
+| 【低】「ラムダでは `-=` で外せない」は言い過ぎ（デリゲートを保持すれば外せる）／**`Cleanup()` を誰が呼ぶか**が書かれていない | 対応済み。限定を付け、呼ぶ場所（`Window.Closed`・遷移離脱・親 VM）を1行足した |
+| 【低】実測表の帰結が、**測っていない形まで潰すように断定**している（展開前の `${CLAUDE_PLUGIN_ROOT}` 文字列／引用符を閉じた形／引用符なし） | 対応済み。**閉じた形と引用符なしは追加で測って deny を確認**（不正形のせいではないと確定）。残る未測2点は「測っていないこと」として明記した |
+
+### `Capture-AppWindow` が相対パスで別の場所へ保存していた（プラグイン層）
+
+`[UiCap]::Capture` は最終的に `Bitmap.Save(path)` で、**相対パスは `$PWD` ではなく
+`[Environment]::CurrentDirectory` を基準に解決される**。この2つは同期しない
+（実測: `$PWD` が一時ディレクトリでも `CurrentDirectory` は別リポジトリのルートだった）。
+**案内どおり `screenshots/` を作ったのに保存で落ちる・別の場所に落ちる**が起きる。
+`Capture-AppWindow` が `GetUnresolvedProviderPathFromPSPath` で
+**`$PWD` 基準の絶対パスへ直してから渡す**ようにした。
+
 ### H57: 撮影の保存先に規約が無かった（プラグイン層）
 
 `capture-screenshots/SKILL.md` の手順本文が `Capture-AppWindow '<タイトル一部>' out.png` で、
@@ -98,13 +118,17 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 | `Bash(*ZZPROBE*)` | ✅ 通る（先頭ワイルドカードは効く） |
 | `PowerShell(zzprobe-cmd:*)` | ✅ 通る（前方一致は効く） |
 | `PowerShell(. "<絶対パス>")` | ✅ 通る（**完全一致**） |
-| ドットソースに対するワイルドカード4形 | ❌ **全滅** |
+| ドットソースに対するワイルドカード6形（引用符あり・閉じた形・引用符なしを含む） | ❌ **全滅** |
 
 **ドットソース（`. "<パス>"`）は完全一致しか通らない。** つまり
 **プラグイン同梱スクリプトをドットソースする手順は、テンプレートの allow では覆えない**
-（パスに必ずユーザー名が入る）。**H36 は「allow を足す」では閉じない**ので、
-手段の選択（スキル側をプロジェクト相対のパスに変える／`settings.local.json` に任せる）を
-残して実測だけ `docs/reference/permissionsベースライン.md` §4 に置いた。
+（パスに必ずユーザー名が入る）。**H36 は「allow を足す」では閉じない。**
+
+**決定（ユーザー判断）: テンプレートには入れない。** 許可は各プロジェクトの
+`settings.local.json`（Git 管理外・実パスの完全一致）に任せ、
+**覆えない理由**を `docs/reference/permissionsベースライン.md` §4 と
+`capture-screenshots/SKILL.md` の補足に書いた。`bypassPermissions` では確認が出ないため、
+**実害は `default` / `plan` モードのときだけ**に限られる。
 **ついでに1つ出た** —— 実在プロジェクトに溜まっていた
 `PowerShell(. "C:/Users/<名前>/.claude/plugins/cache/…/harness-wpf/*)` は
 上表で deny になった形と同型で、**承認ダイアログが生成した形がそのまま一致しない**疑いがある。

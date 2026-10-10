@@ -113,7 +113,13 @@ function Restore-WpfHwAccel {
 }
 
 # ── 撮影（ダイアログが出ていない状態で呼ぶこと） ──────────────────────────
-function Capture-AppWindow([string]$TitleContains, [string]$OutPath) { [UiCap]::Capture($TitleContains, $OutPath) }
+function Capture-AppWindow([string]$TitleContains, [string]$OutPath) {
+  # .NET の Bitmap.Save は相対パスを [Environment]::CurrentDirectory で解決し、
+  # これは PowerShell の $PWD と同期しない（別ディレクトリへ落ちる・保存に失敗する）。
+  # $PWD 基準の絶対パスへ直してから渡す。
+  $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutPath)
+  [UiCap]::Capture($TitleContains, $full)
+}
 
 # ── UIAutomation 操作ヘルパ ───────────────────────────────────────────────
 $script:AE = [System.Windows.Automation.AutomationElement]
