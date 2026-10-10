@@ -22,6 +22,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
+          # 22 系の最新が入る。**22.18 以降**であることが要件で、
+          # `tests/generate-table-docs.test.mjs` が `.ts` を直接 import する
+          # （型注釈の除去が無フラグで有効になった版）。満たさない環境では
+          # あのテストが理由を言って落ちる（黙って skip しない）
           node-version: "22"
 
       - name: node --test

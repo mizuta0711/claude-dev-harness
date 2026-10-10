@@ -66,6 +66,12 @@ npx tsx tools/scripts/generate-table-docs.ts
 ```
 
 - **前提**: schema.prisma の各カラムに `/// 説明` コメントが付いていること
+- **`///` は複数行に分けて書ける**（連結される）。**`model` の直上に書いた `///` は
+  テーブル一覧の「説明」列と各テーブルの節に出る**
+- **解析と本文作りは `scripts/lib/parse-prisma-schema.ts`**（I/O を持たない）。
+  このファイルが I/O だけなのは、**解析部を検査できるようにするため**である
+- **生成されるのは `テーブル定義書.md` だけ。** `ER図.md` は手で書く
+  （`.claude/rules/prisma.md` に理由がある）
 - model のフィールド・型・nullable・既定値・インデックス・リレーション・Enum を網羅する
 - 手動で書くと最も乖離が起きやすい文書のため自動生成にしている
 - `/harness-core:sync-check` が差分確認の手段として利用する
