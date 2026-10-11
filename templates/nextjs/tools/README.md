@@ -42,8 +42,11 @@ npx tsx tools/export-to-sql.ts
 **呼ばれるタイミング**
 
 - 手動実行
-- `harness-nextjs` の `pre-migrate-backup` フックが `npx prisma migrate` の**実行前**に自動実行する。
+- `harness-nextjs` の `pre-migrate-backup` フックが、**DB を書き換える prisma の実行前**に自動実行する。
   失敗した場合は migrate がブロックされる
+- **対象は `prisma migrate`（`status` / `diff` を除く）と `prisma db push`。**
+  起動の書き方は問わない（`npx` / `npx.cmd` / `npx -y` / `pnpm exec` / `yarn dlx` /
+  `node_modules/.bin/prisma` など）。**確認ダイアログが出る操作とバックアップが走る操作は対**になっている
 
 **スキーマ変更時は3点同期が必要**（`.claude/rules/prisma.md`）:
 

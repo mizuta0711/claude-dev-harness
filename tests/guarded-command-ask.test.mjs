@@ -22,8 +22,33 @@ const ASK = [
   ["git push", "git-destructive"],
   ["git push origin main", "git-destructive"],
   ["git reset --hard HEAD~1", "git-destructive"],
-  ["git checkout -b feature/x", "git-destructive"],
-  ["git clean -n", "git-destructive"],
+  ["git checkout -- .", "git-destructive"],
+  ["git checkout main", "git-destructive"],
+  ["git checkout -B main origin/main", "git-destructive"],
+  ["git clean -fd", "git-destructive"],
+  // H80: 新しい綴り。`checkout` と同じことをするのに確認を抜けていた（2026-10-11 実測）
+  ["git restore .", "git-destructive"],
+  ["git restore . --", "git-destructive"],
+  ["git restore src/a.ts", "git-destructive"],
+  ["git switch -f main", "git-destructive"],
+  ["git switch --discard-changes main", "git-destructive"],
+  ["git switch -C main", "git-destructive"],
+  // 査読の中: **短いオプションの束**を見ないと素通りする（実測で作業ツリーが消えた）
+  ["git switch -fd HEAD", "git-destructive"],
+  ["git switch -fC feature/x", "git-destructive"],
+  // 査読の低: git は一意なら長いオプションの省略形を受け付ける
+  ["git switch --discard main", "git-destructive"],
+  ["git switch --disc main", "git-destructive"],
+  // 査読の中: **「壊さない形」は `-f` が付いたら壊す形に戻る**（除外がそのまま穴になっていた）
+  ["git checkout -f -b feature/x", "git-destructive"],
+  ["git checkout -bf feature/x", "git-destructive"],
+  ["git checkout -fb feature/x", "git-destructive"],
+  ["git checkout -b feature/x --force", "git-destructive"],
+  // 査読の低: `--` の後ろはパス指定。`-n` という名前のファイルを消す形で、dry-run ではない
+  ["git clean -fd -- -n", "git-destructive"],
+  // `--staged` と併記された `--worktree` は作業ツリーへ書き戻す
+  ["git restore -SW src/a.ts", "git-destructive"],
+  ["git restore --staged --worktree src/a.ts", "git-destructive"],
   ["git -c core.pager=cat push", "git-destructive"],
   ["git -C ../other push", "git-destructive"],
   ["git --no-pager reset HEAD", "git-destructive"],
@@ -38,6 +63,12 @@ const ASK = [
   ['DATABASE_URL="file:./x.db" npx prisma migrate deploy', "prisma-schema-change"],
   ["cd app && pnpm exec prisma migrate deploy", "prisma-schema-change"],
   ["npm exec -- prisma db push", "prisma-schema-change"],
+  // H79: `guarded-command-ask` と `pre-migrate-backup` が同じ判定を使う（prisma-invocation.js）
+  ["npx -y prisma migrate deploy", "prisma-schema-change"],
+  ["npx --no-install prisma migrate dev", "prisma-schema-change"],
+  ["yarn dlx prisma db push", "prisma-schema-change"],
+  ["bun x prisma migrate deploy", "prisma-schema-change"],
+  ["npx prisma --schema ./db/schema.prisma migrate deploy", "prisma-schema-change"],
   // 査読 M1: Windows の `npx.cmd` と、パス指定の直接起動
   ["npx.cmd prisma migrate dev", "prisma-schema-change"],
   ["node_modules/.bin/prisma migrate dev", "prisma-schema-change"],
@@ -58,6 +89,24 @@ const ASK = [
 // 止めない。とくに「語が文字列に含まれるだけ」のもの（鳴りすぎる安全弁は外される・R3）
 const PASS = [
   "git status",
+  // H81: 何も壊さない形は鳴らさない（鳴りすぎる安全弁は外される・R3）。
+  // `clean -n` は pre-commit-scope の案内文自身が確認手段として勧めており、
+  // `--dry-run` は pre-push-backlog-check が「害が無い」として除外している。
+  // `checkout -b` はハーネス自身のフロー（デフォルトブランチならまず切る）で毎回通る
+  "git clean -n",
+  "git clean --dry-run",
+  "git clean -nd",
+  "git push --dry-run",
+  "git push -n origin main",
+  "git checkout -b feature/x",
+  // `switch` にはパス指定の形が無いので、素の形は作業ツリーを捨てない
+  "git switch main",
+  "git switch -c feature/x",
+  // 査読の中: `--staged` だけならインデックスを戻すだけで、作業ツリーのファイルは変わらない
+  "git restore --staged src/a.ts",
+  "git restore -S src/a.ts",
+  // ブランチを作るだけ（作業ツリーは捨てない）
+  "git checkout --orphan feature/x",
   "git log --oneline -5",
   "git diff HEAD",
   "git commit -m 'git push は禁止'",

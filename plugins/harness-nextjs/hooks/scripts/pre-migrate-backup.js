@@ -14,6 +14,10 @@
  * `DATABASE_URL="..." npx prisma migrate deploy` のような環境変数付きの正規手順を
  * 取りこぼしてバックアップが迂回されるため、分割 + 環境変数剥がし + 先頭一致で判定する。
  *
+ * **起動形そのものの判定は `prisma-invocation.js` が持つ**（H79）。
+ * harness-core の `guarded-command-ask`（確認を出す側）と同じファイルを使い、
+ * 「確認は出るのにバックアップが走らない」形が生まれないようにしている。
+ *
  * - 実際に prisma migrate を「実行する」コマンド時のみ `tools/export-to-sql.ts` を実行
  * - それ以外のコマンドは即 exit 0 でスキップ
  * - backup 失敗時は continue:false で migrate をブロックし、人間の判断を挟む。
@@ -25,17 +29,10 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const lib = require("./plugin-lib.js");
+const prisma = require("./prisma-invocation.js");
 
 /** バックアップツールの場所（テンプレート層が配置する位置） */
 const EXPORT_TOOL = "tools/export-to-sql.ts";
-
-/**
- * DB を変更しない `prisma migrate` のサブコマンド。
- *
- * これらでバックアップを走らせても、守るものが無いのに時間（実測 約1.2秒）と
- * ディスクを消費するだけになる。`resolve` は `_prisma_migrations` を書き換えるため**含めない**。
- */
-const READ_ONLY_MIGRATE_SUBCOMMANDS = new Set(["status", "diff"]);
 
 /**
  * 引用符の中身を同じ長さの空白へ置き換える（H40）。
@@ -99,9 +96,9 @@ function blankQuoted(text, shell) {
  *    `npx prisma migrate deploy` で誤発火しないようにするため）
  * 2. 引用符の中身を潰す（H40。`grep "a|prisma migrate|b"` を実行と読まないため）。
  *    **読めなかったときは潰さない**（見逃しよりバックアップが余計に走る方を選ぶ）
- * 3. `&&` `||` `;` `|` 改行 でコマンドを分割する
+ * 3. `&&` `||` `;` `|` 改行 `` ` `` `(` `)` でコマンドを分割する（ask 側と同じ広さ）
  * 4. 各セグメントの先頭にある環境変数代入（`DATABASE_URL="..."` 等）を剥がす
- * 5. 残りが prisma migrate の起動そのものであるかを先頭一致で判定する
+ * 5. 残りが DB を書き換える prisma の起動そのものかを `prisma-invocation.js` で判定する
  */
 function runsPrismaMigrate(raw, shell) {
   // 1. ヒアドキュメント本文の除去
@@ -119,7 +116,12 @@ function runsPrismaMigrate(raw, shell) {
   }
 
   // 2. 引用符の中身を潰す / 3. コマンドの分割
-  const segments = (blankQuoted(text, shell) ?? text).split(/&&|\|\||;|\||\n/);
+  // **区切りは ask 側（core の `scanCommands`）と同じ広さで割る**（査読の中1）。
+  // サブシェル `(npx prisma …)`・PowerShell の呼び出し演算子 `& npx prisma …`・
+  // バッククォート置換は、以前は割れずに**先頭一致が外れて素通りしていた**
+  // （確認は出るのにバックアップが走らない H79 と同型）。
+  // 先頭に残る `(` / `&` は `prisma-invocation.js` の `stripWrappers` が剥がす。
+  const segments = (blankQuoted(text, shell) ?? text).split(/&&|\|\||;|\||\n|`|\(|\)/);
 
   for (const segment of segments) {
     // 4. 先頭の環境変数代入を剥がす
@@ -127,20 +129,15 @@ function runsPrismaMigrate(raw, shell) {
       .trim()
       .replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
 
-    // 5. prisma migrate の起動そのものか
-    const m = stripped.match(
-      /^(?:(?:npx|pnpm|yarn|bunx|bun)\s+)?prisma\s+migrate\b(.*)$/
-    );
-    if (!m) continue;
-
-    // 6. **DB を変更しない呼び出しは対象外**にする（C1 2周目の還元 #16）。
-    //    `prisma migrate\b` の前方一致だけだと `migrate status` や `--help` でも
-    //    バックアップが走り、実 migrate ゼロ回で同一内容の .bak が 7 個溜まった（実測）。
-    //    ヘッダの「実際に実行するときのみ」という設計意図に実装を合わせる。
-    const rest = m[1].trim();
-    if (/^(?:-h\b|--help\b)/.test(rest)) continue; // ヘルプ表示
-    const sub = rest.split(/\s+/)[0] || "";
-    if (READ_ONLY_MIGRATE_SUBCOMMANDS.has(sub)) continue;
+    // 5. DB を書き換える prisma の起動そのものか（H79）。
+    //    **起動形の判定は `prisma-invocation.js` に1箇所だけ置き、
+    //    harness-core の `guarded-command-ask` と同じものを使う。**
+    //    以前はここだけ別の正規表現で判定していたため、`npx.cmd` / `npx -y` /
+    //    `pnpm exec` / `node_modules/.bin/` / `yarn dlx` / `db push` の6形で
+    //    **確認は出るのにバックアップが走らなかった**（2026-10-11 実測）。
+    //    `migrate status` / `diff` / `--help` が対象外なのは従来どおり
+    //    （C1 2周目の還元 #16。実 migrate ゼロ回で同一内容の .bak が7個溜まった）。
+    if (!prisma.requiresBackup(stripped)) continue;
 
     return true;
   }

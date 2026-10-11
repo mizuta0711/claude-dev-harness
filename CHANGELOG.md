@@ -57,6 +57,81 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.41.1 / harness-nextjs 0.5.4] — 二段構えの片方しか働かない形と、鳴りすぎ・取りこぼしを直した（H79 / H80 / H81 / H82）
+
+**いずれも「確認は出るのに守られていない」「何も壊さないのに止まる」という、
+気づきにくい方向の欠陥である。** 4件とも 2026-10-11 に実測で再現してある。
+
+### 1. prisma の起動形の判定を1箇所に出した（H79・**高**）
+
+`permissionsベースライン.md` 5-4 は prisma を deny せず「**ask ＋ バックアップ**」の
+二段構えで守ると決めている。ところが判定が **harness-core の `guarded-command-ask` と
+harness-nextjs の `pre-migrate-backup` に別々の正規表現として置かれていた**ため、
+**確認は出るのにバックアップが走らない起動形が6つ**あった。
+
+| 起動形 | 直前の挙動 |
+|---|---|
+| `npx.cmd prisma migrate dev`（Windows で実際に出る形） | ask ○ / backup **✗** |
+| `npx -y prisma migrate deploy` / `npx --no-install …` | ask ○ / backup **✗** |
+| `pnpm exec prisma migrate deploy` / `npm exec -- …` | ask ○ / backup **✗** |
+| `node_modules/.bin/prisma migrate dev` | ask ○ / backup **✗** |
+| `yarn dlx prisma db push` | ask ○ / backup **✗** |
+| `prisma db push`（`migrate` ではない） | ask ○ / backup **✗** |
+
+**利用者は確認ダイアログを見て承認するので、守られていると思う。**
+
+判定は `prisma-invocation.js` に出し、**両プラグインへ同内容で複製**した
+（`${CLAUDE_PLUGIN_ROOT}` はプラグインごとに違うので require はできない。
+`plugin-lib.js` が `harness-lib.js` を複製しているのと同じ事情）。
+**ask は狭く・backup は広く**倒し、`tests/prisma-invocation.test.mjs` が
+**複製の一致**と **ask ⊆ backup** を同じコマンド表で検査する。
+**ask と backup を対に当てるテストが1本あれば、起票の時点で分かっていた。**
+
+**査読（2026-10-12）が、同じ型の素通りをさらに見つけた**（いずれも実測で再現してから直した）:
+
+| 形 | 直前の挙動 |
+|---|---|
+| `(npx prisma migrate deploy)` / `& npx prisma …`（PowerShell の呼び出し演算子）/ バッククォート置換 | **ask ○ / backup ✗**（ask 側は導入部を吸収するのに backup 側の分割が吸収しなかった。**H79 と同型**） |
+| `npx prisma@5.0.0 migrate deploy`（**版の指定**。実務で最も起きやすい） | 両方 ✗ |
+| `pnpm --filter web exec prisma …`（モノレポ）/ `npm run prisma -- …` | 両方 ✗ |
+| `sudo npx prisma …` / `env FOO=1 …` / `cross-env …` / `dotenv -e .env -- …` | 両方 ✗ |
+| `npx prisma --verbose migrate deploy` | 両方 ✗（**値を取らないフラグの次を飛ばしていた**。値つきオプションだけを飛ばす形に直した） |
+| `npx prisma migrate dev>out.txt` | ask ✗（サブコマンドにリダイレクトが付いたまま比較していた） |
+
+### 2. `git-destructive` の集合を「綴り」から「実際に壊すか」へ（H80 / H81・**中**）
+
+| 形 | 変更 | 理由 |
+|---|---|---|
+| `git restore <path>` / `git switch -f` / `--discard-changes` / `-C` | **止めるようにした** | `checkout -- .` と同じことをする**新しい綴り**が素通りしていた。ベースライン自身が `git restore .` を「事故の形として最も起きやすい」と書いている |
+| `git clean -n` / `--dry-run` / `git push --dry-run` / `-n` / `git checkout -b <新>` | **止めないようにした** | **何も壊さない。** `pre-commit-scope` の案内文自身が `git clean -n` を確認手段として勧め、`pre-push-backlog-check` は `--dry-run` を「害が無い」として除外している。**同じリポジトリの中で判断が割れていた**。`checkout -b` は**ハーネス自身のフロー**で毎回通る |
+| `git switch <branch>` / `-c <新>` | 止めない | **`switch` にはパス指定の形が無い**ので作業ツリーを捨てない。`checkout` は `git checkout .` と `git checkout <branch>` を**参照を解決しないと見分けられない**ため素の形も止めたまま（非対称は意図したもの） |
+
+`tests/guarded-command-ask.test.mjs` の期待値も同じコミットで移した（現状を固定していた2件）。
+
+**⚠️ 「何も壊さない形」の除外は、`-f` と組にしないとそのまま穴になる**（査読が実測で指摘）。
+`git checkout -f -b x` は**新しいブランチを切る前に作業ツリーを捨てる**。あわせて、
+判定が**綴りの癖3つ**に耐えるようにした —— **短いオプションの束**（`git switch -fd`）・
+**長いオプションの省略形**（`--disc` が `--discard-changes` になる）・
+**`--` の後ろはパス指定**（`git clean -fd -- -n` の `-n` はファイル名で dry-run ではない）。
+逆に `git restore --staged` は**インデックスを戻すだけで作業ツリーに触れない**ので除いた
+（`--worktree` / `-W` の併記があれば止める）。
+
+### 3. 同名スキルを環境のプラグインから解決する（H82・**中**・テストのみ）
+
+`tests/verification-commands.test.mjs` が `listDirs("plugins")` の**先頭一致**で
+スキルを解決していたため、`templates/wpf` の `verification.skill: capture-screenshots` が
+**android 側の SKILL.md** に解決されていた（wpf 側は実在するのに読まれない）。
+`templates/<env>/template.json` の `plugin` を見る解決に直し、
+**解決先そのものを固定する検査**を足した（上の2つは「覆えていないコマンドが無ければ通る」ので、
+**間違ったファイルを読んでいても落ちなかった**）。検査は**本体が実際に読んだパス**を見る ——
+ヘルパを呼び直す形では、**本体が元の解決に戻っても落ちなかった**（査読の中・変異を入れて確認）。
+
+なお **wpf は依然1行も検査しない**。permissions が言及する実行ファイルが `dotnet` だけで、
+`capture-screenshots` にその行が無いためで、**解決の誤りとは別の問題**である（H36）。
+あわせて `既存プロジェクト移行指示書.md` §10-2 の表が**機械チェック⑤の効力を書きすぎていた**のを直した。
+
+docs 影響: あり（reference/permissionsベースライン.md §3・5-4 — `git-destructive` の判定と二段構えの前提／reference/harness設定契約.md §9 — 集合表／guide/既存プロジェクト移行指示書.md §10-2 — 機械チェック⑤の効力／templates/nextjs/tools/README.md — バックアップが走る操作）
+
 ## [0.41.0] — 規模判定とフローが受け入れ基準の置き場で噛み合っていなかった（H87）
 
 **規模判定の基準（S/M/L）と各規模のフローを突き合わせた点検。** 記述の食い違い4件と

@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.39.1 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
-| 最終更新 | 2026-10-11 |
+| 対応ハーネス版 | harness-core 0.41.1 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
+| 最終更新 | 2026-10-12 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
 
@@ -278,7 +278,7 @@ Unity テンプレートでは `create-project` が `"rootNamespace": "{{PROJECT
 
 | 集合名 | 止めるもの |
 |--------|-----------|
-| `git-destructive` | `git push` / `reset` / `checkout` / `clean` |
+| `git-destructive` | `git push` / `reset` / `checkout` / `clean` / `restore` / `switch`（**壊す形だけ**。`clean -n` / `--dry-run` / `checkout -b` / `restore --staged` / 素の `switch` は止めない。細則は [permissionsベースライン.md](permissionsベースライン.md) §3） |
 | `prisma-schema-change` | `prisma migrate dev` / `deploy` / `reset` / `resolve`、`prisma db push` |
 | `android-device` | `gradlew installDebug` / `uninstallDebug` / `uninstallAll`、`adb install` / `uninstall` |
 

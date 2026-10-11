@@ -121,9 +121,30 @@
 
 | 集合 | 止めるもの | 有効にしているテンプレート |
 |---|---|---|
-| `git-destructive` | `git push` / `reset` / `checkout` / `clean` | 全環境 |
+| `git-destructive` | `git push` / `reset` / `checkout` / `clean` / **`restore`** / **`switch`（壊す形だけ）** | 全環境 |
 | `prisma-schema-change` | `prisma migrate dev` / `deploy` / `reset` / `resolve`、`prisma db push` | nextjs |
 | `android-device` | `gradlew installDebug` / `uninstallDebug` / `uninstallAll`、`adb install` / `uninstall` | android |
+
+**`git-destructive` は「綴り」ではなく「実際に壊すか」で判定する**（harness-core 0.41.1・H80 / H81）。
+
+| 形 | 扱い | 理由 |
+|---|------|------|
+| `git restore <path>` / `git restore .` | **止める** | `checkout -- .` と同じことをする**新しい綴り**。以前は素通りしていた（2026-10-11 実測） |
+| `git restore --staged <path>` / `-S` | **止めない** | **インデックスを戻すだけで作業ツリーのファイルは変わらない**（査読が実測で指摘）。`--worktree` / `-W` が併記されていれば書き戻すので止める |
+| `git switch -f` / `--discard-changes` / `-C` | **止める** | 作業ツリーを捨てる・既存ブランチを動かす形 |
+| `git switch <branch>` / `git switch -c <新>` | **止めない** | **`switch` にはパス指定の形が無い**ので、ブランチを移るだけ。`checkout` は `git checkout .` と `git checkout <branch>` を**参照を解決しないと見分けられない**ため、素の形も止めたままにしている（非対称は意図したもの） |
+| `git clean -n` / `--dry-run` / `git push --dry-run` / `-n` | **止めない** | 何も消さない・何も送らない。`pre-commit-scope` の案内文自身が `git clean -n` を確認手段として勧め、`pre-push-backlog-check` は `--dry-run` を「害が無い」として除外している。**同じリポジトリの中で判断が割れていた** |
+| `git checkout -b <新ブランチ>` / `--orphan` | **止めない** | ブランチを作るだけ。**ハーネス自身のフロー**（デフォルトブランチならまずブランチを切る）で毎回通る。`-B` は既存ブランチを動かすので止める |
+| `git checkout -f -b <新>` / `-bf` / `-b <新> --force` | **止める** | ⚠️ **「壊さない形」は `-f` が付いたら壊す形に戻る。** `-f` は新しいブランチを切る前に作業ツリーを捨てる。**除外を足すときは必ず `-f` と組にして判定する** —— 除外がそのまま穴になる（査読が実測で指摘） |
+
+**判定は3つの綴りの癖に耐えること**（いずれも査読が実測で素通りを見つけた）:
+
+1. **短いオプションの束** —— `git switch -fd` / `git checkout -bf`（1文字ずつ見ないと素通りする）
+2. **長いオプションの省略形** —— git は一意なら受け付ける（`git switch --disc` が `--discard-changes` になる）
+3. **`--` の後ろはパス指定** —— `git clean -fd -- -n` の `-n` は**ファイル名**で、dry-run ではない
+
+**鳴りすぎる安全弁は外される**（R3）。止める形を増やすときは、同時に「何も壊さない形」を除くこと。
+**`git reset` は `--soft` / `--mixed` も一律で止める** —— 作業ツリーは失わないが、**どれも参照を動かす**ため。
 
 `askGuards` が無い config では、**`git-destructive` ＋ `environment` に応じた集合**（上の表の既定）が有効になる。
 **JSON が壊れた config では全集合**が有効になる（0.39.1・H51）。`environment` が読めず環境の既定を引けないため、
@@ -365,6 +386,18 @@ Claude Code **2.1.295** / headless `claude -p` + `--output-format json` の
 | 5-2 | **`.env` は `.env*` でなく列挙する** | `.env.example` を巻き込む。`.gitignore` の `!.env.example` と矛盾し、AI が雛形を読めず・作れなくなる。deny は「今回だけ許可」ができないため**シェル経由の迂回が常態化**する |
 | 5-3 | **`rm` はフラグの綴りごとに列挙する** | `Bash(rm -rf *)` だけでは **`rm -fr` が通る**（実測でディレクトリが消えた）。rm はフラグを1トークンに結合するため、中間ワイルドカードによる順序非依存化が効かない |
 | 5-4 | **`prisma migrate reset` を deny しない**（`askGuards` の `ask` + `pre-migrate-backup` で守る） | **deny はフックより手前で効く**ため、`pre-migrate-backup` が働く機会を奪う。さらにハーネス自身の手順と衝突し、DB を `rm` で消す**迂回案**を誘発した |
+
+> ⚠️ **5-4 の二段構えは、両方が同じ起動形を見ていないと片方しか働かない。**
+> `ask` を出す `guarded-command-ask`（harness-core）と、バックアップを走らせる
+> `pre-migrate-backup`（harness-nextjs）が**別々の正規表現で判定していた**ため、
+> **確認は出るのにバックアップが走らない起動形が6つ**あった
+> （`npx.cmd` / `npx -y` / `pnpm exec` / `node_modules/.bin/` / `yarn dlx` / `db push`。2026-10-11 実測）。
+> **利用者は確認ダイアログを見て承認するので、守られていると思う。**
+>
+> 判定は `prisma-invocation.js` の1ファイルに置き、**両プラグインへ同内容で複製**している
+> （プラグインをまたいだ `require` はできない）。`tests/prisma-invocation.test.mjs` が
+> **複製の一致**と **ask ⊆ backup** を同じコマンド表で検査する（harness-core 0.41.1 / harness-nextjs 0.5.4・H79）。
+> **ask は狭く**（鳴りすぎる安全弁は外される）、**backup は広く**（見逃しは DB の破壊に直結する）倒す。
 
 **共通する型**: 5-1 / 5-2 / 5-4 はいずれも「**安全側に倒したつもりが安全性を損なう**」。
 deny を足す前に、**それがフックや正規の手順を殺さないか**を確認する。

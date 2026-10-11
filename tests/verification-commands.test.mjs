@@ -30,17 +30,20 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  * **鳴りすぎないこと**が要件（R3）。拾うのは「テンプレートが permissions で言及している
  * 実行ファイル」で始まる行だけにする。**そのテンプレートが関心を持っていないコマンドは見ない。**
  *
- * ## wpf については、実質1行も検査していない（2026-10-11 実測）
+ * ## 同名スキルは、その環境のプラグインから解決する（H82・0.41.1 で修正）
  *
- * 理由は2つあり、**どちらもコマンドの書き方とは別**である。
+ * 以前は `listDirs("plugins")` の**先頭一致**で解決していた。`plugins/` は `harness-android` が
+ * 先に来るため、`templates/wpf` の `verification.skill: capture-screenshots` は
+ * **android 側の SKILL.md** に解決されていた（`plugins/harness-wpf/skills/capture-screenshots/SKILL.md`
+ * は実在するのに読まれない。2026-10-11 実測）。**別環境のスキルを検査しても意味が無い**うえ、
+ * 検査しているつもりで0件という状態になる。
  *
- * 1. **同名スキルを `listDirs("plugins")` の先頭一致で解決している。** `plugins/` は
- *    `harness-android` が先に来るため、`templates/wpf` の
- *    `verification.skill: capture-screenshots` は **android 側の SKILL.md** に解決される
- *    （`plugins/harness-wpf/skills/capture-screenshots/SKILL.md` は実在するのに読まれない）。
- *    **環境ごとのプラグインを優先する解決にしないと直らない**（別途起票）
- * 2. wpf の permissions が言及する実行ファイルは `dotnet` だけなので、
- *    どちらの SKILL.md を読んでも**該当行が0件**になる
+ * いまは `templates/<env>/template.json` の `plugin` を見て**その環境のプラグインを優先**し、
+ * 次に `harness-core`、最後に全プラグインから探す。
+ *
+ * **それでも wpf は1行も検査しない。** permissions が言及する実行ファイルは `dotnet` だけで、
+ * `capture-screenshots` にその行が無いためである（下の「allow で覆えない形」も参照）。
+ * **解決の誤りと、覆う対象が無いことは別の問題**なので、片方を直してももう片方は残る。
  *
  * ## そもそも allow で覆えない形がある（H36・2026-10-11 実測）
  *
@@ -88,6 +91,42 @@ function commandLines(md, exes) {
   return [...out];
 }
 
+/**
+ * `templates/<env>/template.json` が名指しするプラグイン名（`harness-wpf@dev-harness` → `harness-wpf`）。
+ * 無ければ null。
+ */
+function envPlugin(env) {
+  const rel = `templates/${env}/template.json`;
+  if (!exists(rel)) return null;
+  const name = JSON.parse(read(rel))?.plugin;
+  return typeof name === "string" ? name.split("@")[0] : null;
+}
+
+/**
+ * スキルを探す順序。**同名スキルが環境ごとに存在する**（`capture-screenshots` は wpf と android に
+ * 実在する）ので、**その環境のプラグインを先に見る**（H82）。
+ */
+function pluginSearchOrder(env) {
+  const own = envPlugin(env);
+  const all = listDirs("plugins");
+  return [...new Set([...(own && all.includes(own) ? [own] : []), "harness-core", ...all])];
+}
+
+/**
+ * スキルの実体を解決する。**下の検査はすべてこれを通す。**
+ *
+ * 解決した結果を `RESOLVED` に残し、**最後の検査が「どのファイルを読んだか」を見る**
+ * （査読の中: ヘルパだけを検査していたため、**検査本体が別の解決に戻っても落ちなかった**）。
+ */
+const RESOLVED = new Map();
+function resolveSkillFile(env, skill) {
+  const file = pluginSearchOrder(env)
+    .map((p) => `plugins/${p}/skills/${skill}/SKILL.md`)
+    .find(exists);
+  RESOLVED.set(env, { skill, file });
+  return file;
+}
+
 const ENVS = listDirs("templates").filter((e) =>
   exists(`templates/${e}/.claude/harness.config.json`)
 );
@@ -101,10 +140,8 @@ test("verification.skill が使うコマンドは、そのテンプレートの 
     const skill = cfg?.verification?.skill;
     if (!skill) continue;
 
-    // スキルの実体を全プラグインから探す
-    const skillFile = listDirs("plugins")
-      .map((p) => `plugins/${p}/skills/${skill}/SKILL.md`)
-      .find(exists);
+    // スキルの実体を探す。**その環境のプラグインを優先する**（H82）
+    const skillFile = resolveSkillFile(env, skill);
     assert.ok(
       skillFile,
       `templates/${env} が verification.skill: ${skill} を宣言しているが、実体が見つからない`
@@ -201,4 +238,26 @@ test("harness.config.json の commands は、そのテンプレートの allow /
       problems.join("\n  ") +
       "\n\nゲートは通るが毎回確認プロンプトが出る（H31 と同型）"
   );
+});
+
+/**
+ * `verification.skill` の解決先は、その環境のプラグインである（H82）
+ *
+ * 先頭一致で解決していたときは、**wpf が android のスキルを読んでいた**（2026-10-11 実測）。
+ * 上の2つの検査は「覆えていないコマンド」が無ければ通るので、
+ * **間違ったファイルを読んでいても落ちない**。解決そのものをここで固定する。
+ */
+test("verification.skill は、その環境のプラグインの SKILL.md に解決する", () => {
+  // **上の検査が実際に読んだファイル**を見る（ヘルパを呼び直すと、検査本体が別の解決へ
+  // 戻っても落ちない。査読の中）
+  assert.ok(RESOLVED.size > 0, "上の検査が1件もスキルを解決していない（順序が変わった可能性がある）");
+  let checked = 0;
+  for (const [env, { skill, file }] of RESOLVED) {
+    const own = envPlugin(env);
+    const ownFile = `plugins/${own}/skills/${skill}/SKILL.md`;
+    if (!own || !exists(ownFile)) continue; // core 側のスキルを使う環境
+    checked++;
+    assert.equal(file, ownFile, `${env}: 別環境のスキルを読んでいる`);
+  }
+  assert.ok(checked > 0, "1件も検査していない。環境のプラグインに同名スキルが無い可能性がある");
 });

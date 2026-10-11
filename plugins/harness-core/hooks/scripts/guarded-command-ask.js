@@ -59,6 +59,7 @@ const os = require("os");
 const path = require("path");
 const lib = require("./harness-lib");
 const scope = require("./git-scope");
+const prisma = require("./prisma-invocation");
 
 const MARKER_RELATIVE_PATH = path.join(".claude", ".harness-trusted-env");
 const DEFAULT_SETS = ["git-destructive"];
@@ -75,24 +76,123 @@ const stripEnvPrefix = (text) =>
 /** gradle に渡されたタスクのうち、ここに挙げたもの（`:app:installDebug` は最後の `:` 以降で見る） */
 const GRADLE_DEVICE_TASKS = new Set(["installDebug", "uninstallDebug", "uninstallAll"]);
 
+/**
+ * **`--` 以降はパス指定**なのでオプションとして読まない。
+ *
+ * `git clean -fd -- -n` の `-n` は「`-n` という名前のファイルを消す」指定であり、
+ * dry-run ではない。**読み違えると、本当に消える形を通す**（査読の低・実測）。
+ */
+const optionsOf = (argv) => {
+  const i = argv.indexOf("--");
+  return i < 0 ? argv : argv.slice(0, i);
+};
+
+/**
+ * 短いオプションの**束**（`-fdn` / `-bf`）に指定の文字が入っているか。
+ *
+ * **大文字小文字は区別する**（`git checkout -b` は新規作成だが `-B` は既存ブランチを動かす）。
+ * **束を見ないと `git switch -fd` が素通りする**（査読の中・実測）。
+ */
+const hasShortFlag = (opts, ch) =>
+  opts.some((t) => /^-[A-Za-z]+$/.test(t) && t.slice(1).includes(ch));
+
+/**
+ * 長いオプション。**git は一意なら省略形を受け付ける**ので前方一致で見る
+ * （`git switch --disc` が `--discard-changes` として通る。査読の低・実測）。
+ * `--opt=value` の形も名前だけで見る。
+ */
+const hasLongOpt = (opts, ...names) =>
+  opts.some((t) => {
+    if (!t.startsWith("--") || t.length < 4) return false;
+    const name = t.split("=")[0];
+    return names.some((n) => n.startsWith(name));
+  });
+
+/** `-f` / `--force` が付いているか（束も省略形も見る） */
+const isForced = (opts) => hasShortFlag(opts, "f") || hasLongOpt(opts, "--force");
+
+/**
+ * `git` の呼び出しが、履歴や作業ツリーを**実際に**書き換え得る形か（H80 / H81）。
+ *
+ * ## 綴りの集合（H80）
+ *
+ * `git restore` / `git switch` は**新しい綴り**で、旧来の `git checkout` と同じことをする。
+ * `permissionsベースライン.md` 自身が `git restore .` を「事故の形として最も起きやすい」と
+ * 書いているのに、**新しい綴りだけが確認を抜けていた**（2026-10-11 実測）。
+ *
+ * **`switch` だけは「壊す形」に限る。** `switch` には**パス指定の形が無い**ので、
+ * `git switch main` はブランチを移るだけで作業ツリーを捨てない。
+ * 一方 `checkout` は `git checkout .` と `git checkout <branch>` を
+ * **参照を解決しないと見分けられない**ため、素の形も確認にかけたままにする。
+ *
+ * ## 何も壊さない形は鳴らさない（H81）
+ *
+ * 鳴りすぎる安全弁は外される（R3）。しかも**同じリポジトリの中で判断が割れていた** ——
+ * `pre-commit-scope` の案内文が「何が消えるかは `git clean -n` で確認できます」と勧め、
+ * `pre-push-backlog-check` は `--dry-run` を「何も送らないので害が無い」として除外しているのに、
+ * この集合は両方を止めていた。`git checkout -b` は**ハーネス自身のフロー**
+ * （デフォルトブランチならまずブランチを切る）で毎回通る。
+ *
+ * ## 「壊さない形」は `-f` が付いたら壊す形に戻る
+ *
+ * **ここを見落とすと、除外がそのまま穴になる**（査読の中・実測）——
+ * `git checkout -f -b x` は**新しいブランチを切る前に作業ツリーを捨てる**。
+ * 除外は**常に `isForced` と組にして判定する**こと。
+ *
+ * @param {{sub: string, argv: string[]} | null} g `scope.parseGit` の結果
+ */
+function isDestructiveGit(g) {
+  if (!g) return false;
+  const opts = optionsOf(g.argv || []);
+  switch (g.sub) {
+    case "reset":
+      // `--soft` / `--mixed` は作業ツリーを失わないが、**どれも参照を動かす**。
+      // 履歴を書き換え得る操作なので一律で確認にかける（H81 の「壊さない形」には入れない）
+      return true;
+    case "restore":
+      // **`--staged` だけならインデックスを戻すだけ**で作業ツリーに触れない（査読の中・実測）。
+      // `--worktree` / `-W` が併記されていれば書き戻すので対象に戻す
+      return !(
+        (hasLongOpt(opts, "--staged") || hasShortFlag(opts, "S")) &&
+        !(hasLongOpt(opts, "--worktree") || hasShortFlag(opts, "W"))
+      );
+    case "clean":
+      // `-n` / `--dry-run` は何も消さない
+      return !(hasLongOpt(opts, "--dry-run") || hasShortFlag(opts, "n"));
+    case "push":
+      // `--dry-run` / `-n` は何も送らない
+      return !(hasLongOpt(opts, "--dry-run") || hasShortFlag(opts, "n"));
+    case "checkout":
+      // ブランチを作るだけの形（`-b` / `--orphan`）は何も壊さない。**ただし `-f` が付けば捨てる**。
+      // `-B` は既存ブランチを動かすので対象のまま
+      return !((hasShortFlag(opts, "b") || hasLongOpt(opts, "--orphan")) && !isForced(opts));
+    case "switch":
+      // 作業ツリーを捨てる形・既存ブランチを動かす形だけ
+      return (
+        isForced(opts) ||
+        hasShortFlag(opts, "C") ||
+        hasLongOpt(opts, "--discard-changes", "--force-create")
+      );
+    default:
+      return false;
+  }
+}
+
 const GUARD_SETS = {
   "git-destructive": {
     reason: "履歴や作業ツリーを書き換え得る git 操作です",
     // グローバルオプション（`-c k=v` / `-C dir` / `--no-pager`）が挟まる形も parseGit が吸収する。
     // **`opts` を渡し忘れない。** PowerShell の `git -C "D:\my proj\" push` を取りこぼす（H47）
-    test: (seg, opts) => {
-      const g = scope.parseGit(seg, opts);
-      return !!g && ["push", "reset", "checkout", "clean"].includes(g.sub);
-    },
+    test: (seg, opts) => isDestructiveGit(scope.parseGit(seg, opts)),
   },
   "prisma-schema-change": {
     reason: "DB のスキーマやデータを変える prisma 操作です",
-    // `status` / `diff` は読み取りだけなので止めない（pre-migrate-backup と同じ線引き）
-    test: (seg) =>
-      // `npx.cmd`（Windows）や `node_modules/.bin/prisma` のようなパス指定の起動も拾う
-      /^(?:(?:npx|bunx|pnpx)(?:\.cmd)?\s+(?:-\S+\s+)*|(?:pnpm|yarn|bun)(?:\.cmd)?\s+(?:exec\s+|dlx\s+)?|npm(?:\.cmd)?\s+exec\s+(?:--\s+)?)?(?:\S*[\\/])?prisma(?:\.cmd|\.exe)?\s+(?:migrate\s+(?:dev|deploy|reset|resolve)|db\s+push)\b/.test(
-        stripEnvPrefix(seg.text)
-      ),
+    // **起動形の判定は `prisma-invocation.js` に1箇所だけ置く**（H79）。
+    // 以前はここと harness-nextjs の `pre-migrate-backup` が別々に判定していたため、
+    // **確認は出るのにバックアップが走らない起動形が6つ**あった
+    // （`npx.cmd` / `npx -y` / `pnpm exec` / `node_modules/.bin/` / `yarn dlx` / `db push`）。
+    // `status` / `diff` は読み取りだけなので止めない（pre-migrate-backup と同じ線引き）。
+    test: (seg) => prisma.changesSchema(seg.text),
   },
   "android-device": {
     reason: "実機・エミュレータのアプリを入れ替える操作です",
@@ -185,4 +285,12 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { GUARD_SETS, DEFAULT_SETS, ENV_DEFAULT_SETS, isTrustedEnv, enabledSets, findGuardHit };
+module.exports = {
+  GUARD_SETS,
+  DEFAULT_SETS,
+  ENV_DEFAULT_SETS,
+  isTrustedEnv,
+  enabledSets,
+  findGuardHit,
+  isDestructiveGit,
+};
