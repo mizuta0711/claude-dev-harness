@@ -83,7 +83,7 @@
 | プロジェクト原則 | ● | `/speckit.constitution` → `.specify/memory/constitution.md` | ● | `constitution.md`（変更にユーザー承認必須・原則の優先順位を明記） |
 | **設計方針の蓄積** | — | 無い。機能ごとの `plan.md` に閉じ、**横断する設計判断の置き場が無い** | ● | `.claude/01_development_docs/` 等（`projectDocs.policy`）。**Stage 2 が既存方針との整合を検査**し、新たな判断は `complete-feature` が**書き戻しを強制**する |
 | **要件・ドメイン知識** | ◐ | `spec.md` に都度書く（機能をまたぐ知識の置き場は無い） | ● | `.claude/00_project/`（`projectDocs.requirements`）。**Stage 1 の入力**として読む |
-| **規模判定** | — | 無い。shorter / full の2経路を**人間が選ぶ** | ● | **S/M/L を AI が推測 → ユーザー承認**。5軸基準・UX変更は自動 L・スコープ拡大時の再判定 |
+| **規模判定** | — | 無い。shorter / full の2経路を**人間が選ぶ** | ● | **S/M/L を AI が推測 → ユーザー承認**。5軸基準・UX変更は影響範囲で判定（0.41.0 以降）・スコープ拡大時の再判定 |
 | 要求・仕様（WHAT） | ● | `/speckit.specify` → `spec.md`（ユーザーストーリー） | ● | `new-feature` → 設計書 **Stage 1**（機能・画面設計） |
 | 曖昧さの解消 | ● | `/speckit.clarify`（plan 前推奨・複数回可） | ● | `new-feature` Step 2。`[NEEDS CLARIFICATION]` ＋ §3-3 未解決事項表に回答を記録 |
 | 受け入れ基準 | ● | `/speckit.checklist` → `checklists/`（オンデマンド生成） | ● | 設計書 §3-2 に常設。**未チェックなら完了処理をしない**と constitution で原則化 |
@@ -314,7 +314,7 @@ Spec Kit 最大の批判点であり、ハーネスが明確に優位な唯一�
 |--------------------------|--------------------------------|
 | **shorter path**: specify → plan → tasks → implement → converge | **フローの入口に規模判定がある**（5軸基準表） |
 | **full path**: constitution → specify → clarify → plan → checklist → tasks → analyze → implement → converge | **AI が推測 → ユーザーが承認**の2ステップ。AI 単独では確定しない |
-| clarify / checklist / analyze は「品質ゲート」で、小規模なら省略してよいと公式に明記 | 迷ったら L 寄りに提示（AI バイアス補正）。**UX 変更を含めば自動的に L** |
+| clarify / checklist / analyze は「品質ゲート」で、小規模なら省略してよいと公式に明記 | 迷ったら L 寄りに提示（AI バイアス補正）。**UX 変更は影響範囲で判定**し、**受け入れ基準は M / L ともに必須**（0.41.0） |
 | **ただし判断は人間。自動判定・自動スキップは無い** | 作業中のスコープ拡大に気づいたら**再判定**。破壊的変更・スキーマ変更が判明したら**即停止** |
 | 冗長性批判への公式回答は「軽量モード追加」ではなく**「presets / extensions で各自カスタマイズせよ」** | フル形パイプラインは **L 規模のみ**（constitution 第1原則）。ただし**軽量な整合検査（analyze / converge 相当）は全規模に適用** |
 

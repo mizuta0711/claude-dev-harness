@@ -40,6 +40,11 @@ const SKILLS = [
   // `new-prototype` は「`🔵 Phase {n} まで確定` を使わない」と TEMPLATE の値を名指しするので、
   // **ここに載せないと TEMPLATE 側が変わっても検査が効かない**（0.39.0 の査読が指摘した）。
   "plugins/harness-core/skills/new-prototype/SKILL.md",
+  // **受け入れ基準の節を名指しする側**（0.41.0 で M でも必須にしたときの査読が指摘した）。
+  // 載せないと「Stage 1 の受け入れ基準」のような**規模を取り違えた記述が黙って残る**。
+  "plugins/harness-core/skills/sync-check/SKILL.md",
+  "plugins/harness-core/skills/update-docs/SKILL.md",
+  "plugins/harness-core/agents/code-reviewer.md",
 ];
 
 const NL = String.fromCharCode(10);

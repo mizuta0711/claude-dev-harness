@@ -23,12 +23,29 @@
 
 | 規模 | フロー |
 |------|--------|
-| S（軽微・1ファイル程度） | 実装 → `/harness-core:build-check` → コミット → `/harness-core:done` |
-| M（機能追加・複数ファイル・UX変更なし） | 設計 → 実装 → `/harness-core:code-review` → 動作確認 → `/harness-core:build-check` → `/harness-core:update-docs` → コミット → `/harness-core:done` |
-| L（新機能・大規模変更・UX変更あり） | Stage 1 設計 → `/harness-core:design-review feature` → ユーザー承認 → Stage 2 設計 → `/harness-core:design-review tech` → 実装 →（以降 M と同じ） |
+| S（軽微・1ファイル程度・**挙動が変わらない**） | 実装 → `/harness-core:build-check` → コミット → `/harness-core:done` |
+| M（機能追加・複数ファイル・**UX の影響が単一画面内**） | 設計（**受け入れ基準 ＋ Stage 2**）→ `/harness-core:design-review tech` → 承認 → 実装 → `/harness-core:code-review` → 動作確認 → `/harness-core:build-check` → `/harness-core:update-docs` → コミット → `/harness-core:complete-feature` → `/harness-core:done` |
+| L（新機能・大規模変更・**複数画面に影響する UX 変更**） | Stage 1 設計 → `/harness-core:design-review feature` → ユーザー承認 → Stage 2 設計 → `/harness-core:design-review tech` → 実装 →（以降 M と同じ） |
 
-規模判定は **AI が推測 → ユーザーが承認** の2ステップ。迷ったら L 寄りで提示し、
-**UX 変更（画面・操作フローの変更）を含む場合は自動的に L** として扱う。
+規模判定は **AI が推測 → ユーザーが承認** の2ステップ。迷ったら L 寄りで提示する。
+
+**UX 変更（画面・操作フローの変更）は影響範囲で判定する。**
+
+| | 判定 |
+|---|---|
+| 挙動と操作フローが変わらない（文言・色・余白・整列） | **S** |
+| 既存の単一画面（コンポーネント）の中で挙動が変わる | **M** |
+| 複数の画面（コンポーネント）に影響する・画面を足す | **L** |
+
+**1つでも L 相当の軸があれば L。** この規則が UX 軸より優先する ——
+単一画面内の改修でも**データ構造・永続化が L 相当なら L** になる。
+
+**認証・認可・課金・削除・マイグレーション・依存ライブラリの追加に触るなら、
+1ファイルでも S に置かない**（S は `code-review` を省くので、
+**セキュリティ観点を通す経路が1つも無くなる**）。
+
+**受け入れ基準チェックリストは M / L ともに必須である**（S は設計書を作らない）。
+省くと完了ゲートと設計レビューの検査が**どちらも空振りする**。
 
 **L の上に天井がある。** 上の表は L の上限を書いていないので、**10ファイルでも100ファイルでも L になる。**
 **受け入れ基準が独立に「動くもの」として確認できる塊に2つ以上に分かれるなら、1本の設計書に収めない** —
