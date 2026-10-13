@@ -57,6 +57,79 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [templates のみ] — 配布物がデータを消す形で出荷されていた（H93）
+
+**プラグインの版は動かない**（`templates/` 配下だけの変更で、配信経路が `/harness-core:harness-update` のため）。
+
+**`templates/nextjs/tools/export-to-sql.ts` が、復元用に `TRUNCATE TABLE ... CASCADE` を出していた。**
+PostgreSQL の `CASCADE` は**その表を参照する外部キーを持つ表もまとめて TRUNCATE する**ので、
+**復元すると外部キー先の表が全部空になる。**
+
+### 実害が出ている
+
+`pocket-drop` で `Session.userId` / `Share.ownerId` 経由で **Share と Session が全削除**された。
+さらに **zip 不在時に警告だけで終了コード 0** で終わっていたため、
+**1世代も残っていないのに「バックアップ済み」と報告され、`pre-migrate-backup` も通った**。
+実際にこの状態で本番 DB の動作確認を行い、**テスト前のバックアップがテスト後のバックアップに上書きされた**。
+
+修正は `pocket-drop` 側で 2026-10-02（`efdcafc`）に済んでいたが、**ハーネスへ還元されていなかった**
+（`constitution.md` §8「改善はコアへ還元」の未履行）。**次に `create-project` で作るプロジェクトが同じ欠陥を引き継ぐ状態だった。**
+
+### ⚠️ 欠陥の入り方が H79 / H91 と違う
+
+`pocket-drop` では **`1a19fa0`（36ファイル・「ハーネスの骨格と要件・初期構築の設計書を追加」）で、
+プロジェクト生成時の足場として配られた**。
+**利用者が何も変更していない所に最初から入っていたので、工程やレビューのゲートでは捕まらない。**
+だから**配布物そのものを機械で見る検査**を足した（下記 3）。
+
+### 1. 復元を UPSERT にした（行を1つも消さない）
+
+| | |
+|---|---|
+| 前 | `TRUNCATE TABLE ${dbTable} CASCADE;` ＋ `INSERT INTO ...` |
+| 後 | `INSERT INTO ... ON CONFLICT (${conflictTarget}) DO UPDATE SET ...` |
+
+- **`PRIMARY_KEYS` を足した**（`ON CONFLICT` の対象）。**既定は `"id"`** なので、主キーが `id` のモデルは記入しなくてよい。
+  複合主キーは `"a, b"` のようにカンマ区切りで書く
+- **主キーだけのテーブルは `DO NOTHING` へ分岐する**（`DO UPDATE SET` を空で出すと構文エラーになるため）
+- **代わりに、バックアップ後に増えた行は残る。** 「その時点へ完全に巻き戻す」用途には使えないので、
+  それが要るときは `pg_dump` を使う
+
+### 2. zip の失敗を握り潰さなくした
+
+`createZipBackup` の catch が `console.warn` だけだったのを、`console.error` ＋ `throw` にした。
+**「確認は出るのに守られていない」形は 0.41.1 の H79 と同じ型**で、こちらは**バックアップが1世代も無いのに成功と報告する**形だった。
+
+### 3. 配布物の破壊的 SQL を機械で見る検査を足した
+
+`tests/template-destructive-sql.test.mjs`（4件）。**`templates/` 配下の `*.ts` / `*.mjs` / `*.js` を走査**し、
+
+- `TRUNCATE` が**文字列リテラル／テンプレートリテラルに現れる行**を落とす（コメントでの言及は許す）
+- `export-to-sql.ts` が `ON CONFLICT ... DO UPDATE SET` と `DO NOTHING` の両分岐を持つこと
+- `PRIMARY_KEYS` の既定が `"id"` であること
+- `createZipBackup` の catch が `throw` か `process.exit` を持つこと
+
+**文面検査である。** `export-to-sql.ts` は**モジュール先頭で `@prisma/client` を import する**ため、
+`generate-table-docs.test.mjs` のような「純粋部を import して呼ぶ」形が取れない。
+**振る舞いの保証ではないので、主張は「この文字列が無いこと」までに留めてある。**
+
+### 確認したこと
+
+- **生成される SQL を4パターンで実測**（使い捨てスクリプトに生成ロジックを写して実行）——
+  ①通常（`id` ＋ 他の列）→ `ON CONFLICT ("id") DO UPDATE SET` が出て、**主キーは更新式に入らない**
+  ②主キーだけ → `DO NOTHING` ③複合主キー → `ON CONFLICT ("userId", "roomId")` ④0行 → `INSERT` を出さない
+- **負のテスト**: `git show HEAD:` で修正前のファイルに戻して走らせ、**4件のうち3件が落ちること**を確認した
+  （落ちないなら検査が成り立たない）
+- 型チェック: `tsc --noEmit --strict` で**変更箇所にエラー0件**（`@prisma/client` の未解決のみ。テンプレートに `node_modules` が無いため）
+- 全体: `node --test "tests/*.test.mjs"` が **646件中 644件合格**。
+  ⚠️ **残る2件は本変更と無関係で、`1971c71` でも同じように落ちる**
+  （`git worktree` で HEAD の無改変コピーを作って確認した。`tests/pre-migrate-backup.test.mjs:282` と `:343`。
+  この環境に `zip` は在るので不足ではない。**別途の調査が要る**）
+
+docs 影響: なし（`docs/guide/` と `docs/diagrams/` は配布物の SQL 方言に触れていない。`templates/nextjs/tools/README.md` は本変更に含む）
+
+---
+
 ## [0.41.1 / harness-nextjs 0.5.4] — 二段構えの片方しか働かない形と、鳴りすぎ・取りこぼしを直した（H79 / H80 / H81 / H82）
 
 **いずれも「確認は出るのに守られていない」「何も壊さないのに止まる」という、

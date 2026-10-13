@@ -2,7 +2,7 @@
 // データベースエクスポートツール (v1.2.0)
 //
 // 機能:
-// - 全テーブルの TRUNCATE + INSERT 文を生成
+// - 全テーブルの INSERT ... ON CONFLICT（UPSERT）文を生成 —— **行を1つも消さない**
 // - 外部キー制約を考慮した順序でエクスポート
 // - text[] 配列、JSON、日付、boolean に対応
 // - zip 圧縮バックアップ（同日複数回対応）
@@ -81,6 +81,19 @@ const DB_TABLE_MAP: Record<string, string> = {
   // user: 'public."User"',
   // userProfile: 'public."UserProfile"',
 };
+
+/**
+ * モデル名 → 主キーのカラム名。`ON CONFLICT` の対象になる。
+ *
+ * **既定は `"id"`** なので、主キーが `id` のモデルは記入しなくてよい。
+ * 複合主キーや別名の主キーを持つモデルを足すときだけ書く
+ * （複合主キーは `"a", "b"` のようにカンマ区切りで書く）。
+ *
+ * ⚠️ **ここを間違えると復元が静かに壊れる** —— `ON CONFLICT` の対象が実際の主キーと
+ * 食い違うと PostgreSQL がエラーを返すため、**復元しようとした時に初めて分かる**。
+ */
+const PRIMARY_KEYS: Record<string, string> = {};
+
 
 // ========================================
 // ユーティリティ
@@ -243,7 +256,7 @@ function readDatasourceProvider(): string | null {
  * 非対応の provider なら**明示的に失敗させる**。
  *
  * このスクリプトが出力するのは PostgreSQL 方言に固定された SQL である
- * （`TRUNCATE ... CASCADE` / `public."X"` / `ARRAY[...]::text[]`）。
+ * （`INSERT ... ON CONFLICT ... DO UPDATE` / `public."X"` / `ARRAY[...]::text[]`）。
  * SQLite や MySQL のプロジェクトでそのまま動かすと、Prisma 経由の読み出しは成功するため
  * **「バックアップ成功」と報告されながら復元できないダンプができる**。
  * 壊れたバックアップを信じて破壊的操作へ進む方が、バックアップが無いより危険なので、
@@ -266,7 +279,7 @@ function assertSupportedProvider(provider: string | null): void {
         `datasource provider は "${provider}" です。`
     );
     console.error(
-      "  出力される SQL は TRUNCATE ... CASCADE / public.\"X\" / ARRAY[...]::text[] を含み、" +
+      "  出力される SQL は INSERT ... ON CONFLICT / public.\"X\" / ARRAY[...]::text[] を含み、" +
         `"${provider}" では復元できません。`
     );
     console.error(
@@ -449,7 +462,6 @@ async function exportTable(
     const rows = (await model.findMany()) as Record<string, unknown>[];
 
     const sqlLines = [`-- Table: ${modelName} (${rows.length} rows)`];
-    sqlLines.push(`TRUNCATE TABLE ${dbTable} CASCADE;`);
 
     if (rows.length === 0) {
       sqlLines.push("-- No data to insert");
@@ -458,6 +470,32 @@ async function exportTable(
 
     const columns = Object.keys(rows[0]);
     const dbColumns = columns.map((col) => `"${col}"`);
+
+    // UPSERT の衝突対象と更新式。**行を消さずに上書きする**ため（下の注記を参照）。
+    const primaryKey = PRIMARY_KEYS[modelName] ?? "id";
+    const pkColumns = primaryKey.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+    const conflictTarget = pkColumns.map((c) => `"${c}"`).join(", ");
+    const updatable = columns.filter((col) => !pkColumns.includes(col));
+    if (updatable.length === 0) {
+      // 主キーだけのテーブル。更新する列が無いので DO NOTHING にする
+      // （`DO UPDATE SET` を空で出すと構文エラーになる）
+      const sqlLinesNothing = [`-- Table: ${modelName} (${rows.length} rows)`];
+      const BATCH = 100;
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        const vals = batch.map(
+          (row) => `(${columns.map((col) => sqlValue(row[col])).join(", ")})`
+        );
+        sqlLinesNothing.push(
+          `INSERT INTO ${dbTable} (${dbColumns.join(", ")}) VALUES\n${vals.join(",\n")}\n` +
+            `ON CONFLICT (${conflictTarget}) DO NOTHING;`
+        );
+      }
+      return { sql: sqlLinesNothing.join("\n"), rowCount: rows.length };
+    }
+    const updateAssignments = updatable
+      .map((col) => `  "${col}" = EXCLUDED."${col}"`)
+      .join(",\n");
 
     // 100 件単位でバルクインサート
     const BATCH_SIZE = 100;
@@ -468,7 +506,8 @@ async function exportTable(
         return `(${values.join(", ")})`;
       });
       sqlLines.push(
-        `INSERT INTO ${dbTable} (${dbColumns.join(", ")}) VALUES\n${valueLines.join(",\n")};`
+        `INSERT INTO ${dbTable} (${dbColumns.join(", ")}) VALUES\n${valueLines.join(",\n")}\n` +
+          `ON CONFLICT (${conflictTarget}) DO UPDATE SET\n${updateAssignments};`
       );
     }
 
@@ -503,7 +542,14 @@ async function createZipBackup(sqlFilePath: string): Promise<void> {
     // 世代上限（#24）。SQLite のファイルコピーと同じ理由で、こちらも溜まり続ける
     pruneOldBackups((name) => /^dump_\d{8}(?:_\d+)?\.zip$/.test(name));
   } catch (error) {
-    console.warn("  Could not create zip backup:", error);
+    // ⚠️ **握り潰してはいけない。** 以前は warn だけで終了コード 0 で終わっていたため、
+    // **1世代も残っていないのに「バックアップ済み」と報告され、`pre-migrate-backup` フックも通っていた**。
+    // 実際にこの状態で本番 DB の動作確認を行い、テスト前のバックアップが上書きされた事故が起きている（H93）。
+    console.error("  Error: Could not create zip backup:", error);
+    console.error(
+      "  バックアップが1世代も残っていません。zip / Compress-Archive が使えるかを確認してください。"
+    );
+    throw error;
   }
 }
 

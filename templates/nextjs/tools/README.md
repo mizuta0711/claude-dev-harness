@@ -24,7 +24,7 @@ npx tsx tools/export-to-sql.ts
 
 | provider | 何をするか | 出力 |
 |---|---|---|
-| `postgresql` | 全テーブルを TRUNCATE + INSERT 形式の SQL にして zip 圧縮する | `tools/dump.sql` / `tools/backup/dump_YYYYMMDD.zip`（同日2回目以降は `_2`, `_3` ...） |
+| `postgresql` | 全テーブルを `INSERT ... ON CONFLICT`（UPSERT）形式の SQL にして zip 圧縮する。**行を1つも消さない** | `tools/dump.sql` / `tools/backup/dump_YYYYMMDD.zip`（同日2回目以降は `_2`, `_3` ...） |
 | `sqlite` | **DB ファイルをコピーする**（WAL の `-wal` / `-shm` も一緒に） | `tools/backup/<db>.<時刻>.bak` |
 | それ以外 | **止まる。** この SQL 方言を出力できないため（復元できないダンプを「成功」と報告しない） | — |
 
