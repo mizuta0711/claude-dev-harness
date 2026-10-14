@@ -45,6 +45,10 @@ const SKILLS = [
   "plugins/harness-core/skills/sync-check/SKILL.md",
   "plugins/harness-core/skills/update-docs/SKILL.md",
   "plugins/harness-core/agents/code-reviewer.md",
+  // **「推奨で決めた判断」を設計書から拾う側と、「作成・変更ファイル」を実装後に書く側**（0.42.0 の査読が指摘した）。
+  // どちらも節名・印を名指しするので、TEMPLATE 側が変わったら気づけるようにする。
+  "plugins/harness-core/skills/done/SKILL.md",
+  "plugins/harness-core/skills/code-review/SKILL.md",
 ];
 
 const NL = String.fromCharCode(10);
@@ -124,7 +128,10 @@ test("スキルが設計書へ書かせる印は、TEMPLATE.md の凡例に載�
 
   const unknown = [];
   const useRe = new RegExp(`\`(${MARK})\s*([^\`]{1,40})\``, "gu");
-  for (const rel of SKILLS) {
+  // `done` は**完了報告の表の印**（`✅ /{skill} を実施…` 等）をコードスパンで持つ。設計書へ書かせる印ではないので
+  // この検査だけ外す（節番号の2検査は効かせる）。拾い先の `AI 推奨` は印を伴わない文字列で名指ししている。
+  const REPORT_ONLY = new Set(["plugins/harness-core/skills/done/SKILL.md"]);
+  for (const rel of SKILLS.filter((r) => !REPORT_ONLY.has(r))) {
     const text = fs.readFileSync(path.join(ROOT, rel), "utf-8");
     // バッククォートで囲まれた「印 + 語」だけを対象にする（散文の飾りを拾わない）
     for (const m of text.matchAll(useRe)) {
@@ -135,4 +142,38 @@ test("スキルが設計書へ書かせる印は、TEMPLATE.md の凡例に載�
     }
   }
   assert.deepEqual(unknown, [], `TEMPLATE.md の凡例に無い印を書かせている:${NL}${unknown.join(NL)}`);
+});
+
+test("「規模: L のみ」の印は TEMPLATE の5節の見出し直下にあり、new-feature の記述と一致する", () => {
+  // **M の最小形は印で節を落とす**（0.42.0）。印が見出しから離れる・数が変わる・new-feature の列挙とずれると、
+  // M の設計書に残るべき節が落ちるか、落とすべき節が残る。どちらも読まないと気づけない。
+  const MARKER = "<!-- 規模: L のみ。M では生成しない -->";
+  const lines = template.split(NL);
+
+  const markerLines = lines.map((l, i) => [l.trim(), i]).filter(([l]) => l === MARKER).map(([, i]) => i);
+  const marked = [];
+  for (const i of markerLines) {
+    const prev = lines[i - 1] ?? "";
+    assert.match(prev, /^#{2,3} /, `印が見出しの直下に無い（${i + 1} 行目。直前: ${prev}）`);
+    marked.push(prev.replace(/^#{2,3} /, "").trim());
+  }
+  assert.deepEqual(marked, [
+    "2. タスク一覧",
+    "3-4. Stage 1 レビュー記録",
+    "5. 動作確認計画",
+    "6. 関連ドキュメント",
+    "7. 注意事項",
+  ]);
+
+  // new-feature の「同梱版では「…」「…」…の N つ」と、TEMPLATE の印の付いた節名を突き合わせる
+  const skill = fs.readFileSync(path.join(ROOT, "plugins/harness-core/skills/new-feature/SKILL.md"), "utf-8");
+  const m = skill.match(/同梱版では((?:「[^」]+」)+)の(\d+)つ/);
+  assert.ok(m, "new-feature/SKILL.md に「同梱版では「…」…の N つ」の列挙が無い");
+  const named = [...m[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]);
+  assert.equal(Number(m[2]), named.length, "new-feature の列挙の数と「N つ」が食い違う");
+  assert.deepEqual(
+    named,
+    marked.map((h) => h.replace(/^\d+(?:-\d+)?\.\s*/, "")),
+    "new-feature が列挙する節と、TEMPLATE で印の付いた節が食い違う",
+  );
 });

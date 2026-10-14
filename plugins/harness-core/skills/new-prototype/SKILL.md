@@ -90,6 +90,7 @@ allowed-tools: "Bash(git status:*), Bash(git log:*), Bash(git mv:*), Grep, Glob,
   試作で一番避けたい形である
 - テンプレートは `docs/features/TEMPLATE.md` があればそれ、無ければ
   `new-feature` 同梱の [TEMPLATE.md](../new-feature/TEMPLATE.md) を使う（**専用のものは作らない**）
+- **`規模: L のみ` の印はコピー後に消す。試作は節を落とさない**（設計書は L 相当の厚みで書くため。M の最小形は使わない）
 - パスは **`docs/features/prototype/yyyymmdd_<短い名前>.md`**（無ければ置き場を作る）。
   **ファイル名は短い名前にする** —— 「確かめたいこと」は Step 0 で聞いて**設計書の中に書く**
 - **ここで書くのは Stage 1 だけ**（機能・画面設計＋受け入れ基準）。**Stage 2 は Step 3 で書く**
