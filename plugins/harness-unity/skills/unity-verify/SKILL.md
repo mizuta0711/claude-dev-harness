@@ -56,6 +56,8 @@ git diff --name-only HEAD~1
 
 作業中の機能設計書（`docs/features/` 直下）に**「動作確認計画」の章**があれば、
 その確認項目を控える。
+**章が無い設計書（M の最小形。harness-core 0.42.0 以降）では、「受け入れ基準チェックリスト」の各行の末尾に書かれた
+確認方法を確認項目として控える**（以下の「動作確認計画の項目」は、章が無ければこの確認方法を指す）。
 
 > 章番号ではなく**見出し名で探すこと**。設計書テンプレートの章構成は変わりうるため、
 > 「§4」「§5」のような番号での参照はしない。
@@ -186,7 +188,7 @@ mcp__UnityMCP__execute_code { "action": "execute",
   "code": "return \"isPlaying=\" + Application.isPlaying + \" Time.time=\" + Time.time + \" frame=\" + Time.frameCount;" }
 ```
 
-機能設計書の「動作確認計画」に数値で判定できる項目があれば、
+機能設計書の「動作確認計画」（章が無ければ受け入れ基準の各行の確認方法）に数値で判定できる項目があれば、
 `UnityEngine.Object.FindFirstObjectByType<T>()` で対象を取得して同様に読み出す。
 
 **7. Console を再確認する。** Play 中は `read_console` をそのまま呼べる。実行時例外・NullReference はここで出る。
@@ -215,7 +217,7 @@ mcp__UnityMCP__manage_editor { "action": "stop" }
 | Console エラー | ✅ 0件 / ❌ N件（内容） |
 | Console 警告 | N件（内容・既存かどうか） |
 | Play モード確認 | ⚪ 未実施 / ✅ 実行時例外なし・進行を確認（`Time.time` / `frame`） / ❌ 例外あり（内容） |
-| 動作確認計画の項目 | ✅ N/N 確認済み / ⚠️ 一部未確認（理由） |
+| 動作確認計画の項目（章が無ければ受け入れ基準の確認方法） | ✅ N/N 確認済み / ⚠️ 一部未確認（理由） |
 
 #### 確認できたこと
 - ...
