@@ -177,3 +177,97 @@ test("「規模: L のみ」の印は TEMPLATE の5節の見出し直下にあ�
     "new-feature が列挙する節と、TEMPLATE で印の付いた節が食い違う",
   );
 });
+
+/**
+ * 0.43.0: Stage 2 を「決めたこと」に絞る契約
+ *
+ * 技術設計の章にプログラム言語のコードブロックを置かない、を design-review の検査6（L・試作）と
+ * code-review（M）が機械で見る。**許す言語名の列挙は design-review が正で、TEMPLATE の 4 章コメントは写し**。
+ * 写しがずれると、設計書を書く側（TEMPLATE を読む）と検査する側（design-review を読む）で許される形が食い違う。
+ * 0.43.0 の独立査読が「列挙に別名が無く誤検出する」と「M では検査6 が走らない」を出した。
+ */
+const DESIGN_REVIEW_PATH = "plugins/harness-core/skills/design-review/SKILL.md";
+const designReview = fs.readFileSync(path.join(ROOT, DESIGN_REVIEW_PATH), "utf-8");
+
+/** 「許す言語名」の段落（見出し行から次の空行まで）からトークンを拾う */
+const tokensOf = (text, startRe) => {
+  const lines = text.split(NL);
+  const start = lines.findIndex((l) => startRe.test(l));
+  assert.ok(start >= 0, `列挙の起点が無い: ${startRe}`);
+  const block = [];
+  for (let i = start; i < lines.length; i++) {
+    if (i > start && lines[i].trim() === "") break;
+    block.push(lines[i]);
+  }
+  return new Set(
+    block
+      .join(" ")
+      .replace(/^[^:：]*[:：]/, "") // 見出し部分（「許す言語名（…）:」）を落とす
+      .replace(/[（(][^）)]*[）)]/g, " ") // 注釈を落とす
+      .replace(/[`/]/g, " ")
+      .split(/\s+/)
+      .filter((t) => /^[a-z0-9]+$/.test(t)),
+  );
+};
+
+const allowed = tokensOf(designReview, /^\*\*許す言語名\*\*/);
+
+test("検査6 の許す言語名は、design-review（正）と TEMPLATE 4 章のコメント（写し）で一致する", () => {
+  assert.ok(allowed.size >= 10, `design-review から許す言語名が拾えていない: ${[...allowed]}`);
+  const copy = tokensOf(template, /^\s*許すコードブロック/);
+  assert.deepEqual([...copy].sort(), [...allowed].sort(), "TEMPLATE の写しが design-review の列挙とずれている");
+});
+
+test("TEMPLATE 自身の「技術設計」の章のコードブロックは検査6 を通る", () => {
+  const lines = template.split(NL);
+  const start = lines.findIndex((l) => /^## .*技術設計/.test(l));
+  assert.ok(start >= 0, "TEMPLATE に「技術設計」の章が無い");
+  let end = lines.findIndex((l, i) => i > start && /^## /.test(l));
+  if (end < 0) end = lines.length;
+  const bad = [];
+  let open = false;
+  for (let i = start; i < end; i++) {
+    const m = lines[i].match(/^```(.*)$/);
+    if (!m) continue;
+    if (open) { open = false; continue; }
+    open = true;
+    const lang = (m[1].trim().split(/\s+/)[0] ?? "").toLowerCase();
+    if (lang && !allowed.has(lang)) bad.push(`${i + 1}: \`\`\`${lang}`);
+  }
+  assert.deepEqual(bad, [], `TEMPLATE の技術設計の章に、検査6 が指摘する言語のコードブロックがある:${NL}${bad.join(NL)}`);
+});
+
+test("TEMPLATE の 4-4 に「決めたこと／代案／理由」の表、4-5 に「対象」列がある（スキルが名指しする）", () => {
+  assert.match(template, /^\| *決めたこと *\| *代案 *\| *理由 *\|/m, "4-4 の表の見出しが無い");
+  const stage2Review = template.slice(template.indexOf("Stage 2 レビュー記録"));
+  assert.match(stage2Review, /^\| *日付 *\| *対象 *\|/m, "4-5 の表に「対象」列が無い");
+});
+
+test("「M は design-review tech を回す」と読める 0.42.0 以前の定型句が残っていない", () => {
+  // 0.43.0 の独立査読が、スキル2箇所でこの定型句を見つけた（結論は正しいが理由が旧版のまま）。
+  // 歴史の説明（「0.41.0 までは…」）は対象にしないよう、文を限定して照合する。
+  const STALE = [
+    /M 規模は design-review tech だけ/,
+    /M が持つ設計レビューは/,
+    /M は `design-review tech` の1回/,
+  ];
+  const targets = [
+    ...SKILLS,
+    TEMPLATE_PATH,
+    "templates/base/constitution.md",
+    "templates/base/.claude/harness/core.md",
+    "README.md",
+  ];
+  for (const dir of ["docs/guide", "docs/diagrams"]) {
+    for (const f of fs.readdirSync(path.join(ROOT, dir))) if (f.endsWith(".md")) targets.push(`${dir}/${f}`);
+  }
+  const hits = [];
+  for (const rel of targets) {
+    const lines = fs.readFileSync(path.join(ROOT, rel), "utf-8").split(NL);
+    lines.forEach((l, i) => {
+      if (/0\.4[12]\.0|まで|改訂|版 \|/.test(l)) return; // 改訂履歴・経緯の説明は除く
+      if (STALE.some((re) => re.test(l))) hits.push(`${rel}:${i + 1}: ${l.trim().slice(0, 80)}`);
+    });
+  }
+  assert.deepEqual(hits, [], `旧版の定型句が残っている:${NL}${hits.join(NL)}`);
+});
