@@ -57,6 +57,36 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.44.0] — 全体査読の入口（`whole-review`）と、溜まった変更で催促する仕組み
+
+変更単位のレビュー（`design-review` / `code-review`）は、**変更と変更の間に生まれる非対称**（片方だけ排他がある・黙って捨てる経路・網羅の漏れ）を
+原理的に拾えない。実プロジェクトで利用者が手で全体査読を回し（所見 41 件・高 1 → 設計書 5 本）、それを型にした。
+**要件は「メインで実行」ではなく「セッションのモデル（最上位）で実行」**で、**スキルだけあって実施されないと意味がない**ので契機も仕組みで持つ。
+
+### 1. スキル `whole-review` とエージェント `whole-reviewer`（`model: inherit`）
+
+- `agents/whole-reviewer.md`: **`model: inherit`**（メインセッションのモデルを継ぐ。**ここだけが `sonnet` 固定ではない**。`tests/wiring.test.mjs` の例外リストに理由つきで載せた）。
+  ツールは読み取りだけ（`Edit` / `Write` を持たない＝**修正しない**）。突き合わせ先は `constitution.md`・`designDocs.docs[]`・`projectDocs.policy`・台帳の既知。
+  **設計書との一致は見ない**（単一設計書前提の検査は全体査読では空振りする）。読んだ範囲と読まなかった範囲を表で返す。所見ごとに根拠の行
+  - ⚠️ `CLAUDE_CODE_SUBAGENT_MODEL` でサブエージェントのモデルを下げる運用では `inherit` もその影響を受ける。結果の冒頭に実際のモデル名を書かせる
+- `skills/whole-review/SKILL.md`: 範囲と既知の項目を集めて `whole-reviewer` を 1 本起動 → `docs/reviews/YYYYMMDD_HHMMSS_whole-review.md` に保存 →
+  **起こし候補の一覧**をユーザーに見せ、選んだものを `new-feature` へ → `--mark` で記録。**「前回の候補で未着手のもの n 本」を報告に出す**（入口だけ回すと未着手が積もる）。
+  `--mark [パス]`（査読せずに HEAD を記録。手で回した直後のプロジェクト向け）・`--snooze`（見送り）
+
+### 2. 契機: 溜まった変更で催促する（`whole-review-nudge.js`）
+
+Claude Code のフックに時刻駆動のイベントは無い。**時刻の周期ではなく変更量**で催促する。**知らせるだけ。止めない。自動では回さない**（全ソースを読むコストはユーザーが決める）。
+
+- 前回の全体査読（`.claude/.whole-review.json` の `lastCommit`。見送り後は `snoozedAt`。**記録が無ければ初コミット**）から HEAD までの
+  **完了した設計書の本数・`paths.source` の差分行数・コミット数**を測り、`harness.config.json` の **`wholeReview.nudge`** の閾値の**どれか1つ以上**に達したら知らせる（境界は「以上」）
+- **キーが無ければ何も言わない**（0.44.0 より前の適用先で勝手に鳴らない）。`templates/*/.claude/harness.config.json` には既定値（完了 5 本・src 3,000 行・コミット 50）を入れた
+- 鳴る場所: **SessionStart**（`session-start-context.js` に 1 行＋画面の 💡）／**`pre-push-check` Step 3.7**／**`complete-feature` の完了報告**。
+  後 2 つはスキルの手順から同じスクリプトを実行する。SessionStart で出したら **12 時間は短縮形**（鳴りすぎない・R3）
+- `tests/whole-review-nudge.test.mjs`（閾値の境界・キー無し・記録なし・`--mark` / `--snooze`・実リポジトリでの測定）
+
+docs 影響: あり（guide/運用ガイド.md §2-1 — スキル表／reference/harness設定契約.md — `wholeReview.nudge` のスキーマ・消費者・fail-open／
+diagrams/04 — サブエージェント表／diagrams/05 — `session-start-context` の行／README — スキル表）。
+
 ## [0.43.0] — Stage 2 を「決めたこと」に絞り、M の設計レビューを既定で外す
 
 0.42.0 の後、実プロジェクト1件（現行規則下 5 件）で測り直した結果に対応した。

@@ -76,6 +76,7 @@ node --test
 | ファイル | 対象 | 守っているもの |
 |---------|------|--------------|
 | `audit-notice.test.mjs` | SessionStart の監査通知 | 「監査から N 日」の判定（**止めないので壊れても気づかない**） |
+| `whole-review-nudge.test.mjs` | 全体査読の催促 | 閾値の判定（境界・キー無し・正数以外）、記録なし＝初コミットから、`--mark` / `--snooze` の記録、実リポジトリでの測定（**止めないので壊れても気づかない**） |
 | `milestone-ledger.test.mjs` | SessionStart の台帳通知 | 台帳の「次にやること」を出すこと |
 
 ## 書くときの約束

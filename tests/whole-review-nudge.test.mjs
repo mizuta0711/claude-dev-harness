@@ -1,0 +1,185 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPT = path.join(ROOT, "plugins/harness-core/hooks/scripts/whole-review-nudge.js");
+const require = createRequire(import.meta.url);
+const nudge = require(SCRIPT);
+
+/**
+ * 全体査読の催促（0.44.0）
+ *
+ * **知らせるだけで止めない。自動では回さない。** だから壊れても誰も気づかない —— 機械で守る。
+ *
+ * 守るもの:
+ *   - 閾値の判定は「以上」（5 本と決めたら 5 本目で鳴る）。キーが無ければ null、正数以外の軸は見ない
+ *   - 記録が無ければ初コミットから測る（「一度も回していない」）
+ *   - `--mark` は HEAD を記録し、以後その先から測る。`--snooze` は HEAD から再び溜まるまで黙る
+ */
+
+// ---------------------------------------------------------------------------
+// 純関数
+// ---------------------------------------------------------------------------
+
+test("thresholdsOf: キーが無い・オブジェクトでない・正数が1つも無い → null", () => {
+  assert.equal(nudge.thresholdsOf({}), null);
+  assert.equal(nudge.thresholdsOf({ wholeReview: {} }), null);
+  assert.equal(nudge.thresholdsOf({ wholeReview: { nudge: "5" } }), null);
+  assert.equal(nudge.thresholdsOf({ wholeReview: { nudge: { completedFeatures: 0, sourceLines: -1, commits: "x" } } }), null);
+});
+
+test("thresholdsOf: 正数の軸だけ採り、それ以外は null（その軸は見ない）", () => {
+  assert.deepEqual(nudge.thresholdsOf({ wholeReview: { nudge: { completedFeatures: 5 } } }), {
+    completedFeatures: 5,
+    sourceLines: null,
+    commits: null,
+  });
+  assert.deepEqual(nudge.thresholdsOf({ wholeReview: { nudge: { completedFeatures: "5", sourceLines: 3000, commits: null } } }), {
+    completedFeatures: 5,
+    sourceLines: 3000,
+    commits: null,
+  });
+});
+
+test("exceededAxes: 境界は「以上」。達した軸だけ返す", () => {
+  const t = { completedFeatures: 5, sourceLines: 3000, commits: 50 };
+  assert.deepEqual(nudge.exceededAxes({ completedFeatures: 4, sourceLines: 2999, commits: 49 }, t), []);
+  assert.deepEqual(nudge.exceededAxes({ completedFeatures: 5, sourceLines: 0, commits: 0 }, t), ["completedFeatures"]);
+  assert.deepEqual(nudge.exceededAxes({ completedFeatures: 0, sourceLines: 3000, commits: 50 }, t), ["sourceLines", "commits"]);
+  // null の軸は見ない
+  assert.deepEqual(nudge.exceededAxes({ completedFeatures: 100, sourceLines: 100, commits: 100 }, { completedFeatures: null, sourceLines: null, commits: 50 }), ["commits"]);
+  assert.deepEqual(nudge.exceededAxes({ completedFeatures: 100 }, null), []);
+});
+
+// ---------------------------------------------------------------------------
+// 実リポジトリ
+// ---------------------------------------------------------------------------
+
+function makeRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-whole-review-"));
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: dir, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  git("init", "-q");
+  git("config", "user.email", "t@example.com");
+  git("config", "user.name", "t");
+  git("config", "commit.gpgsign", "false");
+  fs.mkdirSync(path.join(dir, ".claude"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "docs", "features", "completed"), { recursive: true });
+  const commit = (files, msg) => {
+    for (const [rel, body] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), body);
+      git("add", rel);
+    }
+    git("commit", "-q", "-m", msg);
+    return git("rev-parse", "HEAD");
+  };
+  const config = (nudgeCfg) =>
+    fs.writeFileSync(
+      path.join(dir, ".claude", "harness.config.json"),
+      JSON.stringify(
+        { schemaVersion: 1, environment: "nextjs", commands: {}, gates: { preCommit: [] }, paths: { source: ["src/**"] }, ...(nudgeCfg ? { wholeReview: { nudge: nudgeCfg } } : {}) },
+        null,
+        2,
+      ),
+    );
+  const run = (...args) =>
+    execFileSync("node", [SCRIPT, ...args], {
+      cwd: dir,
+      encoding: "utf-8",
+      env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  return { dir, git, commit, config, run };
+}
+
+test("記録が無ければ初コミットから測り、閾値に達したら「一度も回していない」と知らせる", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n", "docs/features/completed/20260102_y.md": "# y\n" }, "2");
+  r.config({ completedFeatures: 2 });
+  const out = r.run();
+  assert.match(out, /一度も回していない/);
+  assert.match(out, /完了 2 本/);
+  const json = JSON.parse(r.run("--json"));
+  assert.equal(json.measured.base.kind, "first");
+  assert.deepEqual(json.axes, ["completedFeatures"]);
+});
+
+test("閾値のキーが無ければ何も出さない（既存の適用先で鳴らない）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config(null);
+  assert.equal(r.run(), "");
+  assert.equal(JSON.parse(r.run("--json")), null);
+});
+
+test("--mark で HEAD を記録すると、その先から測る。src の差分行は paths.source だけを数える", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config({ completedFeatures: 1, sourceLines: 3 });
+  assert.match(r.run(), /目安に達しています/);
+
+  r.run("--mark", "docs/reviews/x.md");
+  const marker = JSON.parse(fs.readFileSync(path.join(r.dir, ".claude", ".whole-review.json"), "utf-8"));
+  assert.equal(marker.lastCommit, r.git("rev-parse", "HEAD"));
+  assert.equal(marker.reviewFile, "docs/reviews/x.md");
+  assert.equal(r.run(), "", "記録直後は何も溜まっていないので黙る");
+
+  // docs だけ 10 行増やしても src の軸は動かない
+  r.commit({ "docs/notes.md": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n" }, "3");
+  assert.equal(r.run(), "");
+  // src を 3 行変えると達する
+  r.commit({ "src/a.ts": "a\nb\nc\nd\n" }, "4");
+  const json = JSON.parse(r.run("--json"));
+  assert.equal(json.measured.base.kind, "last");
+  assert.equal(json.measured.sourceLines, 3);
+  assert.deepEqual(json.axes, ["sourceLines"]);
+});
+
+test("--snooze は HEAD から再び溜まるまで黙る。記録のコミットが実在しなければ初コミットから", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config({ completedFeatures: 1 });
+  assert.match(r.run(), /目安に達しています/);
+  r.run("--snooze");
+  assert.equal(r.run(), "", "見送り直後は黙る");
+  r.commit({ "docs/features/completed/20260103_z.md": "# z\n" }, "3");
+  const json = JSON.parse(r.run("--json"));
+  assert.equal(json.measured.base.kind, "snoozed");
+  assert.match(json.line, /見送り後/);
+
+  // 実在しないコミットを記録に書く → 初コミットから
+  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.json"), JSON.stringify({ lastCommit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }));
+  assert.equal(JSON.parse(r.run("--json")).measured.base.kind, "first");
+});
+
+test("閾値は「以上」で鳴る（5 本と決めたら 5 本目）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.config({ completedFeatures: 2 });
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  assert.equal(r.run(), "", "1 本では鳴らない");
+  r.commit({ "docs/features/completed/20260102_y.md": "# y\n" }, "3");
+  assert.match(r.run(), /完了 2 本/);
+});
+
+test("SessionStart で案内したあとは短縮形（同じ日の pre-push-check / complete-feature で長文を繰り返さない）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config({ completedFeatures: 1 });
+  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.json"), JSON.stringify({ notifiedAt: new Date().toISOString() }));
+  assert.match(r.run(), /セッション開始時に案内済み/);
+  assert.doesNotMatch(r.run("--full"), /案内済み/);
+});

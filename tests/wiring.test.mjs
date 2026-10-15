@@ -228,6 +228,10 @@ test("「自動実行」と主張しているスキルには、実際の呼び�
  */
 const MODEL_EXCEPTIONS = {
   "japanese-proofreader": { model: "opus", why: "文章の自然さを判断する作業のため" },
+  // 全体査読は差分レビューより判断の比重が大きく、利用者はセッションの最上位モデルで回したい
+  // （実運用で、sonnet 固定の code-reviewer へ委譲せずメインで実施した理由がこれ。0.44.0）。
+  // `inherit` はメインセッションのモデルを継ぐ公式の値。
+  "whole-reviewer": { model: "inherit", why: "全体査読はセッションのモデル（最上位）で回すため" },
 };
 
 test("すべてのエージェントが model を持ち、既定は sonnet（例外は明示リストのみ）", () => {

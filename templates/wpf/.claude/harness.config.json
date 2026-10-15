@@ -10,6 +10,7 @@
     "dev": "dotnet run"
   },
   "audit": { "intervalDays": 30 },
+  "wholeReview": { "nudge": { "completedFeatures": 5, "sourceLines": 3000, "commits": 50 } },
   "gates": { "preCommit": ["build"] },
   "askGuards": { "sets": ["git-destructive"] },
   "paths": {

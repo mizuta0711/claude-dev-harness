@@ -10,6 +10,7 @@
     "dev": "./gradlew installDebug"
   },
   "audit": { "intervalDays": 30 },
+  "wholeReview": { "nudge": { "completedFeatures": 5, "sourceLines": 3000, "commits": 50 } },
   "gates": { "preCommit": [] },
   "askGuards": { "sets": ["git-destructive", "android-device"] },
   "envOptions": {

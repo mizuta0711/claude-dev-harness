@@ -122,6 +122,13 @@ git log --format=%h @{upstream}..HEAD
 - それでも重い場合は、**照合対象を減らすのではなく `designDocs.docs[]` の粒度を見直す**
   （1文書が大きすぎる＝実態の一覧を1本に詰め込みすぎている可能性）
 
+## Step 3.7: 全体査読の目安（催促だけ・止めない）
+
+`node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/whole-review-nudge.js"` を実行し、出力があれば報告に載せる
+（`.claude/harness.config.json` の `wholeReview.nudge` の閾値に達したときだけ出る。無ければ何も出ない）。
+**push は止めない。** 回すかはユーザーが決める（`/harness-core:whole-review`。見送るなら `--snooze`）。
+push 前はどのみち立ち止まる場所なので、ここで知らせる。
+
 ## Step 4: 結果報告
 
 ```
@@ -138,6 +145,9 @@ git log --format=%h @{upstream}..HEAD
 実行: ✅ 実施 / ⏭️ スキップ（全コミットがソース変更なし）
 対象: designDocs.docs[] の L件
 乖離: 0件（または J件 → 修正済み / 未対応の内訳 / **試作中のため警告**）
+
+### 全体査読の目安（Step 3.7）
+⬜ 未到達 / 💡 目安に達しています（完了 n 本・src ±n 行・コミット n）→ /harness-core:whole-review で回せます（push は止めない）
 
 ### 判定: ✅ プッシュ可能 / ⚠️ プッシュ可能（試作中のため警告）/ ❌ 未同期あり / ❌ 乖離あり
 ```

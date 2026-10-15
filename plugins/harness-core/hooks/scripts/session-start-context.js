@@ -339,6 +339,21 @@ if (followOverdue) {
   );
 }
 
+/**
+ * 全体査読の目安（0.44.0）。**知らせるだけ。止めない。自動では回さない。**
+ *
+ * `wholeReview.nudge` の閾値が無ければ何も言わない（既存の適用先で勝手に鳴らない）。
+ * 出したら `.claude/.whole-review.json` に `notifiedAt` を書き、同じ日のうちの
+ * `pre-push-check` / `complete-feature` からの呼び出しは短縮形になる（鳴りすぎない）。
+ */
+let wholeReviewLine = null;
+try {
+  wholeReviewLine = cfg.status === "ok" ? require("./whole-review-nudge").nudgeLine(cfg) : null;
+} catch {
+  wholeReviewLine = null;
+}
+if (wholeReviewLine) lines.push(wholeReviewLine);
+
 const handoffs = pendingHandoffs();
 if (handoffs.length) {
   lines.push(
@@ -394,7 +409,9 @@ const screen =
     ? `[harness] ${cfg.config?.environment || "environment 未設定"} / config OK` +
       (orphanBranch ? ` ⚠️ ブランチ \`${branch}\` は未 push（${defaultRef} に無いコミット ${ahead} 件）` : "") +
       // 監査は**人が起動を決める**ものなので、Claude の文脈だけでなく画面にも出す
-      (overdue ? ` 💡 利用実績の監査から ${overdue.days} 日（/harness-core:usage-audit）` : "")
+      (overdue ? ` 💡 利用実績の監査から ${overdue.days} 日（/harness-core:usage-audit）` : "") +
+      // 全体査読も**人が起動を決める**（全ソースを読むコスト）ので画面に出す
+      (wholeReviewLine ? ` 💡 全体査読の目安に達しています（/harness-core:whole-review）` : "")
     : `[harness] ⚠️ ${cfg.message}`;
 
 lib.emit({

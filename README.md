@@ -198,6 +198,7 @@ marketplace の場所（`extraKnownMarketplaces`）を教えるだけで、**導
 | `harness-update` | **ハーネスの更新**（プラグイン層＋テンプレート層）。3点比較で分類し、**判断が要るものは別エージェントの査読を通して推奨つきで確認**する |
 | `proofread-ja` | 日本語校正（AI が書いた文章の品質ゲート）。`japanese-proofreader` へ委譲する |
 | `usage-audit` | 利用実績の監査（transcript からスキル・エージェントの発火回数を数え、ゼロ発火の原因を分類する） |
+| `whole-review` | **アプリ全体の査読**（全ソースを `whole-reviewer`〔`model: inherit`＝セッションのモデル〕に読ませ、変更単位のレビューでは拾えない横断の欠陥を所見に。修正はせず、出口は設計書への起こし候補）。**契機は変更量**: `wholeReview.nudge` の閾値に達すると SessionStart / `pre-push-check` / `complete-feature` が催促する（自動では回さない） |
 | `create-project` | 新規プロジェクトの生成（「〇〇の新規プロジェクト作って」の入口。GitHub から取得した `tools/create-project.mjs` を実行し、次の手順を案内する） |
 | `receive-handoff` | `docs/handoff/` の引き継ぎの受け取り（実物で裏取り → ユーザー確認 → すぐ着手／保留に分けて格納 → handoff を空に） |
 
