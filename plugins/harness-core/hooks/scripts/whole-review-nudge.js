@@ -174,7 +174,7 @@ function nudge(cfg, opts = {}) {
       ? `[全体査読] 目安に達しています（${figures}。セッション開始時に案内済み）。\`/harness-core:whole-review\``
       : `[全体査読] 目安に達しています（${since}: ${figures}。閾値を超えた軸: ${over}）。` +
         `\`/harness-core:whole-review\` で、変更単位のレビューでは拾えない横断の欠陥を全ソースから探せる。` +
-        `見送るなら \`node "${lib.toPosix(path.relative(lib.projectDir(), __filename))}" --snooze\`。`;
+        `見送るなら \`/harness-core:whole-review --snooze\`。`;
   return { line, measured, axes, recentlyNotified: Boolean(recentlyNotified) };
 }
 
