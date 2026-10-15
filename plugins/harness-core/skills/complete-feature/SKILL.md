@@ -2,7 +2,7 @@
 name: complete-feature
 description: "機能設計書の完了処理。受け入れ基準と（あれば）タスク一覧の完了を確認し、設計書の整合性チェックの後 completed/ へ移動する。"
 argument-hint: "[設計書ファイル名（省略時は一覧から選択）]"
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Edit, Write, Bash(mv:*)"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Bash(node:*), Grep, Glob, Read, Edit, Write, Bash(mv:*)"
 ---
 
 # 機能設計書の完了処理
@@ -139,7 +139,7 @@ M/L フローの最後に実行する。設計書の全タスク（タスク一�
 ### ステータス: 🟢 完了 → completed/ へ移動 / ⏸️ 一部保留 → pending/ へ移動
 ### 台帳: 行を削除（{やること}） / 該当なし
 ### 推奨で決めた判断: ✅ n 件（要点を列挙） / ⬜ なし（すべてユーザー承認）
-### 全体査読の目安: ⬜ 未到達 / 💡 目安に達しています（…）→ /harness-core:whole-review で回せます
+### 全体査読の目安: ⬜ 未到達（または閾値の設定なし） / スクリプトの出力の `[全体査読]` 以降をそのまま
 ```
 
 「全体査読の目安」は `node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/whole-review-nudge.js"` の出力をそのまま載せる

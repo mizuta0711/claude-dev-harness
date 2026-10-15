@@ -17,7 +17,10 @@
  * - **閾値（`wholeReview.nudge`）が無ければ何も言わない**（既存の適用先で勝手に鳴らない。fail-open）
  * - **記録が無ければ「一度も回していない」として、リポジトリの初コミットから測る**
  * - 「今回は見送る」（`--snooze`）は `snoozedAt` に HEAD を書き、そこから再び閾値ぶん溜まるまで黙る
- * - 鳴りすぎない（R3）: SessionStart で案内したら `notifiedAt` を書き、**12 時間は短縮形**にする
+ * - 鳴りすぎない（R3）: SessionStart（startup / resume）で案内したら `notifiedAt` を書き、
+ *   **12 時間は短縮形**にする（`clear` / `compact` の SessionStart と、`pre-push-check` / `complete-feature` からの呼び出し）
+ * - **記録ファイル（`.claude/.whole-review.json`）はコミットしない**（`.harness-audit.json` と同じ扱い。
+ *   `templates/base/.gitignore` が覆う）。`notifiedAt` を毎セッション書くので、追跡すると差分が出続ける
  *
  * 使い方:
  *   require して `nudgeLine()`（session-start-context.js）
@@ -86,18 +89,30 @@ function exceededAxes(measured, thresholds) {
   return hit;
 }
 
-/** 測る起点のコミット。`snoozedAt` → `lastCommit` → 初コミット の順 */
+/** git の空ツリー。初コミットの中身まで数えるときの diff の起点 */
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+/**
+ * 測る起点のコミット。`snoozedAt` → `lastCommit` → 初コミット の順に**順次**実在を確かめる
+ * （`snoozedAt` だけが実在しない〔rebase 等〕とき、`lastCommit` を飛ばして初コミットへ落ちない）。
+ *
+ * `rev-parse --verify` は 40 桁の十六進なら実在しなくても通し、`^{commit}` は cmd.exe で `^` が
+ * エスケープ文字になり壊れる。`cat-file -t` が "commit" を返すかで見る。
+ */
 function baseCommit(marker) {
-  const candidate = marker?.snoozedAt || marker?.lastCommit;
-  // 記録のコミットが実在しないとき（rebase・別クローン）は初コミットから測る。
-  // `rev-parse --verify` は 40 桁の十六進なら実在しなくても通し、`^{commit}` は cmd.exe で `^` が
-  // エスケープ文字になり壊れる。`cat-file -t` が "commit" を返すかで見る
-  if (candidate && /^[0-9a-f]{7,40}$/i.test(candidate) && lib.git(`cat-file -t ${candidate}`) === "commit") {
-    return { commit: candidate, kind: marker?.snoozedAt ? "snoozed" : "last" };
+  for (const [key, kind] of [
+    ["snoozedAt", "snoozed"],
+    ["lastCommit", "last"],
+  ]) {
+    const candidate = marker?.[key];
+    if (candidate && /^[0-9a-f]{7,40}$/i.test(candidate) && lib.git(`cat-file -t ${candidate}`) === "commit") {
+      return { commit: candidate, kind };
+    }
   }
-  const roots = lib.git("rev-list --max-parents=0 HEAD").split("\n").filter(Boolean);
-  const first = roots[roots.length - 1];
-  return first ? { commit: first, kind: "first" } : null;
+  // 記録が無い（または実在しない）ときは「一度も回していない」。**初コミットの中身も数える**ので、
+  // 範囲は root..HEAD ではなく HEAD 全体（diff の起点は空ツリー）
+  const head = lib.git("rev-parse HEAD");
+  return head ? { commit: EMPTY_TREE, kind: "first" } : null;
 }
 
 /**
@@ -113,21 +128,25 @@ function measure(config, marker) {
   if (lib.git("rev-parse --is-inside-work-tree") !== "true") return null;
   const base = baseCommit(marker);
   if (!base) return null;
-  const range = `${base.commit}..HEAD`;
+  const first = base.kind === "first";
+  const logRange = first ? "HEAD" : `${base.commit}..HEAD`;
+  const diffRange = first ? `${EMPTY_TREE} HEAD` : `${base.commit}..HEAD`;
 
-  const added = lib.git(`log --diff-filter=A --name-only --format= ${range} -- docs/features/completed/`, 10000);
+  // 催促は落ちてよい。SessionStart 全体（10 秒）を道連れにしないよう、git 1 回は 3 秒まで
+  const added = lib.git(`log --diff-filter=A --name-only --format= ${logRange} -- docs/features/completed/`, 3000);
   const completed = new Set(added.split("\n").map((s) => s.trim()).filter((s) => s.endsWith(".md")));
 
   const globs = Array.isArray(config?.paths?.source) ? config.paths.source : [];
-  const usable = globs.length && !globs.some((g) => /[{}[\]]/.test(String(g)));
+  // ブレース・角括弧は `:(glob)` が展開しない。`paths.source` が無いときも同じく、差分全体を採る
+  const usable = Boolean(globs.length) && !globs.some((g) => /[{}[\]]/.test(String(g)));
   const specs = usable ? globs.map((g) => `":(glob)${String(g).replace(/"/g, "")}"`).join(" ") : "";
   let sourceLines = 0;
   try {
-    const stat = execSync(`git diff --shortstat ${range}${specs ? ` -- ${specs}` : ""}`, {
+    const stat = execSync(`git diff --shortstat ${diffRange}${specs ? ` -- ${specs}` : ""}`, {
       cwd: lib.projectDir(),
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
-      timeout: 15000,
+      timeout: 3000,
     });
     const ins = Number((stat.match(/(\d+) insertion/) || [0, 0])[1]);
     const del = Number((stat.match(/(\d+) deletion/) || [0, 0])[1]);
@@ -136,8 +155,14 @@ function measure(config, marker) {
     sourceLines = 0;
   }
 
-  const commits = Number(lib.git(`rev-list --count ${range}`)) || 0;
-  return { base, completedFeatures: completed.size, sourceLines, commits };
+  const commits = Number(lib.git(`rev-list --count ${logRange}`, 3000)) || 0;
+  return { base, completedFeatures: completed.size, sourceLines, sourceScoped: usable, commits };
+}
+
+/** ローカルの日付（UTC の `toISOString` だと JST の朝は前日になる） */
+function localDate(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 const LABEL = { completedFeatures: "完了した設計書", sourceLines: "src の差分行", commits: "コミット" };
@@ -161,11 +186,11 @@ function nudge(cfg, opts = {}) {
   const since =
     measured.base.kind === "first"
       ? "一度も回していない（初コミットから）"
-      : `前回 ${measured.base.commit.slice(0, 7)}` +
-        (marker?.date ? `・${marker.date}` : "") +
-        (measured.base.kind === "snoozed" ? "（見送り後）" : "") +
-        " から";
-  const figures = `完了 ${measured.completedFeatures} 本・src ±${measured.sourceLines} 行・コミット ${measured.commits}`;
+      : measured.base.kind === "snoozed"
+        ? `見送った ${measured.base.commit.slice(0, 7)} から`
+        : `前回 ${measured.base.commit.slice(0, 7)}${marker?.date ? `・${marker.date}` : ""} から`;
+  const linesLabel = measured.sourceScoped ? "src" : "差分（paths.source 未使用）";
+  const figures = `完了 ${measured.completedFeatures} 本・${linesLabel} ±${measured.sourceLines} 行・コミット ${measured.commits}`;
   const over = axes.map((a) => LABEL[a]).join("・");
 
   const recentlyNotified = marker?.notifiedAt && Date.now() - Date.parse(marker.notifiedAt) < NOTIFIED_WINDOW_MS;
@@ -178,9 +203,13 @@ function nudge(cfg, opts = {}) {
   return { line, measured, axes, recentlyNotified: Boolean(recentlyNotified) };
 }
 
-/** SessionStart 用: 催促の行を返し、出したことを記録する */
-function nudgeLine(cfg) {
-  const r = nudge(cfg, { brief: false });
+/**
+ * SessionStart 用: 催促の行を返し、出したことを記録する。
+ *
+ * @param {{brief?:boolean}} [opts] `clear` / `compact` では brief（12 時間以内に案内済みなら短縮形）
+ */
+function nudgeLine(cfg, opts = {}) {
+  const r = nudge(cfg, { brief: Boolean(opts.brief) });
   if (!r) return null;
   try {
     writeMarker({ ...(readMarker() || {}), notifiedAt: new Date().toISOString() });
@@ -196,7 +225,7 @@ function mark(reviewFile) {
   const prev = readMarker() || {};
   const next = {
     lastCommit: head,
-    date: new Date().toISOString().slice(0, 10),
+    date: localDate(),
     reviewFile: reviewFile || prev.reviewFile || null,
   };
   writeMarker(next);

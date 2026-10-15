@@ -343,12 +343,16 @@ if (followOverdue) {
  * 全体査読の目安（0.44.0）。**知らせるだけ。止めない。自動では回さない。**
  *
  * `wholeReview.nudge` の閾値が無ければ何も言わない（既存の適用先で勝手に鳴らない）。
- * 出したら `.claude/.whole-review.json` に `notifiedAt` を書き、同じ日のうちの
- * `pre-push-check` / `complete-feature` からの呼び出しは短縮形になる（鳴りすぎない）。
+ * 出したら `.claude/.whole-review.json` に `notifiedAt` を書き、**12 時間**は短縮形になる
+ * （`clear` / `compact` の SessionStart と、`pre-push-check` / `complete-feature` からの呼び出し。鳴りすぎない）。
+ * `startup` / `resume` は全文（新しいセッションの始まりなので）。
  */
 let wholeReviewLine = null;
 try {
-  wholeReviewLine = cfg.status === "ok" ? require("./whole-review-nudge").nudgeLine(cfg) : null;
+  wholeReviewLine =
+    cfg.status === "ok"
+      ? require("./whole-review-nudge").nudgeLine(cfg, { brief: input.source === "clear" || input.source === "compact" })
+      : null;
 } catch {
   wholeReviewLine = null;
 }

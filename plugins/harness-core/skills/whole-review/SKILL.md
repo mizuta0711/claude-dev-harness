@@ -26,7 +26,8 @@ allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git l
 ## Step 1: 範囲と突き合わせ先を決める
 
 1. `.claude/harness.config.json` を読み、`paths.source`・`designDocs.docs[]`・`projectDocs.policy` を取る（config が無ければ `src/` と `docs/設計書/` を推定し、推定したことを報告に書く）
-2. `git ls-files -- <paths.source>` で対象ファイルを列挙し、**層ごとの本数**を把握する（読む順を決める材料）
+2. `git ls-files -- <paths.source>`（と永続化の置き場）で対象ファイルを列挙し、**層ごとの本数**を把握する。
+   **この一覧は Step 2 のプロンプトでそのまま渡す**（`whole-reviewer` は `Bash` を持たないので自分では列挙できない）
 3. 前回の記録 `.claude/.whole-review.json` を読む（無ければ「初回」）
 4. **既知の項目**を集める: `docs/backlog.md` の残作業の表と、`docs/features/planned/` の設計書の題名
 
@@ -34,7 +35,7 @@ allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git l
 
 ```
 Agent(subagent_type: "whole-reviewer", prompt:
-  "アプリ全体の査読。対象: {paths.source の列挙} と {永続化の置き場}（コミット {HEAD}）。
+  "アプリ全体の査読。対象（コミット {HEAD}）: {Step 1-2 で列挙したファイルの一覧。層ごとに分けて全部貼る}。
    突き合わせ先: constitution.md / {designDocs.docs[] のパス} / {projectDocs.policy のパス}。
    既知の項目（当たる所見には【既知 #n】を付けて）: {Step 1-4 の一覧}。
    前回の全体査読: {lastCommit・date、または初回}。
@@ -44,6 +45,7 @@ Agent(subagent_type: "whole-reviewer", prompt:
 
 - **モデルはエージェント定義の `model: inherit`**。このセッションのモデルで走る。**起動側で上書きしない**
 - `Task` の並列分割はしない（1 本で全体を読む。読み切れない範囲は「読まなかった」として返ってくる）
+- エージェントは `Read` / `Grep` / `Glob` だけを持つ（**修正しない**ことを機械で担保）。必要な一覧・履歴はプロンプトで渡す
 
 ## Step 3: 記録して、起こし候補を出す
 

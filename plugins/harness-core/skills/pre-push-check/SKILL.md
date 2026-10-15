@@ -1,7 +1,7 @@
 ---
 name: pre-push-check
 description: git push 前に必ず実行する。未プッシュの全コミットが台帳に同期済みかを確認し、ソース変更を含む場合は設計書と実装の全量照合も行う。
-allowed-tools: "Bash(git log:*), Bash(git diff:*), Bash(git diff-tree:*), Bash(git show:*), Grep, Read"
+allowed-tools: "Bash(git log:*), Bash(git diff:*), Bash(git diff-tree:*), Bash(git show:*), Bash(node:*), Grep, Read"
 ---
 
 # プッシュ前 設計書同期チェック（config 駆動）
@@ -147,7 +147,7 @@ push 前はどのみち立ち止まる場所なので、ここで知らせる。
 乖離: 0件（または J件 → 修正済み / 未対応の内訳 / **試作中のため警告**）
 
 ### 全体査読の目安（Step 3.7）
-⬜ 未到達 / 💡 目安に達しています（完了 n 本・src ±n 行・コミット n）→ /harness-core:whole-review で回せます（push は止めない）
+⬜ 未到達（または閾値の設定なし） / スクリプトの出力の `[全体査読]` 以降をそのまま（push は止めない）
 
 ### 判定: ✅ プッシュ可能 / ⚠️ プッシュ可能（試作中のため警告）/ ❌ 未同期あり / ❌ 乖離あり
 ```

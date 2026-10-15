@@ -65,10 +65,12 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 
 ### 1. スキル `whole-review` とエージェント `whole-reviewer`（`model: inherit`）
 
-- `agents/whole-reviewer.md`: **`model: inherit`**（メインセッションのモデルを継ぐ。**ここだけが `sonnet` 固定ではない**。`tests/wiring.test.mjs` の例外リストに理由つきで載せた）。
-  ツールは読み取りだけ（`Edit` / `Write` を持たない＝**修正しない**）。突き合わせ先は `constitution.md`・`designDocs.docs[]`・`projectDocs.policy`・台帳の既知。
+- `agents/whole-reviewer.md`: **`model: inherit`**（メインセッションのモデルを継ぐ。**`inherit` はこれだけ**。`tests/wiring.test.mjs` の例外リストに理由つきで載せた）。
+  ツールは **`Read` / `Grep` / `Glob` だけ**（`Edit` / `Write` / `Bash` を持たない＝**修正しない**を機械で担保。`git log --output=` のように読み取り系でも書けるコマンドがあるので Bash ごと外した。
+  対象ファイルの一覧はスキルがプロンプトで渡す）。突き合わせ先は `constitution.md`・`designDocs.docs[]`・`projectDocs.policy`・台帳の既知。
   **設計書との一致は見ない**（単一設計書前提の検査は全体査読では空振りする）。読んだ範囲と読まなかった範囲を表で返す。所見ごとに根拠の行
-  - ⚠️ `CLAUDE_CODE_SUBAGENT_MODEL` でサブエージェントのモデルを下げる運用では `inherit` もその影響を受ける。結果の冒頭に実際のモデル名を書かせる
+  - `CLAUDE_CODE_SUBAGENT_MODEL` でサブエージェントのモデルを下げる運用でも、**frontmatter の `inherit` が先に効く**（解決順は 呼び出し時の指定 → frontmatter → 環境変数 → メイン。`_FORCE` 付きだけが上書き）。結果の冒頭に実際のモデル名を書かせる
+  - ⚠️ **`model: inherit` と `tools:` の実機での挙動は未確認**（この版を導入したセッションがまだ無い）。導入後に `/agents` で確かめる
 - `skills/whole-review/SKILL.md`: 範囲と既知の項目を集めて `whole-reviewer` を 1 本起動 → `docs/reviews/YYYYMMDD_HHMMSS_whole-review.md` に保存 →
   **起こし候補の一覧**をユーザーに見せ、選んだものを `new-feature` へ → `--mark` で記録。**「前回の候補で未着手のもの n 本」を報告に出す**（入口だけ回すと未着手が積もる）。
   `--mark [パス]`（査読せずに HEAD を記録。手で回した直後のプロジェクト向け）・`--snooze`（見送り）
@@ -81,8 +83,20 @@ Claude Code のフックに時刻駆動のイベントは無い。**時刻の周
   **完了した設計書の本数・`paths.source` の差分行数・コミット数**を測り、`harness.config.json` の **`wholeReview.nudge`** の閾値の**どれか1つ以上**に達したら知らせる（境界は「以上」）
 - **キーが無ければ何も言わない**（0.44.0 より前の適用先で勝手に鳴らない）。`templates/*/.claude/harness.config.json` には既定値（完了 5 本・src 3,000 行・コミット 50）を入れた
 - 鳴る場所: **SessionStart**（`session-start-context.js` に 1 行＋画面の 💡）／**`pre-push-check` Step 3.7**／**`complete-feature` の完了報告**。
-  後 2 つはスキルの手順から同じスクリプトを実行する。SessionStart で出したら **12 時間は短縮形**（鳴りすぎない・R3）
-- `tests/whole-review-nudge.test.mjs`（閾値の境界・キー無し・記録なし・`--mark` / `--snooze`・実リポジトリでの測定）
+  後 2 つはスキルの手順から同じスクリプトを実行する（両スキルの `allowed-tools` に `Bash(node:*)`）。
+  `startup` / `resume` で出したら `notifiedAt` を書き、**12 時間は `clear` / `compact` の SessionStart と後 2 つが短縮形**（鳴りすぎない・R3）
+- **記録ファイル `.claude/.whole-review.json` はコミットしない**（`notifiedAt` を毎セッション書くので、追跡すると差分が出続ける）。
+  `templates/base/.gitignore` と `既存プロジェクト移行指示書` の一覧に足した（`.harness-audit.json` と同じ扱い）
+- 記録が無いときは**初コミットの中身も数える**（diff の起点は空ツリー）。`snoozedAt` → `lastCommit` → 初コミット の順に実在を確かめる。
+  `paths.source` が無い・ブレースを含むときは差分全体を採り、文に「paths.source 未使用」と出す。git 1 回の上限は 3 秒（SessionStart 全体を道連れにしない）
+- `tests/whole-review-nudge.test.mjs`（閾値の境界・キー無し・記録なし・初コミットだけ・`git mv` の rename を完了に数える・`--mark` / `--snooze`・実在しない記録）
+
+### 独立査読（14 件）への対応
+
+すべて実測つきの指摘。**高 1**（記録ファイルの git 上の扱いが未決）→ コミットしない（上）。**中 5** → `allowed-tools` の `Bash(node:*)`／4 文書の「対応ハーネス版」／
+`CLAUDE_CODE_SUBAGENT_MODEL` の記述が agent md と逆だった／`tools:` の permission-rule 形式は公式の仕様に無いので名前だけに（Bash ごと外した）／
+`snoozedAt` だけ実在しないとき `lastCommit` を飛ばしていた。**低 8** → 初コミットの中身・fallback のラベル・短縮形の範囲・「ここだけ sonnet でない」の誤り（`japanese-proofreader` は `opus`）・
+ローカル日付と見送り後の文・報告の型・テスト・タイムアウト。見送り 0。
 
 docs 影響: あり（guide/運用ガイド.md §2-1 — スキル表／reference/harness設定契約.md — `wholeReview.nudge` のスキーマ・消費者・fail-open／
 diagrams/04 — サブエージェント表／diagrams/05 — `session-start-context` の行／README — スキル表）。

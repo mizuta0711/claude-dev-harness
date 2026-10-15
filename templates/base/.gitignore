@@ -11,6 +11,7 @@ secrets/
 .claude/.pre-commit-head
 .claude/.subagent-touch.json
 .claude/.harness-audit.json
+.claude/.whole-review.json
 .claude/.harness-update/
 
 # 注: .claude/harness-baseline.json は **コミットする**。

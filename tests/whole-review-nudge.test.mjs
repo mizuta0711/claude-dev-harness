@@ -157,11 +157,79 @@ test("--snooze は HEAD から再び溜まるまで黙る。記録のコミッ�
   r.commit({ "docs/features/completed/20260103_z.md": "# z\n" }, "3");
   const json = JSON.parse(r.run("--json"));
   assert.equal(json.measured.base.kind, "snoozed");
-  assert.match(json.line, /見送り後/);
+  assert.match(json.line, /見送った [0-9a-f]{7} から/);
 
   // 実在しないコミットを記録に書く → 初コミットから
   fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.json"), JSON.stringify({ lastCommit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }));
   assert.equal(JSON.parse(r.run("--json")).measured.base.kind, "first");
+});
+
+test("snoozedAt だけが実在しないとき、lastCommit を飛ばして初コミットへ落ちない（査読 #6）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config({ completedFeatures: 1 });
+  r.run("--mark");
+  const last = r.git("rev-parse", "HEAD");
+  r.commit({ "docs/features/completed/20260102_y.md": "# y\n" }, "3");
+  fs.writeFileSync(
+    path.join(r.dir, ".claude", ".whole-review.json"),
+    JSON.stringify({ lastCommit: last, snoozedAt: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }),
+  );
+  const json = JSON.parse(r.run("--json"));
+  assert.equal(json.measured.base.kind, "last");
+  assert.equal(json.measured.completedFeatures, 1, "lastCommit 以後の 1 本だけ（初コミットからの 2 本ではない）");
+  assert.doesNotMatch(json.line, /一度も回していない/);
+});
+
+test("初コミットだけのリポジトリでも、その中身を数えて鳴る（査読 #7）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "1\n2\n3\n4\n5\n", "docs/features/completed/20260101_x.md": "# x\n" }, "only");
+  r.config({ completedFeatures: 1, sourceLines: 5, commits: 1 });
+  const json = JSON.parse(r.run("--json"));
+  assert.ok(json, "初コミットしか無いと黙っていた（root..HEAD が空になる）");
+  assert.equal(json.measured.base.kind, "first");
+  assert.deepEqual(
+    { c: json.measured.completedFeatures, s: json.measured.sourceLines, n: json.measured.commits },
+    { c: 1, s: 5, n: 1 },
+  );
+});
+
+test("planned/ から completed/ への git mv（rename）も「完了した設計書」に数える。completed 内の改名は数えない", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.config({ completedFeatures: 1 });
+  r.run("--mark");
+  r.commit({ "docs/features/planned/20260101_p.md": "# p\n" }, "planned");
+  assert.equal(r.run(), "", "planned/ に増えただけでは数えない");
+  fs.mkdirSync(path.join(r.dir, "docs", "features", "completed"), { recursive: true });
+  r.git("mv", "docs/features/planned/20260101_p.md", "docs/features/completed/20260101_p.md");
+  r.git("-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "mv", "--", "docs/features/planned/20260101_p.md", "docs/features/completed/20260101_p.md");
+  assert.equal(JSON.parse(r.run("--json")).measured.completedFeatures, 1, "rename が A として数わる");
+  r.run("--mark");
+  r.git("mv", "docs/features/completed/20260101_p.md", "docs/features/completed/20260101_q.md");
+  r.git("-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "rename", "--", "docs/features/completed/20260101_p.md", "docs/features/completed/20260101_q.md");
+  assert.equal(r.run(), "", "completed 内の改名は二重に数えない");
+});
+
+test("paths.source が無い・ブレースを含むときは差分全体を採り、文に「paths.source 未使用」と出る（査読 #8）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.config({ sourceLines: 3 });
+  r.run("--mark");
+  r.commit({ "docs/notes.md": "1\n2\n3\n" }, "docs");
+  // paths.source を外す
+  const cfgPath = path.join(r.dir, ".claude", "harness.config.json");
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf-8"));
+  delete cfg.paths;
+  fs.writeFileSync(cfgPath, JSON.stringify(cfg));
+  const json = JSON.parse(r.run("--json"));
+  assert.equal(json.measured.sourceScoped, false);
+  assert.match(json.line, /paths\.source 未使用/);
+  // ブレース
+  cfg.paths = { source: ["src/**/*.{ts,tsx}"] };
+  fs.writeFileSync(cfgPath, JSON.stringify(cfg));
+  assert.equal(JSON.parse(r.run("--json")).measured.sourceScoped, false);
 });
 
 test("閾値は「以上」で鳴る（5 本と決めたら 5 本目）", () => {
