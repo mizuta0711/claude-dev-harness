@@ -232,6 +232,21 @@ test("paths.source が無い・ブレースを含むときは差分全体を採�
   assert.equal(JSON.parse(r.run("--json")).measured.sourceScoped, false);
 });
 
+test("日本語のファイル名でも完了した設計書を数える（core.quotepath の引用符つき八進数で落とさない）", () => {
+  // 実プロジェクト（Windows・既定の core.quotepath=true）で、完了 13 本を 0 本と数えていた（0.44.1）。
+  // 設計書の名前は日本語が標準なので、ここが落ちると催促が一度も鳴らない
+  const r = makeRepo();
+  r.git("config", "core.quotepath", "true");
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.config({ completedFeatures: 2 });
+  r.run("--mark");
+  r.commit({ "docs/features/completed/20260101_日本語の設計書.md": "# x\n" }, "2");
+  r.commit({ "docs/features/completed/20260102_もう1本.md": "# y\n" }, "3");
+  const json = JSON.parse(r.run("--json"));
+  assert.ok(json, "日本語名の完了を数えていない");
+  assert.equal(json.measured.completedFeatures, 2);
+});
+
 test("閾値は「以上」で鳴る（5 本と決めたら 5 本目）", () => {
   const r = makeRepo();
   r.commit({ "src/a.ts": "a\n" }, "1");

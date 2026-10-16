@@ -132,9 +132,19 @@ function measure(config, marker) {
   const logRange = first ? "HEAD" : `${base.commit}..HEAD`;
   const diffRange = first ? `${EMPTY_TREE} HEAD` : `${base.commit}..HEAD`;
 
-  // 催促は落ちてよい。SessionStart 全体（10 秒）を道連れにしないよう、git 1 回は 3 秒まで
-  const added = lib.git(`log --diff-filter=A --name-only --format= ${logRange} -- docs/features/completed/`, 3000);
-  const completed = new Set(added.split("\n").map((s) => s.trim()).filter((s) => s.endsWith(".md")));
+  // 催促は落ちてよい。SessionStart 全体（10 秒）を道連れにしないよう、git 1 回は 3 秒まで。
+  // `core.quotepath=false`: 既定（Windows の git で true）だと日本語のファイル名が `"docs/.../\343\201..."` と
+  // 引用符つきの八進数で出て、`.md` で終わらず 1 本も数えなかった（0.44.1。実プロジェクトで完了 0 本と誤測）
+  const added = lib.git(
+    `-c core.quotepath=false log --diff-filter=A --name-only --format= ${logRange} -- docs/features/completed/`,
+    3000,
+  );
+  const completed = new Set(
+    added
+      .split("\n")
+      .map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
+      .filter((s) => s.endsWith(".md")),
+  );
 
   const globs = Array.isArray(config?.paths?.source) ? config.paths.source : [];
   // ブレース・角括弧は `:(glob)` が展開しない。`paths.source` が無いときも同じく、差分全体を採る

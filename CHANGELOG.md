@@ -57,6 +57,16 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.44.1] — 全体査読の催促が、日本語のファイル名の完了を数えていなかった
+
+`whole-review-nudge.js` の「完了した設計書の本数」が、**Windows の git の既定（`core.quotepath=true`）では常に 0** だった。
+日本語のファイル名が `"docs/features/completed/\343\201..."` と**引用符つきの八進数**で出るため、行末が `.md"` になり `.md` の判定に落ちていた。
+実プロジェクト（完了 13 本・src 差分 14,188 行・97 コミット）で `completedFeatures: 0` と誤測したことで見つけた
+（0.44.0 の独立査読の実測は ASCII 名だったので通っていた）。`git -c core.quotepath=false log …` にし、引用符も外す。
+`tests/whole-review-nudge.test.mjs` に日本語名のケースを足した。
+
+docs 影響: なし
+
 ## [0.44.0] — 全体査読の入口（`whole-review`）と、溜まった変更で催促する仕組み
 
 変更単位のレビュー（`design-review` / `code-review`）は、**変更と変更の間に生まれる非対称**（片方だけ排他がある・黙って捨てる経路・網羅の漏れ）を
