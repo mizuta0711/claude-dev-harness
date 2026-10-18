@@ -178,6 +178,11 @@ Next.js 16 の `LayoutProps` / `PageProps` は**グローバル型で、`.next/t
 規模判定（S/M/L）から始まる。UI 変更を含む場合の動作確認は `/harness-nextjs:browser-test`
 （Playwright MCP。`.mcp.json` に登録済み）。
 
+> **ブラウザは `--browser chromium`（Playwright 同梱の Chromium）を指定している。**
+> 既定の Chrome は WSL などに入っていないことがあり、その環境では起動できないため。
+> 同梱の Chromium は初回に入れる必要がある: `npx playwright install chromium`
+> （WSL では依存ライブラリも要るので `npx playwright install --with-deps chromium`）。
+
 ## このプロジェクトのハーネス構成
 
 | 層 | 内容 |

@@ -57,6 +57,21 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [templates のみ] — nextjs の Playwright MCP が Chrome の無い環境（WSL）で起動しなかった
+
+**プラグインの版は動かない**（`templates/` 配下だけの変更で、配信経路が `/harness-core:harness-update` のため）。
+
+`templates/nextjs/.mcp.json` の Playwright MCP に **`--browser chromium`** を足した。
+Playwright MCP の既定は Chrome（`chrome` チャンネル）で、**WSL の Claude Code 環境には Chrome が入っていない**ため
+ブラウザを起動できなかった。Playwright 同梱の Chromium は Windows / WSL のどちらでも使える。
+
+同梱の Chromium は初回に入れる必要がある（`npx playwright install chromium`。WSL は `--with-deps`）。
+その手順を `templates/nextjs/SETUP.md` Step 4 に足した。
+
+既存プロジェクトへは `/harness-core:harness-update` の実行時に届く（各プロジェクトのタイミングで）。
+
+docs 影響: あり（diagrams/03_役割比較図.md — MCP の表の起動コマンド。テンプレート層だけなので「対応ハーネス版」は据え置き）
+
 ## [0.45.0] — 検査系のスキルを fork して軽いモデルで回す（`sync-check` / `pre-push-check` / `backlog-sync` / `build-check`）
 
 スキルには `model:` 指定が1件も無く、**メインが上位モデルなら push 前の全量照合（`pre-push-check` Step 3.5）も上位モデルの単価で走っていた**。
