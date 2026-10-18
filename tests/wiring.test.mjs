@@ -254,6 +254,53 @@ test("すべてのエージェントが model を持ち、既定は sonnet（例
 });
 
 // ---------------------------------------------------------------------------
+// 5b. スキルのモデル指定（検査系は fork して軽いモデルで回す）
+// ---------------------------------------------------------------------------
+
+/**
+ * スキルの `model:` は**単独では Skill ツール経由で効かない**（2026-10-18 実測。スラッシュ直接呼びでだけ効く）。
+ * `context: fork` と対で書く。ここに無いスキルは `model:` を持たない（メインのモデルで動く）。
+ * 増やすときは「なぜ軽いモデルで足りるか」と「fork で困らないか（文脈・質問）」を書くこと。
+ */
+const SKILL_MODELS = {
+  "sync-check": { model: "sonnet", why: "全量照合。読む量が多く取りこぼしが後で効く。設計書は書き換えない" },
+  "backlog-sync": { model: "sonnet", why: "台帳と設計書の食い違いを直す（Edit あり）" },
+  "pre-push-check": { model: "haiku", why: "コミット列挙と台帳の有無の判定。重い照合は sync-check へ" },
+  "build-check": { model: "haiku", why: "コマンドを実行して結果を表にするだけ" },
+};
+
+const frontmatter = (rel) => (read(rel).match(/^---\n([\s\S]*?)\n---/) || [, ""])[1];
+
+test("スキルの model 指定は表のとおりで、context: fork と対になっている", () => {
+  const bad = [];
+  for (const s of SKILLS) {
+    const fm = frontmatter(s.file);
+    const model = (fm.match(/^model:\s*(\S+)\s*$/m) || [])[1];
+    const fork = /^context:\s*fork\s*$/m.test(fm);
+    const want = SKILL_MODELS[s.name]?.model;
+    if (model !== want) bad.push(`${s.name}: model=${model ?? "なし"}（期待 ${want ?? "なし"}）`);
+    if (model && !fork) bad.push(`${s.name}: model があるのに context: fork が無い（Skill ツール経由では効かない）`);
+    if (!model && fork) bad.push(`${s.name}: context: fork だけで model が無い`);
+  }
+  assert.deepEqual(bad, [], `スキルのモデル指定の不一致:\n  ${bad.join("\n  ")}`);
+});
+
+test("fork するスキルは $ARGUMENTS を受け取る（会話の文脈が渡らないので引数が唯一の入口）", () => {
+  const bad = SKILLS.filter((s) => /^context:s*forks*$/m.test(frontmatter(s.file)) && !read(s.file).includes("$ARGUMENTS")).map((s) => s.name);
+  assert.deepEqual(bad, []);
+});
+
+test("pre-push-check は fork 内から sync-check を呼ぶので Skill を許可している", () => {
+  const fm = frontmatter("plugins/harness-core/skills/pre-push-check/SKILL.md");
+  assert.match(fm.match(/^allowed-tools:.*$/m)?.[0] ?? "", /[ ",]Skill[ ",]/);
+});
+
+test("sync-check は設計書を書き換える道具（Write / Edit）を持たない", () => {
+  const fm = frontmatter("plugins/harness-core/skills/sync-check/SKILL.md");
+  assert.equal(/[ ",](Write|Edit)[ ",]/.test(fm.match(/^allowed-tools:.*$/m)?.[0] ?? ""), false);
+});
+
+// ---------------------------------------------------------------------------
 // 6. 検査そのものの検査（stripComments が効いているか）
 // ---------------------------------------------------------------------------
 

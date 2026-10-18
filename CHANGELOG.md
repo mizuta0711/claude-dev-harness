@@ -57,6 +57,23 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.45.0] — 検査系のスキルを fork して軽いモデルで回す（`sync-check` / `pre-push-check` / `backlog-sync` / `build-check`）
+
+スキルには `model:` 指定が1件も無く、**メインが上位モデルなら push 前の全量照合（`pre-push-check` Step 3.5）も上位モデルの単価で走っていた**。
+検査系の4本に `context: fork` ＋ `model:` を足した（`sync-check`・`backlog-sync`=sonnet / `pre-push-check`・`build-check`=haiku）。
+
+- **`model:` 単独では足りない。** `claude -p` のトランスクリプトで実測した: スラッシュで直接呼ぶと切り替わるが、
+  **Skill ツール経由（モデルが呼ぶ通常の経路）では切り替わらない**（ログ上は「Haiku になった」と出るが、応答は元のモデルのまま）。
+  `context: fork` を併用すると両経路で指定のモデルになる。入れ子（`pre-push-check`[haiku] → `sync-check`[sonnet]）も指定どおり。
+- **fork の代償**: 会話の文脈が渡らず、質問もできない。これに合わせて、`sync-check` は設計書を**書き換えない**（`Write`/`Edit` を外した。修正は呼び出し元が確認後に行う）、
+  `pre-push-check` は upstream 未設定なら範囲を決めずに報告して終了、`build-check` は書き換えを伴う `format` を実行せずスキップ報告とした。
+- **fork では会話の文脈が渡らないので、渡したい情報は引数（`$ARGUMENTS`）で伝える**（Skill ツール経由でもスラッシュでも本文に届くことを実測）。`sync-check` は対象の設計書パス（`complete-feature` が絞り込みに使う）、`backlog-sync` は deny の「対象:」のパス（フックの案内文も「対象は引数で渡す」に直した）、`pre-push-check` はコミット範囲、`build-check` はチェック名。
+- **`pre-push-check` は直さずに報告する。** 以前は MISSING や乖離を見つけると `update-docs` を呼んで直していたが、fork 内（haiku）で設計書を更新させない。❌ で終え、呼び出し元が `update-docs` で直して再実行する。`backlog-sync` も、設計書を作る側と判断がつかない件は直さず「飛ばした件」に載せる。
+- `done` は直前の作業の文脈が要るので fork しない。`update-docs` の設計書更新は従来どおり `documentation-manager`（sonnet）への任意の委譲。
+- `tests/wiring.test.mjs` に、スキルのモデル指定の表（例外は理由つき）と「`model:` は `context: fork` と対」の検査を足した。
+
+docs 影響: あり（guide/運用ガイド.md §4・diagrams/03_役割比較図.md — スキルは常にメインの文脈とは限らなくなったため。対応版は 0.45.0 に上げた）
+
 ## [0.44.1] — 全体査読の催促が、日本語のファイル名の完了を数えていなかった
 
 `whole-review-nudge.js` の「完了した設計書の本数」が、**Windows の git の既定（`core.quotepath=true`）では常に 0** だった。

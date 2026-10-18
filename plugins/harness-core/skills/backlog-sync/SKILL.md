@@ -2,9 +2,19 @@
 name: backlog-sync
 description: 残作業台帳（docs/backlog.md）と機能設計書（docs/features/）の食い違いを直す。計画節の行が指す設計書が無い・設計書が計画節に載っていない・完了したのに行が残っている、を検査して直す。push 前のフック（pre-push-backlog-check）が止めたときの出口。「台帳と設計書が合っていない」「backlog を直して」のときに使う。設計書同期台帳（docs/設計書/.doc-sync.md）は対象外で、そちらは sync-check / pre-push-check が扱う。
 allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git status:*), Bash(git mv:*), Read, Edit, Grep, Glob"
+model: sonnet
+context: fork
 ---
 
 # 残作業台帳と機能設計書の同期
+
+> **このスキルは `context: fork` ＋ `model: sonnet` で動く**（サブエージェントとして走る）。理由は、
+> **メインが上位モデルでも、この検査をその単価で回さないため**。スキルの `model:` 単独は
+> **スラッシュで直接呼んだときしか効かず、Skill ツール経由（モデルが呼ぶ通常の経路）では切り替わらない**
+> （2026-10-18・`claude -p` のトランスクリプトで実測。`fork` を併用すると両経路で切り替わる）。
+> fork では **会話の文脈が無く、ユーザーに質問もできない**。**最後のメッセージだけが呼び出し元へ返る**ので、
+> 報告フォーマットは省略せずにそのまま出すこと。
+> **判断がユーザー待ちのものは直さず、「飛ばした件とその理由」に載せて返す**（下記の報告）。
 
 > ⚠️ **「台帳」は2つある。これを取り違えると、直す場所を間違える。**
 >
@@ -30,8 +40,12 @@ allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git status:*), Bash(git mv:*
 
 ## Step 1: 検査する
 
+引数: `$ARGUMENTS`
+
 **⚠️ 対象のリポジトリを間違えないこと。** フックが止めたときは、deny のメッセージに
-**`対象: <パス>`** が入っている。**そこを検査する**（`cd <別リポジトリ> && git push` で
+**`対象: <パス>`** が入っている。**fork ではそのメッセージが見えない**ので、**呼び出し元がそのパスを引数で渡す**。
+**引数が空ならカレントのリポジトリを検査し、報告の冒頭に「検査したパス」を書く**（呼び出し元が別リポジトリで止まっていないか確かめられるように）。
+**引数のパスを検査する**（`cd <別リポジトリ> && git push` で
 止まった場合、いまのカレントとは別のリポジトリである）。
 
 ```bash
@@ -58,6 +72,10 @@ node -e "const m=require('${CLAUDE_PLUGIN_ROOT}/hooks/scripts/backlog-sync.js');
 | `row-without-doc`（行にパスが無い） | パスを書く。設計書がまだ無いなら作る |
 | `doc-without-row`（計画節に無い） | ①進めるなら**行を足す**（**`#` は空欄でよい** —— 番号は `plan-milestones` が分けたときだけ振る） ②着手しないなら **`docs/features/pending/` へ移す**（`git mv`）。**`prototype/` の設計書も対象である** —— 試作中は残っている作業なので、載っていなければ鳴る |
 | `completed-still-listed`（完了なのに残っている） | **行を消す**（`complete-feature` が消し忘れたもの）。**✅ を積み上げない** |
+
+> **fork では `Skill` を呼べず、ユーザーにも聞けない。** `missing-dir` / `missing-doc` / `row-without-doc` の「設計書を作る」側と、
+> 作る・消すの判断がつかない件は、**直さず「飛ばした件」に理由つきで載せる**。呼び出し元が `new-feature` などで対応する。
+> ここで直すのは、根拠が git で決まる件（`completed-still-listed` の行削除、`doc-without-row` の行追加、`pending/` への `git mv`）に限る。
 
 **判断材料は git にある。**
 
