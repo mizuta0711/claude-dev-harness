@@ -180,8 +180,10 @@ Next.js 16 の `LayoutProps` / `PageProps` は**グローバル型で、`.next/t
 
 > **ブラウザは `--browser chromium`（Playwright 同梱の Chromium）を指定している。**
 > 既定の Chrome は WSL などに入っていないことがあり、その環境では起動できないため。
-> 同梱の Chromium は初回に入れる必要がある: `npx playwright install chromium`
-> （WSL では依存ライブラリも要るので `npx playwright install --with-deps chromium`）。
+> 同梱の Chromium が入っていなければ、`browser-tester` が初回に自分で入れる
+> （`npx -y @playwright/mcp@latest install-browser chromium`）。
+> **WSL / Linux では OS の依存ライブラリも要り、こちらは `sudo` が要るので自動では入らない。**
+> 先に一度だけ実行しておく: `npx -y @playwright/mcp@latest install-browser --with-deps chromium`
 
 ## このプロジェクトのハーネス構成
 

@@ -57,6 +57,21 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [harness-nextjs 0.7.0] — Chromium が入っていなければ browser-tester が自分で入れる
+
+`agents/browser-tester.md` に「ブラウザが入っていないとき」を足した。最初の操作が
+`Browser "chromium" is not installed ... Run \`npx @playwright/mcp install-browser chromium\`` で失敗したら、
+**報告で止めずに `npx -y @playwright/mcp@latest install-browser chromium` を実行してやり直す**
+（MCP の再起動は要らない）。
+
+- **`npx playwright install chromium` は使わない。** `@playwright/mcp` 0.0.83 は playwright-core の
+  1.64 alpha に乗っており、単体の `playwright` とは版がずれて別の Chromium が入りうる。
+  直前の `[templates のみ]` で SETUP.md に書いたのはこちらだったので、正しいコマンドに直した
+- **`sudo` が要るもの（WSL / Linux の OS 依存ライブラリ・`chrome` / `msedge` のシステムへのインストール）は自分で実行せず、案内して止める**
+- 旧来の MCP ツール `browser_install` は 0.0.83 には無い（同梱コードで確認）。そのため、入れる手段は Bash からの CLI 実行になる
+
+docs 影響: あり（guide/セットアップガイド.md §4-1 の MCP 行・「対応ハーネス版」の harness-nextjs を 0.7.0 へ）
+
 ## [templates のみ] — nextjs の Playwright MCP が Chrome の無い環境（WSL）で起動しなかった
 
 **プラグインの版は動かない**（`templates/` 配下だけの変更で、配信経路が `/harness-core:harness-update` のため）。

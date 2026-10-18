@@ -58,6 +58,30 @@ Agent(subagent_type: "browser-tester", model: "sonnet", prompt:
   `harness.config.json` の `commands.dev` が起動コマンド）
 - Playwright MCP が `.mcp.json` に設定済みであること
 
+### ブラウザが入っていないとき（自分で入れて続ける）
+
+テンプレートの `.mcp.json` は `--browser chromium`（Playwright 同梱の Chromium）を指定している。
+初回は Chromium が入っておらず、最初の操作が次の形のエラーで失敗する:
+
+```
+Browser "chromium" is not installed; expected executable at ... Run `npx @playwright/mcp install-browser chromium` to install
+```
+
+**このエラーなら、報告で止めずに自分で入れてから同じ操作をやり直す。** MCP の再起動は要らない
+（ブラウザは操作のたびに起動されるため、入れた直後から使える）。
+
+```bash
+npx -y @playwright/mcp@latest install-browser chromium
+```
+
+- **エラー文が示すコマンドを使う。** `npx playwright install chromium` は MCP が使う Playwright と版がずれて、
+  別の版の Chromium が入るだけで直らないことがある
+- `.mcp.json` が別のブラウザ（`--browser chrome` など）を指定しているなら、エラー文に出た名前で入れる。
+  **`chrome` / `msedge` はシステム全体へのインストールになるので自分では入れず、報告して止める**
+- 入れ直しても起動に失敗し、エラーに共有ライブラリ（`lib*.so`）が無いと出たら、それは OS の依存パッケージ不足（WSL / Linux で起きる）。
+  入れるには `sudo` が要るので**自分では実行しない**。次のコマンドをユーザーに案内して止める:
+  `npx -y @playwright/mcp@latest install-browser --with-deps chromium`
+
 ## エビデンス保存
 
 テスト結果はすべて `tests/browser-evidence/` に保存する。
