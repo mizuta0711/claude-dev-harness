@@ -72,6 +72,22 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 
 docs 影響: あり（guide/セットアップガイド.md §4-1 の MCP 行・「対応ハーネス版」の harness-nextjs を 0.7.0 へ）
 
+## [templates のみ] — nextjs の Playwright MCP を headless で起動する
+
+**プラグインの版は動かない**（`templates/` 配下だけの変更で、配信経路が `/harness-core:harness-update` のため）。
+
+`templates/nextjs/.mcp.json` の Playwright MCP に **`--headless`** を足した。
+**Playwright MCP の既定は headed**（`--help` で確認: `run browser in headless mode, headed by default`。
+実測は 0.0.83）で、`/harness-nextjs:browser-test` を回すたびに**ブラウザウィンドウが
+Windows の作業画面へ割り込む**。スクリーンショットの撮影もページ操作も headless で同じように動く。
+
+- **ブラウザの挙動を目で追いたいときは `--headless` を外して Claude Code を再起動する。** その案内を `templates/nextjs/SETUP.md` Step 4 に足した
+- headless では**無操作タイムアウトが既定1時間**になる（headed は無期限）。ブラウザテストの実行時間では問題にならない
+
+既存プロジェクトへは `/harness-core:harness-update` の実行時に届く（各プロジェクトのタイミングで）。
+
+docs 影響: あり（diagrams/03_役割比較図.md・guide/セットアップガイド.md — どちらも起動コマンドを載せている。テンプレート層だけなので「対応ハーネス版」は据え置き）
+
 ## [templates のみ] — nextjs の Playwright MCP が Chrome の無い環境（WSL）で起動しなかった
 
 **プラグインの版は動かない**（`templates/` 配下だけの変更で、配信経路が `/harness-core:harness-update` のため）。

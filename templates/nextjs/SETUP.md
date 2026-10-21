@@ -185,6 +185,11 @@ Next.js 16 の `LayoutProps` / `PageProps` は**グローバル型で、`.next/t
 > **WSL / Linux では OS の依存ライブラリも要り、こちらは `sudo` が要るので自動では入らない。**
 > 先に一度だけ実行しておく: `npx -y @playwright/mcp@latest install-browser --with-deps chromium`
 
+> **`--headless` も指定している。** Playwright MCP の既定は headed（ブラウザウィンドウを開く）で、
+> テストのたびに Windows の作業画面へウィンドウが割り込む。スクリーンショットの撮影も
+> ページ操作も headless で同じように動くため、既定を headless 側にしている。
+> **ブラウザの挙動を目で追いたいときだけ**、`--headless` を外して Claude Code を再起動する。
+
 ## このプロジェクトのハーネス構成
 
 | 層 | 内容 |
