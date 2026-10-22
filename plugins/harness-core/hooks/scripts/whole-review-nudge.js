@@ -8,7 +8,7 @@
  * **スキルだけあって実施されないと意味がない**。Claude Code のフックに時刻駆動のイベントは無いので、
  * 契機は**時刻の周期ではなく「溜まった変更」**で作る（0.44.0）。
  *
- * 前回の全体査読（`.claude/.whole-review.json` の `lastCommit`）から HEAD までの
+ * 前回の全体査読（`.claude/whole-review.json` の `lastCommit`）から HEAD までの
  *   ① 完了した機能設計書の本数（`docs/features/completed/` に増えたファイル）
  *   ② `paths.source` の差分行数（追加＋削除）
  *   ③ コミット数
@@ -19,8 +19,14 @@
  * - 「今回は見送る」（`--snooze`）は `snoozedAt` に HEAD を書き、そこから再び閾値ぶん溜まるまで黙る
  * - 鳴りすぎない（R3）: SessionStart（startup / resume）で案内したら `notifiedAt` を書き、
  *   **12 時間は短縮形**にする（`clear` / `compact` の SessionStart と、`pre-push-check` / `complete-feature` からの呼び出し）
- * - **記録ファイル（`.claude/.whole-review.json`）はコミットしない**（`.harness-audit.json` と同じ扱い。
- *   `templates/base/.gitignore` が覆う）。`notifiedAt` を毎セッション書くので、追跡すると差分が出続ける
+ * - **記録は 2 つに分ける（0.46.0・H103）**:
+ *   - `.claude/whole-review.json` … **プロジェクトの事実**（`lastCommit`・`date`・`reviewFile`）。**コミットする**。
+ *     2 台で回すとき、片方が回した査読をもう片方が「初回」として催促しないため
+ *     （0.44.0〜0.45.0 はマシンローカルだったので、6 日で 6 回・2 系列の全体査読が走った）
+ *   - `.claude/.whole-review.local.json` … **マシンローカル**（`notifiedAt`・`snoozedAt`）。ignore する。
+ *     `notifiedAt` は毎セッション書くので追跡すると差分が出続ける。見送りも個人の判断
+ *   - 旧ファイル `.claude/.whole-review.json`（0.44.0〜0.45.0・ignore）は**読むだけ**: 新しい方が無ければ
+ *     そこから引き継ぐ。消さない（害は無い。`--mark` すれば以後は新しい方が正）
  *
  * 使い方:
  *   require して `nudgeLine()`（session-start-context.js）
@@ -34,25 +40,64 @@ const path = require("path");
 const { execSync } = require("child_process");
 const lib = require("./harness-lib");
 
-const MARKER_RELATIVE_PATH = path.join(".claude", ".whole-review.json");
+/** プロジェクトの事実（コミットする）: lastCommit・date・reviewFile */
+const SHARED_RELATIVE_PATH = path.join(".claude", "whole-review.json");
+/** マシンローカル（ignore）: notifiedAt・snoozedAt */
+const LOCAL_RELATIVE_PATH = path.join(".claude", ".whole-review.local.json");
+/** 0.44.0〜0.45.0 の記録（ignore・マシンローカル）。読むだけで、書かない */
+const LEGACY_RELATIVE_PATH = path.join(".claude", ".whole-review.json");
+/** 後方互換のための別名（0.44.0 の export 名） */
+const MARKER_RELATIVE_PATH = SHARED_RELATIVE_PATH;
 /** SessionStart で案内したあと、短縮形にする時間 */
 const NOTIFIED_WINDOW_MS = 12 * 60 * 60 * 1000;
 
-function markerPath() {
-  return path.join(lib.projectDir(), MARKER_RELATIVE_PATH);
-}
-
-function readMarker() {
+function readJson(rel) {
   try {
-    return JSON.parse(fs.readFileSync(markerPath(), "utf-8"));
+    return JSON.parse(fs.readFileSync(path.join(lib.projectDir(), rel), "utf-8"));
   } catch {
     return null;
   }
 }
 
-function writeMarker(next) {
-  fs.mkdirSync(path.dirname(markerPath()), { recursive: true });
-  fs.writeFileSync(markerPath(), JSON.stringify(next, null, 2) + "\n");
+function writeJson(rel, next) {
+  const file = path.join(lib.projectDir(), rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
+}
+
+const SHARED_KEYS = ["lastCommit", "date", "reviewFile"];
+const LOCAL_KEYS = ["notifiedAt", "snoozedAt"];
+const pickKeys = (obj, keys) => {
+  if (!obj || typeof obj !== "object") return null;
+  const out = {};
+  for (const k of keys) if (obj[k] !== undefined && obj[k] !== null) out[k] = obj[k];
+  return Object.keys(out).length ? out : null;
+};
+
+/** プロジェクトの事実。新しいファイルが無ければ旧ファイルから引き継ぐ */
+function readShared() {
+  return pickKeys(readJson(SHARED_RELATIVE_PATH), SHARED_KEYS) ?? pickKeys(readJson(LEGACY_RELATIVE_PATH), SHARED_KEYS);
+}
+
+/** マシンローカル。新しいファイルが無ければ旧ファイルから引き継ぐ */
+function readLocal() {
+  return pickKeys(readJson(LOCAL_RELATIVE_PATH), LOCAL_KEYS) ?? pickKeys(readJson(LEGACY_RELATIVE_PATH), LOCAL_KEYS);
+}
+
+/** 2 つを合わせた見え方（測る側はこれだけを見る） */
+function readMarker() {
+  const shared = readShared();
+  const local = readLocal();
+  if (!shared && !local) return null;
+  return { ...(shared || {}), ...(local || {}) };
+}
+
+function writeShared(next) {
+  writeJson(SHARED_RELATIVE_PATH, pickKeys(next, SHARED_KEYS) || {});
+}
+
+function writeLocal(next) {
+  writeJson(LOCAL_RELATIVE_PATH, pickKeys(next, LOCAL_KEYS) || {});
 }
 
 /**
@@ -222,36 +267,62 @@ function nudgeLine(cfg, opts = {}) {
   const r = nudge(cfg, { brief: Boolean(opts.brief) });
   if (!r) return null;
   try {
-    writeMarker({ ...(readMarker() || {}), notifiedAt: new Date().toISOString() });
+    writeLocal({ ...(readLocal() || {}), notifiedAt: new Date().toISOString() });
   } catch {
     /* 記録できなくても催促は出す */
   }
   return r.line;
 }
 
+/**
+ * 査読を回した（または手で回した）ことを**プロジェクトの事実**として記録する。
+ * 書くのは `.claude/whole-review.json` だけ（コミットする側）。見送り（ローカル）は消す
+ * —— 回した以上、見送りの起点はもう要らない。
+ */
 function mark(reviewFile) {
   const head = lib.git("rev-parse HEAD");
   if (!head) throw new Error("git の HEAD が取れない");
-  const prev = readMarker() || {};
+  const prev = readShared() || {};
   const next = {
     lastCommit: head,
     date: localDate(),
     reviewFile: reviewFile || prev.reviewFile || null,
   };
-  writeMarker(next);
+  writeShared(next);
+  const local = readLocal();
+  if (local?.snoozedAt) {
+    delete local.snoozedAt;
+    writeLocal(local);
+  }
   return next;
 }
 
+/** 今回は見送る。**マシンローカル**（この機械の判断。もう 1 台には効かない） */
 function snooze() {
   const head = lib.git("rev-parse HEAD");
   if (!head) throw new Error("git の HEAD が取れない");
-  const next = { ...(readMarker() || {}), snoozedAt: head };
+  const next = { ...(readLocal() || {}), snoozedAt: head };
   delete next.notifiedAt;
-  writeMarker(next);
+  writeLocal(next);
   return next;
 }
 
-module.exports = { MARKER_RELATIVE_PATH, thresholdsOf, exceededAxes, measure, nudge, nudgeLine, mark, snooze, readMarker };
+module.exports = {
+  MARKER_RELATIVE_PATH,
+  SHARED_RELATIVE_PATH,
+  LOCAL_RELATIVE_PATH,
+  LEGACY_RELATIVE_PATH,
+  thresholdsOf,
+  exceededAxes,
+  measure,
+  nudge,
+  nudgeLine,
+  mark,
+  snooze,
+  readMarker,
+  readShared,
+  readLocal,
+};
 
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -259,7 +330,10 @@ if (require.main === module) {
     if (args.includes("--mark")) {
       const i = args.indexOf("--mark");
       const next = mark(args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : null);
-      process.stdout.write(`記録しました: ${JSON.stringify(next)}\n`);
+      process.stdout.write(
+        `記録しました: ${JSON.stringify(next)}\n` +
+          `→ ${lib.toPosix(SHARED_RELATIVE_PATH)} をコミットに含めてください（プロジェクトの事実。もう 1 台にも効く）\n`,
+      );
     } else if (args.includes("--snooze")) {
       const next = snooze();
       process.stdout.write(`見送りを記録しました（${next.snoozedAt.slice(0, 7)} から再び溜まるまで黙ります）\n`);

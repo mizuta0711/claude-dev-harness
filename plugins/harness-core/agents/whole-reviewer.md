@@ -62,7 +62,7 @@ tools: Read, Grep, Glob
 # 全体査読
 
 - 実施日時 / 対象コミット / 使ったモデル
-- 前回の全体査読: {`.claude/.whole-review.json` の lastCommit・date。無ければ「初回」}
+- 前回の全体査読: {`.claude/whole-review.json` の lastCommit・date。無ければ「初回」}
 
 ## 1. 読んだ範囲・読まなかった範囲
 | 層 | 読んだ | 読まなかった（理由） |

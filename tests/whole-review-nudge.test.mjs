@@ -130,7 +130,8 @@ test("--mark で HEAD を記録すると、その先から測る。src の差分
   assert.match(r.run(), /目安に達しています/);
 
   r.run("--mark", "docs/reviews/x.md");
-  const marker = JSON.parse(fs.readFileSync(path.join(r.dir, ".claude", ".whole-review.json"), "utf-8"));
+  const marker = JSON.parse(fs.readFileSync(path.join(r.dir, ".claude", "whole-review.json"), "utf-8"));
+  assert.ok(!fs.existsSync(path.join(r.dir, ".claude", ".whole-review.json")), "旧ファイルには書かない");
   assert.equal(marker.lastCommit, r.git("rev-parse", "HEAD"));
   assert.equal(marker.reviewFile, "docs/reviews/x.md");
   assert.equal(r.run(), "", "記録直後は何も溜まっていないので黙る");
@@ -160,7 +161,8 @@ test("--snooze は HEAD から再び溜まるまで黙る。記録のコミッ�
   assert.match(json.line, /見送った [0-9a-f]{7} から/);
 
   // 実在しないコミットを記録に書く → 初コミットから
-  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.json"), JSON.stringify({ lastCommit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }));
+  fs.writeFileSync(path.join(r.dir, ".claude", "whole-review.json"), JSON.stringify({ lastCommit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }));
+  fs.rmSync(path.join(r.dir, ".claude", ".whole-review.local.json"), { force: true });
   assert.equal(JSON.parse(r.run("--json")).measured.base.kind, "first");
 });
 
@@ -172,10 +174,8 @@ test("snoozedAt だけが実在しないとき、lastCommit を飛ばして初�
   r.run("--mark");
   const last = r.git("rev-parse", "HEAD");
   r.commit({ "docs/features/completed/20260102_y.md": "# y\n" }, "3");
-  fs.writeFileSync(
-    path.join(r.dir, ".claude", ".whole-review.json"),
-    JSON.stringify({ lastCommit: last, snoozedAt: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }),
-  );
+  fs.writeFileSync(path.join(r.dir, ".claude", "whole-review.json"), JSON.stringify({ lastCommit: last }));
+  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.local.json"), JSON.stringify({ snoozedAt: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }));
   const json = JSON.parse(r.run("--json"));
   assert.equal(json.measured.base.kind, "last");
   assert.equal(json.measured.completedFeatures, 1, "lastCommit 以後の 1 本だけ（初コミットからの 2 本ではない）");
@@ -262,7 +262,63 @@ test("SessionStart で案内したあとは短縮形（同じ日の pre-push-che
   r.commit({ "src/a.ts": "a\n" }, "1");
   r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
   r.config({ completedFeatures: 1 });
-  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.json"), JSON.stringify({ notifiedAt: new Date().toISOString() }));
+  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.local.json"), JSON.stringify({ notifiedAt: new Date().toISOString() }));
   assert.match(r.run(), /セッション開始時に案内済み/);
   assert.doesNotMatch(r.run("--full"), /案内済み/);
+});
+
+// ---------------------------------------------------------------------------
+// 0.46.0（H103）: 記録を「プロジェクトの事実」と「マシンローカル」に分ける
+// ---------------------------------------------------------------------------
+
+test("旧ファイル（.claude/.whole-review.json）しか無ければ、そこから lastCommit と snoozedAt を引き継ぐ（消さない）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  const last = r.git("rev-parse", "HEAD");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config({ completedFeatures: 1 });
+  const legacy = path.join(r.dir, ".claude", ".whole-review.json");
+  fs.writeFileSync(legacy, JSON.stringify({ lastCommit: last, date: "2026-10-14", reviewFile: "docs/reviews/old.md", notifiedAt: new Date().toISOString() }));
+  const json = JSON.parse(r.run("--json"));
+  assert.equal(json.measured.base.kind, "last", "旧ファイルの lastCommit を起点にする");
+  assert.match(json.line, /案内済み/, "旧ファイルの notifiedAt も引き継ぐ");
+  assert.ok(fs.existsSync(legacy), "旧ファイルは消さない");
+  // --mark すると新しい方が正になり、旧ファイルは触らない
+  r.run("--mark");
+  assert.ok(fs.existsSync(path.join(r.dir, ".claude", "whole-review.json")));
+  assert.equal(JSON.parse(fs.readFileSync(legacy, "utf-8")).lastCommit, last, "旧ファイルは書き換えない");
+});
+
+test("--mark は共有側だけを書き、--snooze はローカル側だけを書く。--mark は見送りを消す", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.config({ completedFeatures: 1 });
+  r.run("--snooze");
+  const shared = path.join(r.dir, ".claude", "whole-review.json");
+  const local = path.join(r.dir, ".claude", ".whole-review.local.json");
+  assert.ok(!fs.existsSync(shared), "--snooze は共有側を作らない");
+  assert.equal(JSON.parse(fs.readFileSync(local, "utf-8")).snoozedAt, r.git("rev-parse", "HEAD"));
+  r.run("--mark", "docs/reviews/x.md");
+  const s = JSON.parse(fs.readFileSync(shared, "utf-8"));
+  assert.deepEqual(Object.keys(s).sort(), ["date", "lastCommit", "reviewFile"], "共有側には事実の 3 つだけ");
+  assert.equal(JSON.parse(fs.readFileSync(local, "utf-8")).snoozedAt, undefined, "回した以上、見送りの起点は消す");
+});
+
+test("共有側のファイルを別クローンへ写すと、そちらも同じ起点から測る（2 台で「初回」にならない）", () => {
+  const a = makeRepo();
+  a.commit({ "src/a.ts": "a\n" }, "1");
+  a.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  a.config({ completedFeatures: 1 });
+  a.run("--mark", "docs/reviews/x.md");
+  const sharedBody = fs.readFileSync(path.join(a.dir, ".claude", "whole-review.json"), "utf-8");
+  // 別クローン（同じ履歴）に共有側だけを置く
+  const b = makeRepo();
+  fs.rmSync(b.dir, { recursive: true, force: true });
+  execFileSync("git", ["clone", "-q", a.dir, b.dir]);
+  fs.mkdirSync(path.join(b.dir, ".claude"), { recursive: true });
+  b.config({ completedFeatures: 1 });
+  fs.writeFileSync(path.join(b.dir, ".claude", "whole-review.json"), sharedBody);
+  assert.equal(b.run(), "", "写した起点から測るので、何も溜まっていないと黙る");
+  const json = JSON.parse(b.run("--json"));
+  assert.equal(json, null);
 });

@@ -57,6 +57,30 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.46.0] — 全体査読の記録を「プロジェクトの事実」と「マシンローカル」に分ける（H103）／推奨モードで M の tech を足さない
+
+### 1. 全体査読の記録の分離
+
+0.44.0 は記録 `.claude/.whole-review.json` をマシンローカル（ignore）にした。**同じプロジェクトを 2 台で回すと、片方で回した査読をもう片方が「初回」として催促し、
+実プロジェクトで 6 日に 6 回・2 系列の全体査読（Opus／Fable の全ソース読み）が走った**。0.44.0 の独立査読 #1 が出していた分離案を採る。
+
+| ファイル | 中身 | 扱い |
+|---|---|---|
+| **`.claude/whole-review.json`** | `lastCommit`・`date`・`reviewFile`（**プロジェクトの事実**） | **コミットする**。`--mark` がこれを書き、スキルは「レビュー記録と同じコミットに含める」と案内する |
+| **`.claude/.whole-review.local.json`** | `notifiedAt`・`snoozedAt`（**マシンローカル**） | ignore（`templates/base/.gitignore`・移行指示書の一覧に追加）。見送りはこの機械だけに効く |
+| 旧 `.claude/.whole-review.json` | 0.44.0〜0.45.0 の記録 | **読むだけ**（新しい方が無ければ引き継ぐ）。消さない。`--mark` すれば以後は新しい方が正 |
+
+- `--mark` は見送り（ローカル）を消す（回した以上、見送りの起点は要らない）
+- `whole-review-nudge.js` の export に `SHARED_RELATIVE_PATH`・`LOCAL_RELATIVE_PATH`・`LEGACY_RELATIVE_PATH`・`readShared`・`readLocal` を足した（`MARKER_RELATIVE_PATH` は共有側の別名として残す）
+- `tests/whole-review-nudge.test.mjs`: 旧ファイルからの引き継ぎ／`--mark` は共有側だけを書く／`--snooze` はローカルだけを書く／共有側だけを別クローンへ写しても起点が引き継がれる
+
+### 2. 推奨モードで M の tech レビューを足さない
+
+`new-feature` の「推奨で進める」c は「レビューは省かない」と書いており、**M で tech を回さない（0.43.0）と重なると、推奨モードの M で tech が回った**（実測 1 本）。
+c を「**省かない。足さない** —— M では `design-review` を呼ばない」に直し、`design-review` の推奨モードの節にも同じ 1 文を足した。
+
+docs 影響: あり（reference/harness設定契約.md — 消費者の行と fail-open の 3 行／guide/既存プロジェクト移行指示書.md — ignore の一覧）。
+
 ## [harness-nextjs 0.7.0] — Chromium が入っていなければ browser-tester が自分で入れる
 
 `agents/browser-tester.md` に「ブラウザが入っていないとき」を足した。最初の操作が

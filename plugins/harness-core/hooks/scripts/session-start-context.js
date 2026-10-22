@@ -343,7 +343,7 @@ if (followOverdue) {
  * 全体査読の目安（0.44.0）。**知らせるだけ。止めない。自動では回さない。**
  *
  * `wholeReview.nudge` の閾値が無ければ何も言わない（既存の適用先で勝手に鳴らない）。
- * 出したら `.claude/.whole-review.json` に `notifiedAt` を書き、**12 時間**は短縮形になる
+ * 出したら `.claude/.whole-review.local.json`（マシンローカル）に `notifiedAt` を書き、**12 時間**は短縮形になる
  * （`clear` / `compact` の SessionStart と、`pre-push-check` / `complete-feature` からの呼び出し。鳴りすぎない）。
  * `startup` / `resume` は全文（新しいセッションの始まりなので）。
  */

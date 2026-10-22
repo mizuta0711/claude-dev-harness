@@ -19,7 +19,7 @@ allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git l
 
 | 引数 | すること |
 |------|---------|
-| `--mark [パス]` | **査読せずに HEAD を記録する。** 手で全体査読を回した直後のプロジェクト向け（記録が無いと「一度も回していない」として催促が続く）。`node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/whole-review-nudge.js" --mark <パス>` を実行して終わる |
+| `--mark [パス]` | **査読せずに HEAD を記録する。** 手で全体査読を回した直後のプロジェクト向け（記録が無いと「一度も回していない」として催促が続く）。`node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/whole-review-nudge.js" --mark <パス>` を実行し、**`.claude/whole-review.json` をコミットするよう案内して**終わる |
 | `--snooze` | **今回は見送る。** `node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/whole-review-nudge.js" --snooze` を実行して終わる（HEAD から再び閾値ぶん溜まるまで催促が黙る） |
 | （省略） | Step 1 へ |
 
@@ -28,7 +28,8 @@ allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git l
 1. `.claude/harness.config.json` を読み、`paths.source`・`designDocs.docs[]`・`projectDocs.policy` を取る（config が無ければ `src/` と `docs/設計書/` を推定し、推定したことを報告に書く）
 2. `git ls-files -- <paths.source>`（と永続化の置き場）で対象ファイルを列挙し、**層ごとの本数**を把握する。
    **この一覧は Step 2 のプロンプトでそのまま渡す**（`whole-reviewer` は `Bash` を持たないので自分では列挙できない）
-3. 前回の記録 `.claude/.whole-review.json` を読む（無ければ「初回」）
+3. 前回の記録 `.claude/whole-review.json` を読む（**プロジェクトの事実。コミットされている**。無ければ「初回」。
+   0.45.0 以前の `.claude/.whole-review.json` が残っていればスクリプトがそこから引き継ぐ）
 4. **既知の項目**を集める: `docs/backlog.md` の残作業の表と、`docs/features/planned/` の設計書の題名
 
 ## Step 2: `whole-reviewer` を起動する
@@ -56,6 +57,8 @@ Agent(subagent_type: "whole-reviewer", prompt:
 4. **ユーザーが選んだ候補**を `/harness-core:new-feature <候補名>` に渡す（着手前なら `docs/features/planned/` へ。台帳の計画節に順序が置かれる）。
    選ばれなかった候補は記録に残る（次回の【既知】照合の対象になる）
 5. 記録を書く: `node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/whole-review-nudge.js" --mark docs/reviews/YYYYMMDD_HHMMSS_whole-review.md`
+   → **`.claude/whole-review.json` を、レビュー記録と同じコミットに含める**（プロジェクトの事実。2 台で回していても、もう 1 台が「初回」として催促しなくなる）。
+   見送り（`--snooze`）と案内済み（`notifiedAt`）は `.claude/.whole-review.local.json`（ignore）で、この機械だけに効く
 
 ## Step 4: 報告
 

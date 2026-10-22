@@ -12,6 +12,7 @@ secrets/
 .claude/.subagent-touch.json
 .claude/.harness-audit.json
 .claude/.whole-review.json
+.claude/.whole-review.local.json
 .claude/.harness-update/
 
 # 注: .claude/harness-baseline.json は **コミットする**。

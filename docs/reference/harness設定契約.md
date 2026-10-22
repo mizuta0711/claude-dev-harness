@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.44.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
+| 対応ハーネス版 | harness-core 0.46.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
 | 最終更新 | 2026-10-12 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
@@ -90,7 +90,7 @@
 | `commands.*` + `gates.preCommit` | `pre-commit-check.js` | `gates.preCommit` の各キーを `commands` から引き、非 null のものを順に実行。1つでも失敗したら `permissionDecision:"deny"` でブロック |
 | `audit.intervalDays` | `session-start-context.js` | 前回の利用実績監査からこの日数を超えたら**知らせる**（止めない）。未設定は 30 日、`0` で無効。前回日は `.claude/.harness-audit.json`、無ければ `harness-baseline.json` の `appliedAt` から数える |
 | `update.intervalDays` | `session-start-context.js` | 前回の**テンプレート層の追従**からこの日数を超えたら**知らせる**（止めない）。未設定は 30 日、`0` で無効。前回日は `harness-baseline.json` の `appliedAt`（`harness-diff.mjs` の `finalize` が追従のたびに更新するので**専用マーカーは無い**）。**プラグイン層は marketplace が運ぶので対象外** |
-| `wholeReview.nudge` ＋ `paths.source` | `whole-review-nudge.js`（`session-start-context.js` から呼ばれ、`pre-push-check` / `complete-feature` スキルの手順からも実行される） | 前回の全体査読（`.claude/.whole-review.json` の `lastCommit`。見送り後は `snoozedAt`。記録が無ければ初コミット）から HEAD までの **完了した設計書の本数・`paths.source` の差分行数・コミット数**を測り、閾値の**どれか1つ以上に達したら知らせる**（止めない・自動では回さない）。**キーが無ければ何も言わない。** `startup` / `resume` の SessionStart で出したら `notifiedAt` を書き、12 時間は `clear` / `compact` の SessionStart と `pre-push-check` / `complete-feature` からの呼び出しが短縮形になる。`--mark` で査読せずに記録、`--snooze` で見送り（HEAD から再び溜まるまで黙る）。`paths.source` が**無い**とき・ブレース・角括弧があるときは差分全体の行数を採り、文に「paths.source 未使用」と出る。**記録ファイルはコミットしない**（`templates/base/.gitignore` が覆う。`.harness-audit.json` と同じ扱い） |
+| `wholeReview.nudge` ＋ `paths.source` | `whole-review-nudge.js`（`session-start-context.js` から呼ばれ、`pre-push-check` / `complete-feature` スキルの手順からも実行される） | 前回の全体査読（`.claude/.whole-review.json` の `lastCommit`。見送り後は `snoozedAt`。記録が無ければ初コミット）から HEAD までの **完了した設計書の本数・`paths.source` の差分行数・コミット数**を測り、閾値の**どれか1つ以上に達したら知らせる**（止めない・自動では回さない）。**キーが無ければ何も言わない。** `startup` / `resume` の SessionStart で出したら `notifiedAt` を書き、12 時間は `clear` / `compact` の SessionStart と `pre-push-check` / `complete-feature` からの呼び出しが短縮形になる。`--mark` で査読せずに記録、`--snooze` で見送り（HEAD から再び溜まるまで黙る）。`paths.source` が**無い**とき・ブレース・角括弧があるときは差分全体の行数を採り、文に「paths.source 未使用」と出る。**記録は 2 ファイル（0.46.0・H103）**: `.claude/whole-review.json`（`lastCommit`・`date`・`reviewFile`。**プロジェクトの事実。コミットする** —— 2 台で回すときに片方が「初回」として催促しないため）と `.claude/.whole-review.local.json`（`notifiedAt`・`snoozedAt`。**マシンローカル。ignore**。見送りはこの機械だけに効く） |
 | `gates.docActuality` | `pre-commit-actuality.js` | **コミットの直前**に、**常時読まれる指示**（`CLAUDE.md` / `constitution.md` / `.claude/**/*.md`）の**追加行**に実態（日付つきの但し書き・存在の件数）が入っていないかを知らせる。**警告だけで止めない。** `"off"` で無効。**未追跡のファイルも見る**（`git diff HEAD` に出ないため）。**対象外**は `docs/`（実測記録は件数を書くのが正しい）・`.claude/harness/environment.md`（**あれは実態を書く場所**。H55）・引用・HTML コメント・コードフェンス・改訂履歴・条件や仮定の文。対象リポジトリは `cd` 系と `-C` を追って決める |
 | `gates.backlogSync` | `pre-push-backlog-check.js` | **push の直前**に**残作業台帳**（`docs/backlog.md`）と `docs/features/` の整合を確かめ、食い違っていれば `permissionDecision:"deny"` を返して `/harness-core:backlog-sync` を案内する。**`"off"` で無効。** 対象は**セッションのプロジェクトではなく push 先**で、フックが受け取る `cwd` から `cd` 系と `-C` を追ってリポジトリのルートまで寄せる。**`--dry-run` は止めない。** 見ているのは**残作業台帳**で、`pre-push-check` が見る**設計書同期台帳**（`designDocs.ledger`）とは別物 |
 | `gates.commitScope` | `pre-commit-scope.js` | 範囲まるごとの git 操作（`add -A` / `commit -a` / `stash` / 範囲指定なしの破棄）を検知したときの扱い。**未設定なら警告のみ**、`"paths"` で `deny`、`"off"` で無効 |
@@ -129,8 +129,9 @@
 | `audit.intervalDays` 未設定 / マーカーも baseline も無い | **何も言わない**（判定材料が無いのに催促しない） | — |
 | `update.intervalDays` 未設定 / baseline も `appliedAt` も無い | **何も言わない**（同上。baseline を持たない旧生成プロジェクトでは判定できない） | — |
 | `wholeReview.nudge` 未設定 / 正数が1つも無い | **何も言わない**（0.44.0 より前の適用先で勝手に鳴らない） | — |
-| `wholeReview.nudge` はあるが `.claude/.whole-review.json` が無い | **初コミットから測って知らせる**（「一度も回していない」と明示）。手で回した直後なら `whole-review --mark` で記録する | — |
-| `.whole-review.json` の `lastCommit` / `snoozedAt` が実在しない（rebase・別クローン） | 初コミットから測る | — |
+| `wholeReview.nudge` はあるが `.claude/whole-review.json` が無い（旧 `.claude/.whole-review.json` も無い） | **初コミットから測って知らせる**（「一度も回していない」と明示）。手で回した直後なら `whole-review --mark` で記録し、**`.claude/whole-review.json` をコミットする** | — |
+| `.claude/whole-review.json` が無く、旧 `.claude/.whole-review.json`（0.44.0〜0.45.0・ignore）がある | 旧ファイルから `lastCommit`・`notifiedAt`・`snoozedAt` を**読んで**使う。書き込みは新しい 2 ファイルへ（旧ファイルは消さない） | — |
+| `whole-review.json` の `lastCommit` / `.whole-review.local.json` の `snoozedAt` が実在しない（rebase・別クローン） | `snoozedAt` → `lastCommit` → 初コミット の順に実在を確かめる | — |
 | `docTriggers[].pattern` が不正な正規表現 | そのトリガーだけ無視して継続 | — |
 | `git` が使えない / 初回コミットで `HEAD~1` が無い | 素通り | — |
 | `git reflog` が読めない | post-commit-doc-check は従来どおり判定に進む（通知が死ぬより誤通知を許容） | — |
