@@ -289,6 +289,52 @@ test("旧ファイル（.claude/.whole-review.json）しか無ければ、そこ
   assert.equal(JSON.parse(fs.readFileSync(legacy, "utf-8")).lastCommit, last, "旧ファイルは書き換えない");
 });
 
+test("旧ファイルに snoozedAt が残っていても、--mark すれば見送りが消える（査読 #1。新ファイルが存在すれば空でも旧へ落ちない）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  const old = r.git("rev-parse", "HEAD");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config({ completedFeatures: 1 });
+  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.json"), JSON.stringify({ lastCommit: old, snoozedAt: old }));
+  assert.match(r.run(), /見送った/, "旧ファイルの snoozedAt を引き継ぐ");
+  r.run("--mark");
+  const local = JSON.parse(fs.readFileSync(path.join(r.dir, ".claude", ".whole-review.local.json"), "utf-8"));
+  assert.equal(local.snoozedAt, undefined, "ローカル側のファイルが作られ、見送りは無い");
+  assert.equal(r.run(), "", "--mark 直後は黙る（旧ファイルの snoozedAt へ落ちない）");
+  r.commit({ "docs/features/completed/20260102_y.md": "# y\n" }, "3");
+  assert.match(r.run("--full"), /前回 [0-9a-f]{7}/, "次に鳴るときは『前回』であって『見送った』ではない");
+});
+
+test("共有側が読めない（衝突マーカー）ときは測らず、読めないと知らせる。初コミットへ落ちない（査読 #2）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  r.config({ completedFeatures: 1 });
+  fs.writeFileSync(
+    path.join(r.dir, ".claude", "whole-review.json"),
+    "<<<<<<< HEAD\n{ \"lastCommit\": \"a\" }\n=======\n{ \"lastCommit\": \"b\" }\n>>>>>>> theirs\n",
+  );
+  const out = r.run();
+  assert.match(out, /読めません/);
+  assert.doesNotMatch(out, /一度も回していない/);
+  const json = JSON.parse(r.run("--json"));
+  assert.equal(json.unreadable, true);
+  assert.equal(json.measured, null);
+});
+
+test("共有側が未コミットなら、催促の文に「もう 1 台に効いていない」が付く（査読 #4）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.config({ completedFeatures: 1 });
+  r.run("--mark");
+  r.commit({ "docs/features/completed/20260101_x.md": "# x\n" }, "2");
+  assert.match(r.run("--full"), /未コミット/);
+  // コミットすると消える
+  r.git("add", ".claude/whole-review.json");
+  r.git("-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "mark", "--", ".claude/whole-review.json");
+  assert.doesNotMatch(r.run("--full"), /未コミット/);
+});
+
 test("--mark は共有側だけを書き、--snooze はローカル側だけを書く。--mark は見送りを消す", () => {
   const r = makeRepo();
   r.commit({ "src/a.ts": "a\n" }, "1");

@@ -4,7 +4,7 @@
 |------|------|
 | 対応 schemaVersion | `1` |
 | 対応ハーネス版 | harness-core 0.46.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
-| 最終更新 | 2026-10-12 |
+| 最終更新 | 2026-10-23 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
 
@@ -131,7 +131,10 @@
 | `wholeReview.nudge` 未設定 / 正数が1つも無い | **何も言わない**（0.44.0 より前の適用先で勝手に鳴らない） | — |
 | `wholeReview.nudge` はあるが `.claude/whole-review.json` が無い（旧 `.claude/.whole-review.json` も無い） | **初コミットから測って知らせる**（「一度も回していない」と明示）。手で回した直後なら `whole-review --mark` で記録し、**`.claude/whole-review.json` をコミットする** | — |
 | `.claude/whole-review.json` が無く、旧 `.claude/.whole-review.json`（0.44.0〜0.45.0・ignore）がある | 旧ファイルから `lastCommit`・`notifiedAt`・`snoozedAt` を**読んで**使う。書き込みは新しい 2 ファイルへ（旧ファイルは消さない） | — |
-| `whole-review.json` の `lastCommit` / `.whole-review.local.json` の `snoozedAt` が実在しない（rebase・別クローン） | `snoozedAt` → `lastCommit` → 初コミット の順に実在を確かめる | — |
+| `whole-review.json` の `lastCommit` / `.whole-review.local.json` の `snoozedAt` が実在しない（rebase・別クローン・**記録コミットを含まないブランチ・shallow clone**） | `snoozedAt` → `lastCommit` → 初コミット の順に実在を確かめ、どれも無ければ「初回」扱い（記録をコミットする設計なので、**ブランチごとに記録の有無が変わる**） | — |
+| `.claude/whole-review.json` が**読めない**（マージの衝突マーカー・壊れた JSON） | **測らない。** 「記録が読めない（衝突中か壊れた JSON）」と知らせ、初コミットへ落とさない（落とすと最大音量で鳴る）。衝突は `lastCommit` が子孫の方を丸ごと採る | — |
+| `.claude/whole-review.json` が**未コミット**（`--mark` の直後にコミットを忘れた） | 催促の文に「記録が未コミット: もう 1 台に効いていません」を足す | — |
+| 新ファイルが**存在する**が中身が空（`{}`） | 新ファイルが正（旧ファイルへ落ちない。`--mark` が見送りを消すために空のローカル側を作る） | — |
 | `docTriggers[].pattern` が不正な正規表現 | そのトリガーだけ無視して継続 | — |
 | `git` が使えない / 初回コミットで `HEAD~1` が無い | 素通り | — |
 | `git reflog` が読めない | post-commit-doc-check は従来どおり判定に進む（通知が死ぬより誤通知を許容） | — |

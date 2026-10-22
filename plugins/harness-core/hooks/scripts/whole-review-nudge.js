@@ -25,8 +25,11 @@
  *     （0.44.0〜0.45.0 はマシンローカルだったので、6 日で 6 回・2 系列の全体査読が走った）
  *   - `.claude/.whole-review.local.json` … **マシンローカル**（`notifiedAt`・`snoozedAt`）。ignore する。
  *     `notifiedAt` は毎セッション書くので追跡すると差分が出続ける。見送りも個人の判断
- *   - 旧ファイル `.claude/.whole-review.json`（0.44.0〜0.45.0・ignore）は**読むだけ**: 新しい方が無ければ
- *     そこから引き継ぐ。消さない（害は無い。`--mark` すれば以後は新しい方が正）
+ *   - 旧ファイル `.claude/.whole-review.json`（0.44.0〜0.45.0・ignore）は**読むだけ**: 新しい方が**存在しなければ**
+ *     そこから引き継ぐ（空でも新しい方が勝つ）。消さない（害は無い。`--mark` すれば以後は新しい方が正）
+ *   - 共有側が**読めない**（マージの衝突中・壊れた JSON）ときは測らず、読めないことを知らせる
+ *   - 共有側が**未コミット**なら、催促の文に「もう 1 台に効いていない」を足す
+ *   - 記録コミットを含まないブランチ・shallow clone では `lastCommit` が実在せず「初回」扱いになる（契約文書に明記）
  *
  * 使い方:
  *   require して `nudgeLine()`（session-start-context.js）
@@ -46,16 +49,30 @@ const SHARED_RELATIVE_PATH = path.join(".claude", "whole-review.json");
 const LOCAL_RELATIVE_PATH = path.join(".claude", ".whole-review.local.json");
 /** 0.44.0〜0.45.0 の記録（ignore・マシンローカル）。読むだけで、書かない */
 const LEGACY_RELATIVE_PATH = path.join(".claude", ".whole-review.json");
-/** 後方互換のための別名（0.44.0 の export 名） */
-const MARKER_RELATIVE_PATH = SHARED_RELATIVE_PATH;
 /** SessionStart で案内したあと、短縮形にする時間 */
 const NOTIFIED_WINDOW_MS = 12 * 60 * 60 * 1000;
 
+/**
+ * JSON ファイルを「無い」「読めない」「読めた」で区別して読む。
+ *
+ * 0.46.0 の独立査読が、**「無い」と「読めない」を 1 つの null に潰すと移行期と衝突時に崩れる**ことを実測した:
+ * 旧ファイルに `snoozedAt` が残ると `--mark` 後も見送り扱いが続き（新ファイルが空 → 旧へ落ちる）、
+ * マージ衝突のマーカーが入った共有側は「一度も回していない」として最大音量で鳴る。
+ *
+ * @returns {{state:"missing"|"invalid"|"ok", data:object|null}}
+ */
 function readJson(rel) {
+  let raw;
   try {
-    return JSON.parse(fs.readFileSync(path.join(lib.projectDir(), rel), "utf-8"));
+    raw = fs.readFileSync(path.join(lib.projectDir(), rel), "utf-8");
   } catch {
-    return null;
+    return { state: "missing", data: null };
+  }
+  try {
+    const data = JSON.parse(raw.replace(/^﻿/, ""));
+    return data && typeof data === "object" ? { state: "ok", data } : { state: "invalid", data: null };
+  } catch {
+    return { state: "invalid", data: null };
   }
 }
 
@@ -74,22 +91,48 @@ const pickKeys = (obj, keys) => {
   return Object.keys(out).length ? out : null;
 };
 
-/** プロジェクトの事実。新しいファイルが無ければ旧ファイルから引き継ぐ */
+/**
+ * 新ファイルが**存在すれば**それが正（空でも旧ファイルへ落ちない）。無いときだけ旧ファイルから引き継ぐ。
+ * 読めない（壊れた JSON・衝突マーカー）ときは `unreadable: true` を返し、呼び出し側が知らせる。
+ */
+function readWithLegacy(rel, keys) {
+  const cur = readJson(rel);
+  if (cur.state === "invalid") return { unreadable: true, file: rel, data: null };
+  if (cur.state === "ok") return { unreadable: false, file: rel, data: pickKeys(cur.data, keys) };
+  const legacy = readJson(LEGACY_RELATIVE_PATH);
+  return { unreadable: false, file: LEGACY_RELATIVE_PATH, data: legacy.state === "ok" ? pickKeys(legacy.data, keys) : null };
+}
+
+/** プロジェクトの事実（`lastCommit`・`date`・`reviewFile`）。`.data` が中身、`.unreadable` が壊れているか */
+function readSharedState() {
+  return readWithLegacy(SHARED_RELATIVE_PATH, SHARED_KEYS);
+}
+
+/** マシンローカル（`notifiedAt`・`snoozedAt`） */
+function readLocalState() {
+  return readWithLegacy(LOCAL_RELATIVE_PATH, LOCAL_KEYS);
+}
+
 function readShared() {
-  return pickKeys(readJson(SHARED_RELATIVE_PATH), SHARED_KEYS) ?? pickKeys(readJson(LEGACY_RELATIVE_PATH), SHARED_KEYS);
+  return readSharedState().data;
 }
 
-/** マシンローカル。新しいファイルが無ければ旧ファイルから引き継ぐ */
 function readLocal() {
-  return pickKeys(readJson(LOCAL_RELATIVE_PATH), LOCAL_KEYS) ?? pickKeys(readJson(LEGACY_RELATIVE_PATH), LOCAL_KEYS);
+  return readLocalState().data;
 }
 
-/** 2 つを合わせた見え方（測る側はこれだけを見る） */
+/** 2 つを合わせた見え方（測る側はこれだけを見る）。共有側が読めないときは null（呼び出し側が先に見る） */
 function readMarker() {
   const shared = readShared();
   const local = readLocal();
   if (!shared && !local) return null;
   return { ...(shared || {}), ...(local || {}) };
+}
+
+/** 共有側がコミットされていない（未追跡か変更あり）か。2 台運用で「もう 1 台に効いていない」を知らせるため */
+function sharedUncommitted() {
+  const out = lib.git(`status --porcelain -- ${SHARED_RELATIVE_PATH.replace(/\\/g, "/")}`, 3000);
+  return out.trim().length > 0;
 }
 
 function writeShared(next) {
@@ -232,6 +275,18 @@ const LABEL = { completedFeatures: "完了した設計書", sourceLines: "src �
 function nudge(cfg, opts = {}) {
   const thresholds = thresholdsOf(cfg?.config);
   if (!thresholds) return null;
+  // 共有側が読めない（マージの衝突中・壊れた JSON）ときは測らない。初コミットへ落として最大音量で鳴らさない
+  const sharedState = readSharedState();
+  if (sharedState.unreadable) {
+    return {
+      line:
+        `[全体査読] 記録 \`${lib.toPosix(SHARED_RELATIVE_PATH)}\` が読めません（マージの衝突中か、壊れた JSON）。` +
+        `直すまで催促は測りません。衝突なら \`lastCommit\` が子孫の方（新しい方）を丸ごと採ってください。`,
+      measured: null,
+      axes: [],
+      unreadable: true,
+    };
+  }
   const marker = readMarker();
   const measured = measure(cfg.config, marker);
   if (!measured) return null;
@@ -249,13 +304,16 @@ function nudge(cfg, opts = {}) {
   const over = axes.map((a) => LABEL[a]).join("・");
 
   const recentlyNotified = marker?.notifiedAt && Date.now() - Date.parse(marker.notifiedAt) < NOTIFIED_WINDOW_MS;
+  // 共有側が未コミットなら、もう 1 台には効いていない（2 台運用で `--mark` のコミット忘れを知らせる）
+  const uncommitted = measured.base.kind === "last" && sharedUncommitted();
+  const tail = uncommitted ? `（記録 \`${lib.toPosix(SHARED_RELATIVE_PATH)}\` が未コミット: もう 1 台に効いていません）` : "";
   const line =
     opts.brief && recentlyNotified
-      ? `[全体査読] 目安に達しています（${figures}。セッション開始時に案内済み）。\`/harness-core:whole-review\``
+      ? `[全体査読] 目安に達しています（${figures}。セッション開始時に案内済み）。\`/harness-core:whole-review\`${tail}`
       : `[全体査読] 目安に達しています（${since}: ${figures}。閾値を超えた軸: ${over}）。` +
         `\`/harness-core:whole-review\` で、変更単位のレビューでは拾えない横断の欠陥を全ソースから探せる。` +
-        `見送るなら \`/harness-core:whole-review --snooze\`。`;
-  return { line, measured, axes, recentlyNotified: Boolean(recentlyNotified) };
+        `見送るなら \`/harness-core:whole-review --snooze\`。${tail}`;
+  return { line, measured, axes, recentlyNotified: Boolean(recentlyNotified), uncommitted };
 }
 
 /**
@@ -289,11 +347,11 @@ function mark(reviewFile) {
     reviewFile: reviewFile || prev.reviewFile || null,
   };
   writeShared(next);
-  const local = readLocal();
-  if (local?.snoozedAt) {
-    delete local.snoozedAt;
-    writeLocal(local);
-  }
+  // 見送りを消す。**ローカル側のファイルは必ず作る**（旧ファイルに `snoozedAt` が残っていても、
+  // 新ファイルが存在すればそちらが正になり、旧へ落ちない）
+  const local = readLocal() || {};
+  delete local.snoozedAt;
+  writeLocal(local);
   return next;
 }
 
@@ -308,7 +366,6 @@ function snooze() {
 }
 
 module.exports = {
-  MARKER_RELATIVE_PATH,
   SHARED_RELATIVE_PATH,
   LOCAL_RELATIVE_PATH,
   LEGACY_RELATIVE_PATH,
@@ -322,6 +379,8 @@ module.exports = {
   readMarker,
   readShared,
   readLocal,
+  readSharedState,
+  readLocalState,
 };
 
 if (require.main === module) {
@@ -330,9 +389,15 @@ if (require.main === module) {
     if (args.includes("--mark")) {
       const i = args.indexOf("--mark");
       const next = mark(args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : null);
+      const shared = lib.toPosix(SHARED_RELATIVE_PATH);
+      const tracked = lib.git(`ls-files -- ${shared}`).trim().length > 0;
       process.stdout.write(
         `記録しました: ${JSON.stringify(next)}\n` +
-          `→ ${lib.toPosix(SHARED_RELATIVE_PATH)} をコミットに含めてください（プロジェクトの事実。もう 1 台にも効く）\n`,
+          `→ ${shared} を次のコミットに含めてください（プロジェクトの事実。もう 1 台にも効く）: ` +
+          (tracked
+            ? `git commit -- ${shared} <レビュー記録>`
+            : `初回なので git add ${shared} してから git commit -- ${shared} <レビュー記録>`) +
+          `\n`,
       );
     } else if (args.includes("--snooze")) {
       const next = snooze();

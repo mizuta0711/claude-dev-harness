@@ -15,7 +15,8 @@ secrets/
 .claude/.whole-review.local.json
 .claude/.harness-update/
 
-# 注: .claude/harness-baseline.json は **コミットする**。
+# 注: .claude/harness-baseline.json と .claude/whole-review.json（全体査読の記録）は **コミットする**。
+#     .claude/.whole-review.local.json は下の *.local.json でも覆われるが、settings.local.json と同じ前例で明示している
 #     harness-update がチーム全員で同じ基準点を使うために必要。
 
 # ローカル専用の設定・状態ファイル

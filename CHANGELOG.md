@@ -79,7 +79,16 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 `new-feature` の「推奨で進める」c は「レビューは省かない」と書いており、**M で tech を回さない（0.43.0）と重なると、推奨モードの M で tech が回った**（実測 1 本）。
 c を「**省かない。足さない** —— M では `design-review` を呼ばない」に直し、`design-review` の推奨モードの節にも同じ 1 文を足した。
 
-docs 影響: あり（reference/harness設定契約.md — 消費者の行と fail-open の 3 行／guide/既存プロジェクト移行指示書.md — ignore の一覧）。
+### 3. 独立査読（12 件）への対応
+
+- **高 2**: 「無い」と「読めない」を 1 つの null に潰していた → `readJson` を missing / invalid / ok で区別。**新ファイルが存在すれば空でも旧ファイルへ落ちない**（旧ファイルの `snoozedAt` が `--mark` 後も効き続けていた）。
+  **共有側が読めない（衝突マーカー・壊れた JSON）ときは測らず「読めない」と知らせる**（初コミットへ落として最大音量で鳴っていた）
+- **中 5**: `--mark` 後の**未コミット**を催促の文で知らせる／初回は `git add` が要ることと**コミットする主体（メインセッション）**をスキルと `--mark` の出力に／衝突の解決規則（`lastCommit` が子孫の方を丸ごと採る）／
+  移行指示書に「`whole-review.json` はコミットする・`check-ignore` で確かめる」／テスト 3 本（旧 `snoozedAt`→`--mark`・衝突マーカー・未コミット）
+- **低 5**: 「M では `design-review` を呼ばない」を「**AI の裁量で**足さない」に（画面に触る M でユーザーが feature を足す経路と矛盾しない）／契約文書に「記録コミットを含まないブランチ・shallow clone では初回扱い」と「最終更新」／
+  `.gitignore` の二重の明示に理由のコメント／使われていない `MARKER_RELATIVE_PATH` を消した。見送り 0
+
+docs 影響: あり（reference/harness設定契約.md — 消費者の行と fail-open の 6 行／guide/既存プロジェクト移行指示書.md — ignore の一覧とコミットする注）。
 
 ## [harness-nextjs 0.7.0] — Chromium が入っていなければ browser-tester が自分で入れる
 

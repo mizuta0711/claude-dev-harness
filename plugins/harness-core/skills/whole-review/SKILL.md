@@ -58,7 +58,11 @@ Agent(subagent_type: "whole-reviewer", prompt:
    選ばれなかった候補は記録に残る（次回の【既知】照合の対象になる）
 5. 記録を書く: `node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/whole-review-nudge.js" --mark docs/reviews/YYYYMMDD_HHMMSS_whole-review.md`
    → **`.claude/whole-review.json` を、レビュー記録と同じコミットに含める**（プロジェクトの事実。2 台で回していても、もう 1 台が「初回」として催促しなくなる）。
+   **コミットするのはこのスキルではなく、メインセッション（ユーザー）の次のコミット**である。**初回は未追跡なので `git add .claude/whole-review.json` が先に要る**
+   （`git commit -- <未追跡のパス>` は `pathspec did not match` で失敗する）。2 回目以降は `git commit -- docs/reviews/<記録> .claude/whole-review.json` でよい。
    見送り（`--snooze`）と案内済み（`notifiedAt`）は `.claude/.whole-review.local.json`（ignore）で、この機械だけに効く
+6. **2 台で回しているとき**: 回す前に `git pull`（もう 1 台が回した記録を取り込む）。**`--mark` の直後にコミットしないと、もう 1 台には効かない**（催促の文に「未コミット」と出る）。
+   **両方が別々に `--mark` してマージで衝突したら**、`lastCommit` が子孫の方（`git merge-base --is-ancestor A B` で B が子孫なら B）を**丸ごと**採る。どちらも子孫でなければ `date` の新しい方
 
 ## Step 4: 報告
 
