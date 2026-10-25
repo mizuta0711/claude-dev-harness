@@ -438,3 +438,47 @@ test("H76: 置き場ごと無ければ missing-dir で、案内は new-prototype
   assert.equal(f[0].kind, "missing-dir");
   assert.match(f[0].how, /new-prototype/);
 });
+
+// H104: ファイル名の Unicode の形（NFC / NFD）。macOS ではディスク上の名前が NFD
+// （「テ」＋濁点の2文字）のことがあり、台帳の本文は NFC で書かれる。見た目は同じでバイト列が違う。
+// **文字列を NFD で作れば、どの OS でも同じ状況を作れる。**
+const NFD_NAME = "20261010_デプロイする.md".normalize("NFD");
+const NFC_NAME = "20261010_デプロイする.md".normalize("NFC");
+
+test("H104: 設計書の名前が NFD・台帳が NFC でも、載っていれば鳴らない（検査1・検査2）", () => {
+  assert.notEqual(NFD_NAME, NFC_NAME); // 前提: 別の文字列である
+  const dir = mkProject({
+    "docs/backlog.md": PLAN([`| 1 | a | b | \`docs/features/${NFC_NAME}\` |`]),
+    [`docs/features/${NFD_NAME}`]: "# a",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("H104: 台帳が NFD・設計書の名前が NFC でも鳴らない（逆向き）", () => {
+  const dir = mkProject({
+    "docs/backlog.md": PLAN([`| 1 | a | b | \`docs/features/${NFD_NAME}\` |`]),
+    [`docs/features/${NFC_NAME}`]: "# a",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("H104: 一部の文字だけ分解された名前（混在形）でも鳴らない（検査1）", () => {
+  // 「デ」だけ NFD・「プ」は NFC。名前全体を NFC / NFD に変えて試す形では一致しない
+  const mixed = "20261010_" + "デ".normalize("NFD") + "プロイする.md";
+  assert.notEqual(mixed, NFC_NAME);
+  assert.notEqual(mixed, NFD_NAME);
+  const dir = mkProject({
+    "docs/backlog.md": PLAN([`| 1 | a | b | \`docs/features/${NFC_NAME}\` |`]),
+    [`docs/features/${mixed}`]: "# a",
+  });
+  assert.deepEqual(bs.check(dir).findings, []);
+});
+
+test("H104: completed/ の名前が NFD でも、計画節に残っていれば検査3が鳴る（見逃さない）", () => {
+  const dir = mkProject({
+    "docs/backlog.md": PLAN([`| 1 | a | b | \`docs/features/completed/${NFC_NAME}\` |`]),
+    [`docs/features/completed/${NFD_NAME}`]: "# a",
+  });
+  const kinds = bs.check(dir).findings.map((f) => f.kind);
+  assert.deepEqual(kinds, ["completed-still-listed"]);
+});

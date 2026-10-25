@@ -181,6 +181,21 @@ function collectFeatureDocs(projectDir) {
 }
 
 /**
+ * `rel` と Unicode の形（NFC / NFD）だけが違うファイルが同じフォルダにあるか（H104）。
+ * フォルダ名は ASCII（`docs/features/` 配下の置き場）なので、名前の最後の要素だけを比べる。
+ */
+function existsIgnoringForm(projectDir, rel) {
+  const want = path.basename(rel).normalize("NFC");
+  try {
+    return fs
+      .readdirSync(path.join(projectDir, path.dirname(rel)))
+      .some((name) => name.normalize("NFC") === want);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 整合を判定する。**設定不在・台帳不在は「検査しない」を返す**（素通りさせる）。
  *
  * @returns {{applicable: boolean, reason?: string, findings: Array}}
@@ -221,6 +236,11 @@ function check(projectDir) {
     }
     for (const rel of row.paths) {
       if (fs.existsSync(path.join(projectDir, rel))) continue;
+      // **見つからなければ、同じフォルダの一覧を NFC に揃えて引く**（H104）。macOS（APFS）は
+      // 形の違いを同じファイルとして開くが、Linux・Windows はバイト列で区別するので、
+      // 台帳（NFC）とディスク（NFD）がずれると「無い」と誤って報告する。
+      // 「全体を NFC / NFD に変えて試す」では、一部の文字だけ分解された名前を拾えない（査読）
+      if (existsIgnoringForm(projectDir, rel)) continue;
       // **置き場が無いことと、設計書が無いことは別の事実である**（査読 M2）。
       // `docs/features/planned/` は harness-core 0.31.2 より前のテンプレートでは
       // 配られていなかった（H62）。**ただし置き場を配っても設計書は生えない。**
@@ -250,9 +270,16 @@ function check(projectDir) {
   //
   // ⚠️ **`collectFeatureDocs` に置き場を足すだけでは、この検査は動かない。**
   // **ここにも足すこと**（H76 の設計の査読が、足し忘れを指摘した）。
-  const listed = new Set(rows.flatMap((r) => r.paths));
+  //
+  // **比べる前に両側を NFC に揃える**（H104）。macOS ではディスク上の名前が NFD
+  // （「テ」＋濁点の2文字）のことがあり、台帳の本文（NFC）と `Set.has` で比べると
+  // 別の文字列になる。**検査2は載っているのに止め、検査3は残っているのに見逃していた。**
+  // `core.precomposeunicode=true` の下では `git status` に何も出ないので、利用者は気づけない。
+  // 報告に出すパスはディスク上の名前のまま（見た目は同じ）。
+  const nfc = (p) => p.normalize("NFC");
+  const listed = new Set(rows.flatMap((r) => r.paths).map(nfc));
   for (const doc of exhaustive ? [...docs.active, ...docs.planned, ...docs.prototype] : []) {
-    if (!listed.has(doc)) {
+    if (!listed.has(nfc(doc))) {
       findings.push({
         kind: "doc-without-row",
         what: `${doc} が計画節に載っていない`,
@@ -265,7 +292,7 @@ function check(projectDir) {
 
   // 検査3: 完了済みの設計書が計画節に残っていないか
   for (const doc of docs.completed) {
-    if (listed.has(doc)) {
+    if (listed.has(nfc(doc))) {
       findings.push({
         kind: "completed-still-listed",
         what: `${doc} は completed/ にあるのに計画節に残っている`,
