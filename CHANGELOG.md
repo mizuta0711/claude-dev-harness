@@ -57,6 +57,22 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.46.2] — リンクを経由したパスで起こすと、道具が何もせず終了コード 0 で終わっていた（H106）
+
+`tools/create-project.mjs`・`tools/rules-reality-check.mjs`・`harness-update/scripts/harness-diff.mjs` の3本は、
+「直接起動されたか」を `import.meta.url`（リンクを解いた実体のパス）と `process.argv[1]`（渡したパスのまま）の文字列比較で判定していた。
+**シンボリックリンクを経由したパスで起こすと一致せず、何もせず・何も出さず・終了コード 0 で終わる。** 呼んだ側からは成功に見える。
+
+**`/harness-core:create-project` は macOS では常にこれを踏んでいた。** ラッパー（`create-project/scripts/create.mjs`）は
+ハーネスを OS の一時フォルダへ取得してから `create-project.mjs` を起こすが、macOS の一時フォルダは `/var/folders/...`（実体は `/private/var/...`）である。
+`tests/create-project.smoke.test.mjs` の「ラッパー」2件が macOS でだけ落ちていたのも同じ原因。
+
+- 3本とも、両側を `fs.realpathSync` で実体のパスにそろえて比べる `isDirectRun()` に替えた。道具は単独で配られるので、同じ関数を3本に写してある
+- `tests/direct-run-symlink.test.mjs`: 自前のリンク（Windows はジャンクション）を経由して3本を起こし、実体で起こしたときと出力・終了コードが同じことを確かめる。修正前のコードでは3件とも落ちる
+- `tools/` の2本はプラグインの版の外にある。`create-project` のラッパーは既定でハーネスの最新を取得するので、push した時点で届く
+
+docs 影響: なし
+
 ## [0.46.1] — 残作業台帳の検査が macOS の NFD のファイル名で誤判定していた（H104）
 
 macOS ではディスク上の設計書の名前が NFD（「テ」＋濁点の2文字）のことがあり、台帳の本文（NFC）とバイト列が違う。

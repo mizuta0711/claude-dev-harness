@@ -22,7 +22,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 /**
  * glob を正規表現へ。**波括弧の展開に対応している。**
@@ -355,6 +355,22 @@ function main(argv) {
   return 1;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+/**
+ * エントリポイントとして直接起動されたか（H106）。**両方を実体のパスにそろえて比べる。**
+ * `import.meta.url` はシンボリックリンクを解いた実体、`process.argv[1]` は渡されたパスのままなので、
+ * 文字列で比べると**リンクを経由して起こしたとき（macOS の一時フォルダ `/var` → `/private/var` など）に
+ * 何もせず終了コード 0 で終わっていた**。`/harness-core:create-project` は一時フォルダへ取得して起こすので、
+ * macOS では常にこれを踏んでいた。**この関数は3つの道具に同じ形で写してある**（道具は単独で配られる）。
+ */
+function isDirectRun() {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectRun()) {
   process.exit(main(process.argv.slice(2)));
 }
