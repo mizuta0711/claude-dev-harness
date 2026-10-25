@@ -68,7 +68,7 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 `tests/create-project.smoke.test.mjs` の「ラッパー」2件が macOS でだけ落ちていたのも同じ原因。
 
 - 3本とも、両側を `fs.realpathSync` で実体のパスにそろえて比べる `isDirectRun()` に替えた。道具は単独で配られるので、同じ関数を3本に写してある
-- `tests/direct-run-symlink.test.mjs`: 自前のリンク（Windows はジャンクション）を経由して3本を起こし、実体で起こしたときと出力・終了コードが同じことを確かめる。修正前のコードでは3件とも落ちる
+- `tests/direct-run-symlink.test.mjs`: 自前のリンク（Windows はジャンクション）を経由して3本を起こし、実体で起こしたときと出力・終了コードが同じことを確かめる。修正前のコードでは3件とも落ちる。リンクを作れない環境では skip するが、**CI（`CI` 環境変数）では失敗にする**（skip のまま緑だと守っていない状態と区別がつかない）。一時フォルダはリンクだけを先に消してから片付ける（ジャンクションの先を巻き込まない）
 - `tools/` の2本はプラグインの版の外にある。`create-project` のラッパーは既定でハーネスの最新を取得するので、push した時点で届く
 
 docs 影響: なし

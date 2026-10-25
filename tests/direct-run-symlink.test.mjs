@@ -20,13 +20,25 @@ const TOOLS = [
   "plugins/harness-core/skills/harness-update/scripts/harness-diff.mjs",
 ];
 
-function makeLink() {
+/**
+ * リポジトリ全体を指すリンクを一時フォルダに作る。後片付けは `t.after` に積む。
+ * **消すときはリンクだけを先に消す**（Windows のジャンクションは、中身ごと消すとリンク先を巻き込む）。
+ */
+function makeLink(t) {
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "direct-run-")));
   const link = path.join(base, "h");
+  t.after(() => {
+    try {
+      fs.unlinkSync(link);
+    } catch {}
+    fs.rmSync(base, { recursive: true, force: true });
+  });
   try {
     // Windows ではジャンクションなら管理者権限なしで作れる
     fs.symlinkSync(ROOT, link, process.platform === "win32" ? "junction" : "dir");
-  } catch {
+  } catch (e) {
+    // **CI では skip にしない。** skip のまま緑だと、守っていない状態と区別がつかない（査読）
+    if (process.env.CI) throw e;
     return null;
   }
   return link;
@@ -36,7 +48,7 @@ const run = (file) => spawnSync(process.execPath, [file, "--help"], { encoding: 
 
 for (const rel of TOOLS) {
   test(`H106: リンク経由で起こしても ${path.basename(rel)} は実体と同じように動く`, (t) => {
-    const link = makeLink();
+    const link = makeLink(t);
     if (!link) return t.skip("この環境ではリンクを作れない");
     const direct = run(path.join(ROOT, rel));
     const viaLink = run(path.join(link, rel));
