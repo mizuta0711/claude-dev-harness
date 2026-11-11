@@ -168,7 +168,7 @@ marketplace の場所（`extraKnownMarketplaces`）を教えるだけで、**導
 |-----------|--------|-------------|--------|
 | `harness-nextjs` | `browser-test`（Playwright MCP） | `browser-tester` / `product-advisor` | `post-edit-lint` / `pre-migrate-backup` |
 | `harness-unity` | `unity-verify`（Unity MCP） | `game-designer` | `pre-commit-cs-check` |
-| `harness-wpf` | `capture-screenshots`（UIAutomation） | `product-advisor` | （なし） |
+| `harness-wpf` | `capture-screenshots`（UIAutomation） / `add-distribution-site` / `add-help-window` / `add-installer`（配布一式） | `product-advisor` | （なし） |
 | `harness-android` | `capture-screenshots`（adb） | `product-advisor` | `pre-adb-uninstall-guard` |
 
 環境プラグインの hook は **core の `harness-lib.js` を require しない**。

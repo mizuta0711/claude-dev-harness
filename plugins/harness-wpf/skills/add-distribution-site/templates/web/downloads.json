@@ -1,0 +1,14 @@
+{
+  "latest": "{{VERSION}}",
+  "versions": [
+    {
+      "version": "{{VERSION}}",
+      "date": "{{TODAY}}",
+      "notes": ["最初の版"],
+      "files": [
+        { "kind": "bundled", "name": "{{APP_NAME}}-{{VERSION}}-win-x64-setup.exe", "size": 0, "sha256": "" },
+        { "kind": "noruntime", "name": "{{APP_NAME}}-{{VERSION}}-win-x64-noruntime-setup.exe", "size": 0, "sha256": "" }
+      ]
+    }
+  ]
+}

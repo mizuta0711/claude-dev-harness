@@ -57,6 +57,22 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [harness-wpf 0.6.0] — WPF アプリの配布一式（配布サイト・ヘルプ窓・インストーラー）を組み込む3スキル（H108）
+
+WPF アプリを配れる形にする一式を、2 つめのアプリでも手で作り直していた。次のアプリでも同じ依頼が来るので、
+実際に作った一式を、値を穴にした雛形と手順・受け入れ基準のスキルにした。
+**実機で確かめた範囲**: 元のアプリでのインストーラー（入れる・上書き・アンインストール・自動実行の登録の解除・データを残す）とヘルプ窓、
+雛形を使い捨ての WPF アプリへ3本続けて当てたときのビルド・インストーラー作成・黙ってのインストールとアンインストール・ヘルプ窓の表示・`check-web.mjs`。
+**確かめていない**: 配布サイトの公開（Nginx の設定例・サーバの手順書は元のアプリでも実行していない）・`publish-release.ps1` の実行・対話のインストール画面。
+**3本は1本ずつでも使える。** 勧める順は配布サイト → ヘルプ窓 → インストーラー（後の2本は前のものがあれば検査・同梱を使い、無ければその段を飛ばす）。
+
+- `/harness-wpf:add-distribution-site`: `web/` の配布サイト（トップ・機能・ダウンロード・更新履歴）・マニュアルの枠（入口・はじめに・インストールと削除・よくある質問・改訂履歴・画面ごとの見本。データを消すアプリ向けの「消えるものと戻し方」は任意）・`downloads.json`・Nginx の設定例とサーバの手順書・`tools/check-web.mjs`（相対リンクと #id の実在・外部の読み込みの禁止・F1 の飛び先の実在・版の食い違い・`--dist` で大きさと SHA-256 の照合・差し替え忘れの `{{名前}}`）。値の置き換えは同梱の `scripts/apply.mjs` が行う。**マニュアルの本文は書かない**（`/harness-doc:plan-doc` へ渡す）
+- `/harness-wpf:add-help-window`: WebView2 のヘルプ窓（専用の STA スレッド・仮想ホストで同梱物を開く・外のリンクは既定のブラウザ・WebView2 が使えなければ同梱の HTML をブラウザで開く・後始末の穴の対策）・F1・`HelpTargets.cs`（F1 の飛び先の表。`check-web.mjs` が同じ表を正規表現で読む）・csproj で `web/manual` と `web/assets` を出力の `Help\` へ写す設定。本文にフォーカスがあるときの Esc は `PreviewKeyDown` に加えて本文側のスクリプトでも拾う
+- `/harness-wpf:add-installer`: Inno Setup（ランタイムあり／なしの2種・日本語と英語・管理者権限なし・起動中は `AppMutex` で止める・強制終了しない・自動実行の登録はインストール先を指すものだけ外す〔任意〕・データは消さない）・`tools/build-installer.ps1`・`tools/publish-release.ps1`（リポジトリ名は `git remote get-url origin` から読む・タグの前に `check-web.mjs --dist` で照合・`downloads.json` が書き換わったら止める）。**公開は利用者が指示したときだけ**
+- 3本で共有する約束（プレースホルダは `{{UPPER_SNAKE}}`・インストーラーのファイル名 `<APP_NAME>-<版>-win-x64(-noruntime)-setup.exe`・`downloads.json` の形・出力の `Help\manual\getting-started.html`）は各 SKILL.md に書いた
+
+docs 影響: あり（README.md / guide/運用ガイド.md §7-3 / guide/セットアップガイド.md §4-3 / diagrams/01_全体アーキテクチャ図.md — harness-wpf のスキル一覧が増えたため）
+
 ## [0.46.2] — リンクを経由したパスで起こすと、道具が何もせず終了コード 0 で終わっていた（H106）
 
 `tools/create-project.mjs`・`tools/rules-reality-check.mjs`・`harness-update/scripts/harness-diff.mjs` の3本は、

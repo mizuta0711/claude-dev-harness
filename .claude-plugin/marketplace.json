@@ -26,8 +26,8 @@
     {
       "name": "harness-wpf",
       "source": "./plugins/harness-wpf",
-      "version": "0.5.0",
-      "description": "WPF (.NET 8) 環境向けの拡張。UIAutomation による実機スクリーンショット撮影・企画レビュー。harness-core と併用する"
+      "version": "0.6.0",
+      "description": "WPF (.NET 8) 環境向けの拡張。UIAutomation による実機スクリーンショット撮影・配布一式（配布サイト・ヘルプ窓・インストーラー）の組み込み・企画レビュー。harness-core と併用する"
     },
     {
       "name": "harness-android",

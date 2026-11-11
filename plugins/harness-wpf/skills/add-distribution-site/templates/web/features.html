@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>機能 — {{APP_NAME}}</title>
+  <meta name="description" content="{{APP_NAME}} の機能の一覧。" />
+  <meta name="theme-color" content="#0a0a0b" />
+  <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="site-header" id="top">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/img/logo.svg" alt="" width="32" height="32" />
+        <span class="brand-text">{{APP_NAME}}</span>
+      </a>
+      <nav class="site-nav" aria-label="メインナビゲーション">
+        <a href="features.html">機能</a>
+        <a href="manual/index.html" target="_blank">マニュアル</a>
+        <a href="download.html">ダウンロード</a>
+        <a href="changelog.html">更新履歴</a>
+      </nav>
+      <a class="btn btn-sm btn-primary nav-cta" href="download.html">入手する</a>
+      <button class="nav-toggle" aria-label="メニューを開く" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="mobile-menu" id="mobile-menu">
+      <a href="features.html">機能</a>
+      <a href="manual/index.html" target="_blank">マニュアル</a>
+      <a href="download.html">ダウンロード</a>
+      <a href="changelog.html">更新履歴</a>
+      <a class="btn btn-primary" href="download.html">入手する</a>
+    </div>
+  </header>
+
+  <section class="subhero">
+    <div class="container">
+      <p class="breadcrumb"><a href="index.html">ホーム</a> ／ 機能</p>
+      <h1>できること</h1>
+      <!-- 雛形: 機能の全体を 1〜2 文でまとめる -->
+      <p>ここに、機能の全体を 1〜2 文で書きます。画面ごとの操作は<a href="manual/index.html">マニュアル</a>にあります。</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container doc-layout">
+      <aside class="toc">
+        <nav aria-label="機能の目次">
+          <h2>機能</h2>
+          <ul>
+            <!-- 雛形: 下の節と同じ並びで、機能ごとに 1 行 -->
+            <li><a href="#feature-1">機能の名前</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <article class="doc">
+
+        <!-- 雛形: 機能ごとに、この section を 1 つ書く（id は目次と合わせる）。
+             写真は assets/img/screens/ に置く（アプリにも同梱される）。サイト専用の大きな画像は assets/img/site/ へ -->
+        <section class="doc-section" id="feature-1">
+          <h2>機能の名前</h2>
+          <p class="lead">ここに、この機能で何ができるかを 1 文で書きます。</p>
+          <p>ここにアプリの機能を書きます。くわしい操作はマニュアルの画面のページへ任せ、ここでは「何ができるか」までにします。</p>
+          <figure class="doc-figure wide reveal">
+            <a href="assets/img/screens/main-01.png" class="shot-link" data-lightbox>
+              <img src="assets/img/screens/main-01.png" alt="メイン画面" loading="lazy" />
+              <span class="shot-placeholder">画面写真を準備中<small>assets/img/screens/main-01.png</small></span>
+            </a>
+            <figcaption>メイン画面</figcaption>
+          </figure>
+        </section>
+
+        <p class="section-more"><a class="link-arrow" href="download.html">ダウンロードする</a></p>
+      </article>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <a class="brand" href="index.html">
+          <img src="assets/img/logo.svg" alt="" width="28" height="28" />
+          <span class="brand-text">{{APP_NAME}}</span>
+        </a>
+        <p class="footer-tagline">{{TAGLINE}}</p>
+      </div>
+      <nav class="footer-nav" aria-label="フッターナビゲーション">
+        <a href="features.html">機能</a>
+        <a href="manual/index.html">マニュアル</a>
+        <a href="download.html">ダウンロード</a>
+        <a href="changelog.html">更新履歴</a>
+      </nav>
+      <p class="footer-copy">&copy; <span id="year"></span> {{APP_NAME}}</p>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<!-- doc-type: landing -->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>マニュアル — {{APP_NAME}}</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/img/favicon.svg" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="manual-page">
+
+  <div class="manual-layout">
+
+    <!-- 左の目次は assets/js/main.js が 1 か所で作る（ページを足したら main.js に 1 行足す） -->
+    <nav class="manual-sidebar" id="manual-sidebar" aria-label="マニュアル目次"></nav>
+
+    <main class="manual-body">
+      <button class="manual-menu-btn" id="manual-menu-btn" aria-label="目次を開く">≡ 目次</button>
+      <div class="manual-content">
+
+        <h1>マニュアル</h1>
+
+        <!-- 雛形: 本文は /harness-doc:plan-doc から書く（manual-writer）。書いたら、この印を消す -->
+        <p>ここに、{{APP_NAME}} が何をするアプリかを 1〜2 文で書きます。</p>
+
+        <h2 id="purpose">目的から選ぶ</h2>
+
+        <div class="section-grid">
+
+          <a href="getting-started.html" class="feature-card">
+            <div class="feature-card-title">初めて使う</div>
+            <div class="feature-card-desc">最初の 1 回を、手順どおりにたどる</div>
+          </a>
+
+          <a href="install.html" class="feature-card">
+            <div class="feature-card-title">インストールと削除</div>
+            <div class="feature-card-desc">2 種類のインストーラーの選び方・更新・アンインストールと、残るもの</div>
+          </a>
+
+          <a href="faq.html" class="feature-card">
+            <div class="feature-card-title">うまくいかないとき（よくある質問）</div>
+            <div class="feature-card-desc">表示されたメッセージや症状から、原因と対処を引く</div>
+          </a>
+
+        </div>
+
+        <h2 id="screens">画面ごとの説明</h2>
+
+        <p>アプリで <kbd>F1</kbd> を押すと、今いる画面の説明が開きます。</p>
+
+        <div class="section-grid">
+
+          <!-- 画面ごとに 1 枚。screens/ にページを足したら、ここと main.js の目次に足す -->
+          <a href="screens/main.html" class="feature-card">
+            <div class="feature-card-title">メイン画面</div>
+            <div class="feature-card-desc">ここに、この画面で何をするかを 1 行で書く</div>
+          </a>
+
+        </div>
+
+        <h2 id="environment">動作環境</h2>
+
+        <ul>
+          <li>Windows 10・Windows 11 の 64 ビット版</li>
+          <!-- add-help-window を入れないなら、次の 1 行を消す -->
+          <li>ヘルプの表示に Microsoft Edge WebView2 ランタイムを使います（Windows 11 には入っています）</li>
+          <li>アンインストールの後に残るものは、<a href="install.html#remains">インストールと削除の「アンインストール後に残るもの」</a>にまとめてあります</li>
+        </ul>
+
+        <p><a href="history.html">マニュアルの改訂履歴</a>で、いつ・どのページを変えたかを確かめられます。</p>
+
+      </div>
+    </main>
+
+  </div>
+
+  <script src="../assets/js/main.js"></script>
+</body>
+</html>

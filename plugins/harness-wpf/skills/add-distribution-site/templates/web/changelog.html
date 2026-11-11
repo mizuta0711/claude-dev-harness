@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>更新履歴 — {{APP_NAME}}</title>
+  <meta name="description" content="{{APP_NAME}} の各バージョンの変更内容。" />
+  <meta name="theme-color" content="#0a0a0b" />
+  <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="site-header" id="top">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/img/logo.svg" alt="" width="32" height="32" />
+        <span class="brand-text">{{APP_NAME}}</span>
+      </a>
+      <nav class="site-nav" aria-label="メインナビゲーション">
+        <a href="features.html">機能</a>
+        <a href="manual/index.html" target="_blank">マニュアル</a>
+        <a href="download.html">ダウンロード</a>
+        <a href="changelog.html">更新履歴</a>
+      </nav>
+      <a class="btn btn-sm btn-primary nav-cta" href="download.html">入手する</a>
+      <button class="nav-toggle" aria-label="メニューを開く" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="mobile-menu" id="mobile-menu">
+      <a href="features.html">機能</a>
+      <a href="manual/index.html" target="_blank">マニュアル</a>
+      <a href="download.html">ダウンロード</a>
+      <a href="changelog.html">更新履歴</a>
+      <a class="btn btn-primary" href="download.html">入手する</a>
+    </div>
+  </header>
+
+  <section class="subhero">
+    <div class="container">
+      <p class="breadcrumb"><a href="index.html">ホーム</a> ／ 更新履歴</p>
+      <h1>更新履歴</h1>
+      <p>各バージョンの変更内容です。最新版のダウンロードは<a href="download.html">ダウンロードページ</a>へ。</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <!-- downloads.json の versions[].notes を main.js が並べる。このページに直接は書かない -->
+    <div class="container" id="changelog-container">
+      <p class="dl-loading">読み込み中…</p>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <a class="brand" href="index.html">
+          <img src="assets/img/logo.svg" alt="" width="28" height="28" />
+          <span class="brand-text">{{APP_NAME}}</span>
+        </a>
+        <p class="footer-tagline">{{TAGLINE}}</p>
+      </div>
+      <nav class="footer-nav" aria-label="フッターナビゲーション">
+        <a href="features.html">機能</a>
+        <a href="manual/index.html">マニュアル</a>
+        <a href="download.html">ダウンロード</a>
+        <a href="changelog.html">更新履歴</a>
+      </nav>
+      <p class="footer-copy">&copy; <span id="year"></span> {{APP_NAME}}</p>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

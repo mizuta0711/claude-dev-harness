@@ -155,6 +155,13 @@ test("配布するスキルは利用者から見えるところに名前空間�
  */
 const PLACEHOLDERS = new Set(["xxx"]);
 
+/**
+ * 別リポジトリで配るプラグインのスキル（このリポジトリには定義が無い）。
+ * harness-wpf の配布一式（0.6.0）が、マニュアルの本文を文書ハーネスへ渡すために参照する。
+ * **プラグイン名で丸ごと許さず、スキルを名指しする** —— 綴りの誤りまで素通りさせないため。
+ */
+const EXTERNAL_SKILLS = new Set(["harness-doc:plan-doc", "harness-doc:setup-project"]);
+
 test("散文で参照している `/<plugin>:<skill>` はすべて実在する", () => {
   const known = new Set(SKILLS.map((s) => `${s.plugin}:${s.name}`));
   const bad = [];
@@ -162,6 +169,7 @@ test("散文で参照している `/<plugin>:<skill>` はすべて実在する",
     for (const m of stripComments(read(f)).matchAll(/\/(harness-[a-z]+):([a-z][a-z0-9-]*)/g)) {
       const ref = `${m[1]}:${m[2]}`;
       if (PLACEHOLDERS.has(m[2])) continue;
+      if (EXTERNAL_SKILLS.has(ref)) continue;
       if (!known.has(ref)) bad.push(`${f} -> /${ref}`);
     }
   }

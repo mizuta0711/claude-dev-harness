@@ -1,0 +1,14 @@
+<!--
+    ヘルプ窓。同梱のマニュアル（出力フォルダの Help\）を WebView2 で表示するだけの最小の窓。
+    専用のスレッドで動かすため、アプリ全体のリソース（App.xaml のスタイル・テーマのライブラリ）に頼らない。
+    StaticResource / DynamicResource でアプリのリソースを参照しないこと（別スレッドの窓から使うと例外になりうる）。
+    作りと動かし方は Services/HelpService.cs。
+-->
+<Window x:Class="{{ROOT_NAMESPACE}}.Views.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="{{APP_NAME}} ヘルプ" Width="960" Height="720" MinWidth="640" MinHeight="480"
+        WindowStartupLocation="Manual">
+    <wv2:WebView2 x:Name="ManualWebView"/>
+</Window>

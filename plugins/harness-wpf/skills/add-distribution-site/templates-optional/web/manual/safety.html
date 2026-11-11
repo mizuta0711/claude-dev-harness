@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!-- doc-type: explanation -->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>消えるものと戻し方 — {{APP_NAME}} マニュアル</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/img/favicon.svg" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="manual-page">
+
+  <div class="manual-layout">
+
+    <!-- 左の目次は assets/js/main.js が 1 か所で作る（ページを足したら main.js に 1 行足す） -->
+    <nav class="manual-sidebar" id="manual-sidebar" aria-label="マニュアル目次"></nav>
+
+    <main class="manual-body">
+      <button class="manual-menu-btn" id="manual-menu-btn" aria-label="目次を開く">≡ 目次</button>
+      <div class="manual-content">
+
+        <p class="breadcrumb"><a href="index.html">マニュアル</a> / 消えるものと戻し方</p>
+        <h1>消えるものと戻し方</h1>
+
+        <!-- 雛形: 本文は /harness-doc:plan-doc から書く（manual-writer）。書いたら、この印を消す -->
+        <!-- アプリがデータを消す・上書きする操作を持つときだけ置く任意のページ。
+             「安全です」と言い切らない。アプリに実在する守り（実行前の確認・戻す手段・止める条件）だけを書く -->
+        <p>実行する前に、どの操作で何が・どこへ消えるか、元に戻せるかを説明します。</p>
+
+        <h2 id="summary">まとめの表</h2>
+
+        <table class="table">
+          <thead>
+            <tr><th>操作</th><th>消えるもの</th><th>行き先</th><th>元に戻せるか</th></tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+
+        <h2 id="checks">実行の前に確かめる仕組み</h2>
+
+        <h2 id="stops">アプリが止める条件</h2>
+
+        <h2 id="restore">戻す方法</h2>
+
+      </div>
+    </main>
+
+  </div>
+
+  <script src="../assets/js/main.js"></script>
+</body>
+</html>

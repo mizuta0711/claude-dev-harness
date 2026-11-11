@@ -1,0 +1,21 @@
+<!--
+  {{UI_CSPROJ}} の <Project> の中へ足す 2 つの ItemGroup（このコメントごと写してよい）。
+  すでに Microsoft.Web.WebView2 を参照しているなら、1 つ目は足さずに今の版を使う。
+-->
+
+  <!-- ヘルプ窓（Views/HelpWindow.xaml）が使う WebView2 -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
+  </ItemGroup>
+
+  <!-- 利用マニュアル（web/manual）と見た目のファイル（web/assets）を、出力フォルダの Help\ へ写して同梱する（ヘルプ窓が読む）。
+       元は web/ の 1 か所だけ（手で 2 か所を直さない）。assets\img\site\ は配布サイトだけで使う大きな画像なので入れない。
+       web/ がまだ無くてもビルドは通る。dotnet build と dotnet publish の両方で同じものが入る。 -->
+  <ItemGroup>
+    <Content Include="{{WEB_DIR_FROM_UI}}\manual\**\*.*" Exclude="{{WEB_DIR_FROM_UI}}\manual\**\.gitkeep" Link="Help\manual\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="{{WEB_DIR_FROM_UI}}\assets\**\*.*" Exclude="{{WEB_DIR_FROM_UI}}\assets\img\site\**;{{WEB_DIR_FROM_UI}}\assets\**\.gitkeep" Link="Help\assets\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!-- doc-type: tutorial -->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>はじめに — {{APP_NAME}} マニュアル</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/img/favicon.svg" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="manual-page">
+
+  <div class="manual-layout">
+
+    <!-- 左の目次は assets/js/main.js が 1 か所で作る（ページを足したら main.js に 1 行足す） -->
+    <nav class="manual-sidebar" id="manual-sidebar" aria-label="マニュアル目次"></nav>
+
+    <main class="manual-body">
+      <button class="manual-menu-btn" id="manual-menu-btn" aria-label="目次を開く">≡ 目次</button>
+      <div class="manual-content">
+
+        <p class="breadcrumb"><a href="index.html">マニュアル</a> / はじめに</p>
+        <h1>はじめに</h1>
+
+        <!-- 雛形: 本文は /harness-doc:plan-doc から書く（manual-writer）。書いたら、この印を消す -->
+        <!-- インストーラーの完了画面「使い方（はじめに）を開く」がこのページを開く（file:/// で開かれる）。ファイル名を変えない -->
+        <p>インストールの直後に最初に読むページです。</p>
+
+        <h2 id="goal">到達点</h2>
+
+        <h2 id="prepare">準備</h2>
+
+        <h2 id="step-1">1. 最初の手順</h2>
+
+        <h2 id="next">次に読む</h2>
+
+      </div>
+    </main>
+
+  </div>
+
+  <script src="../assets/js/main.js"></script>
+</body>
+</html>

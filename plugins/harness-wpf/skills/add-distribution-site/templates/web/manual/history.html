@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!-- doc-type: history -->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>マニュアルの改訂履歴 — {{APP_NAME}} マニュアル</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/img/favicon.svg" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="manual-page">
+
+  <div class="manual-layout">
+
+    <!-- 左の目次は assets/js/main.js が 1 か所で作る（ページを足したら main.js に 1 行足す） -->
+    <nav class="manual-sidebar" id="manual-sidebar" aria-label="マニュアル目次"></nav>
+
+    <main class="manual-body">
+      <button class="manual-menu-btn" id="manual-menu-btn" aria-label="目次を開く">≡ 目次</button>
+      <div class="manual-content">
+
+        <p class="breadcrumb"><a href="index.html">マニュアル</a> / 改訂履歴</p>
+        <h1>マニュアルの改訂履歴</h1>
+
+        <p>マニュアルを、いつ、どのページで、どう変えたかの一覧です。対象のアプリの版を添えています。</p>
+
+        <p>新しい順に並べています。</p>
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th>日付</th>
+              <th>ページ</th>
+              <th>内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{TODAY}}</td>
+              <td>全ページ</td>
+              <td>マニュアルの枠を作りました（アプリ {{VERSION}}）</td>
+            </tr>
+          </tbody>
+        </table>
+
+      </div>
+    </main>
+
+  </div>
+
+  <script src="../assets/js/main.js"></script>
+</body>
+</html>

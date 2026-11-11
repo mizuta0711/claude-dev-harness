@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<!-- doc-type: reference -->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>メイン画面 — {{APP_NAME}} マニュアル</title>
+  <link rel="icon" type="image/svg+xml" href="../../assets/img/favicon.svg" />
+  <link rel="stylesheet" href="../../assets/css/style.css" />
+</head>
+<body class="manual-page">
+
+  <div class="manual-layout">
+
+    <!-- 左の目次は assets/js/main.js が 1 か所で作る（ページを足したら main.js に 1 行足す） -->
+    <nav class="manual-sidebar" id="manual-sidebar" aria-label="マニュアル目次"></nav>
+
+    <main class="manual-body">
+      <button class="manual-menu-btn" id="manual-menu-btn" aria-label="目次を開く">≡ 目次</button>
+      <div class="manual-content">
+
+        <p class="breadcrumb"><a href="../index.html">マニュアル</a> / メイン画面</p>
+        <h1>メイン画面</h1>
+
+        <!-- 雛形: 本文は /harness-doc:plan-doc から書く（manual-writer）。書いたら、この印を消す -->
+        <!-- 画面ごとのページの見本。画面ごとに 1 ページ（screens/<画面>.html）を作る。
+             F1 の飛び先（HelpTargets.cs の "manual/screens/<画面>.html#<id>"）に書いた節の id は、必ずこのページに置く。
+             tools/check-web.mjs が飛び先の実在を見る -->
+        <p>ここに、この画面で何をするかを 1 文で書きます。</p>
+
+        <figure class="doc-figure wide">
+          <img src="../../assets/img/screens/main-01.png" alt="メイン画面" />
+        </figure>
+
+        <h2 id="list">一覧</h2>
+
+        <p>画面を上から部分ごとに分けて、表示・ボタンの意味と、押したときに起きることを説明します。</p>
+
+        <table class="table">
+          <thead>
+            <tr><th>表示・ボタン</th><th>意味・押したときに起きること</th></tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+
+        <h2 id="related">関連するページ</h2>
+
+      </div>
+    </main>
+
+  </div>
+
+  <script src="../../assets/js/main.js"></script>
+</body>
+</html>
