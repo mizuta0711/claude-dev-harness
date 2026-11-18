@@ -47,6 +47,12 @@
           },
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-commit-review-name.js\"",
+            "timeout": 15,
+            "statusMessage": "レビュー記録の名前を確認中..."
+          },
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-push-backlog-check.js\"",
             "timeout": 10,
             "statusMessage": "残作業台帳の整合を確認中..."

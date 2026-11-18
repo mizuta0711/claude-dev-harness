@@ -57,6 +57,15 @@ grep -rln "harness-core:code-review" docs/ templates/ README.md          # ス�
 > 「**config のキーを消費するフック**」の一覧なので、config を読まないフックは載せない。
 > **grep で候補を出し、載せるかは文書の趣旨で判断する。**
 
+## [0.48.0] / [harness-nextjs 0.8.1] — レビュー記録の時刻を時計から取る（H110）／push 前の検査が台帳の桁の違いで誤判定していた（H111）
+
+- **レビュー記録の名前の時刻を AI が作り、別セッションの記録と同じ名前で衝突していた。** `code-review` / `design-review` / `whole-review` / `code-reviewer` / `browser-test` に `date +%Y%m%d_%H%M%S` の出力を使うと書き、スキルに `date` の実行を許可した
+- 新しいフック `pre-commit-review-name`: このコミットで増える `docs/reviews/` の記録の名前の秒が `00`、または取得済みの upstream に同じ名前があれば知らせる。**止めない**
+- **`pre-push-check` が、記録済みのコミットを MISSING と判定して push を止めていた。** `%h` の桁はリポジトリが大きくなると伸びるが、台帳は 7 文字で書く。完全なハッシュを取り、先頭 7 文字で台帳の行を探す。**既存の台帳は直さなくてよい**
+- テンプレート層: `docs/設計書/.doc-sync.md` の説明を同じ判定に合わせた（既存プロジェクトへは `harness-update` で届く）
+
+docs 影響: あり（guide/運用ガイド.md のフックの表 / diagrams/05_フック発火タイミング図.md / diagrams/01_全体アーキテクチャ図.md / README.md — フックが増えたため）
+
 ## [harness-nextjs 0.8.0] — 画面の使い方を、数値と「どう困るか」で確認する（H109）
 
 設定画面が縦に長く PC 幅で横幅が余っていても、ブラウザ確認は「スクロールできる・崩れていない」で通っていた。

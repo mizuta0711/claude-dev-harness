@@ -2,7 +2,7 @@
 name: code-review
 description: 実装コードのレビューを実施する。設計書との突き合わせ、エラーハンドリング、セキュリティを確認し、指摘があれば修正まで行う。
 argument-hint: "[対象ファイルまたはディレクトリ（省略時は直近の変更）]"
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Bash(date:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # コードレビュー＋指摘対応
@@ -69,6 +69,8 @@ UI・挙動の変更を含む場合、レビュー結果の末尾に次を付記
 - `verification.manualGate` が true → 「人手による動作確認が必須です」
 
 ## Step 4: 結果をファイルに保存 + 報告
+
+**`YYYYMMDD_HHMMSS` は `date +%Y%m%d_%H%M%S` の出力をそのまま使う。自分で作らない**（作った時刻は別のセッションの記録と同じ名前になり、`git pull` で衝突する）。
 
 `docs/reviews/YYYYMMDD_HHMMSS_code-review.md` に保存:
 

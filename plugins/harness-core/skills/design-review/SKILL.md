@@ -2,7 +2,7 @@
 name: design-review
 description: 設計書のレビューを実施する。モード引数で Stage 1（機能・画面設計）と Stage 2（技術設計）を切り替える。要求→設計→タスクの反映漏れも検査する。
 argument-hint: "[feature | tech [Phase{n}] | (省略=全体モード)]"
-allowed-tools: "Bash(git diff:*), Bash(git log:*), Grep, Glob, Read, Write, Edit"
+allowed-tools: "Bash(git diff:*), Bash(git log:*), Bash(date:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # 設計レビュー
@@ -242,6 +242,8 @@ Stage 分離されていない設計書向け。tech の観点 + 確認方法の
 **章が無い設計書（M の最小形）には章を足さない**（受け入れ基準の各行の確認方法で代えている）。
 
 ## Step 5: 結果統合 + ファイル保存
+
+**`YYYYMMDD_HHMMSS` は `date +%Y%m%d_%H%M%S` の出力をそのまま使う。自分で作らない**（作った時刻は別のセッションの記録と同じ名前になり、`git pull` で衝突する）。
 
 `docs/reviews/YYYYMMDD_HHMMSS_design-review-{mode}.md` に保存:
 

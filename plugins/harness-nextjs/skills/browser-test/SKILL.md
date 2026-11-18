@@ -2,7 +2,7 @@
 name: browser-test
 description: ブラウザテストを実施する。実装完了後にUI変更の動作確認・UX評価を行う。対象画面を引数で指定する（省略時は直近の変更から自動判定）。
 argument-hint: "[対象画面のURL（例: /example）または 'full' でフルテスト]"
-allowed-tools: "Bash(git diff:*), Bash(mkdir:*), Glob, Grep, Read, Write, Edit"
+allowed-tools: "Bash(git diff:*), Bash(mkdir:*), Bash(date:*), Glob, Grep, Read, Write, Edit"
 ---
 
 # ブラウザテスト実施
@@ -62,7 +62,8 @@ git diff --name-only HEAD~1
 
 ## Step 3: エビデンスフォルダの作成
 
-browser-tester に委譲する**前に**、メインエージェント側でエビデンスフォルダを作成する:
+browser-tester に委譲する**前に**、メインエージェント側でエビデンスフォルダを作成する。
+**`YYYYMMDD_HHMMSS` は `date +%Y%m%d_%H%M%S` の出力をそのまま使う。自分で作らない**:
 
 ```bash
 # フォルダ名: YYYYMMDD_HHMMSS_テスト対象（例: 20260418_153000_example-page）

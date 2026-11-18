@@ -64,6 +64,8 @@ model: sonnet
 
 ## レビューレポート
 
+**`YYYYMMDD_HHMMSS` は `date +%Y%m%d_%H%M%S` の出力をそのまま使う。自分で作らない**（作った時刻は別のセッションの記録と同じ名前になり、`git pull` で衝突する）。
+
 `docs/reviews/YYYYMMDD_HHMMSS_{type}-review.md` に以下の構成で保存する:
 
 1. 概要（対象・適用した観点）

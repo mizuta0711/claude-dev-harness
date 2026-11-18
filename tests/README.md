@@ -36,6 +36,7 @@ node --test
 | `created-branch-name.test.mjs` | `post-branch-notice.createdBranchName` | 作成形と一覧・削除・改名形の切り分け（除外リストが長い） |
 | `pre-commit-check-gates.test.mjs` | `pre-commit-check` | 同じコマンドの中で `git commit` より前にファイルを変える形（H48） |
 | `pre-commit-actuality.test.mjs` | `pre-commit-actuality`（**フック本体**） | `gates.docActuality`／対象リポジトリの解決／非 ASCII のパス／**警告が deny に化けないこと** |
+| `pre-commit-review-name.test.mjs` | `pre-commit-review-name`（**フック本体**）とスキルの記述 | 作った時刻の形／upstream の同名／同じコマンドで add する未追跡／対象リポジトリの解決／`date` の許可／`pre-push-check` が `%h` で探さないこと |
 | `actuality-scan.test.mjs` | `actuality-scan` | 常時読まれる指示に実態（件数・日付）を書くのを捕まえる判定（H23）。**実物で較正してある** |
 | `pre-push-backlog-check.test.mjs` | `pre-push-backlog-check`（**フック本体**） | push の判定／`--dry-run`／`gates.backlogSync: "off"`／deny の出力形式 |
 | `backlog-sync.test.mjs` | `backlog-sync` | 台帳と `docs/features/` の整合（H63）。**見逃しも誤検知も実害がある** |

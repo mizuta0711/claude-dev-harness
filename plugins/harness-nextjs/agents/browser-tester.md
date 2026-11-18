@@ -105,7 +105,7 @@ tests/browser-evidence/
 
 ### 命名規則
 
-- フォルダ: `YYYYMMDD_HHMMSS_テスト対象`（例: `20260418_143000_example-page`）
+- フォルダ: `YYYYMMDD_HHMMSS_テスト対象`（例: `20260418_143000_example-page`）。自分で作るときも、時刻は `date +%Y%m%d_%H%M%S` の出力を使う
 - スクリーンショット: `連番_ページ名_sp|pc.png`（ページ全体は `連番_ページ名_sp|pc_full.png`）
 - レポート: 各フォルダ内に `report.md` として保存
 

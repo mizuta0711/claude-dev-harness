@@ -2,7 +2,7 @@
 name: whole-review
 description: アプリ全体（全ソース）の査読。変更差分ではなくソース全体を whole-reviewer（model inherit＝セッションのモデル）に読ませ、変更単位のレビューでは拾えない横断の欠陥を所見として返す。修正はせず、出口は設計書への起こし候補の一覧。「全体を査読して」「アプリ全体をレビューして」の入口。SessionStart / pre-push-check / complete-feature が「全体査読の目安に達した」と催促したときにも使う。--mark で査読せずに記録だけ、--snooze で見送り。
 argument-hint: "[--mark [レビュー記録のパス] | --snooze | （省略＝査読を回す）]"
-allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git ls-files:*), Grep, Glob, Read, Write, Edit"
+allowed-tools: "Bash(node:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git ls-files:*), Bash(date:*), Grep, Glob, Read, Write, Edit"
 ---
 
 # 全体査読
@@ -50,7 +50,8 @@ Agent(subagent_type: "whole-reviewer", prompt:
 
 ## Step 3: 記録して、起こし候補を出す
 
-1. 返ってきた本文を `docs/reviews/YYYYMMDD_HHMMSS_whole-review.md` に保存する（冒頭に実施日時・対象コミット・使ったモデル）
+1. 返ってきた本文を `docs/reviews/YYYYMMDD_HHMMSS_whole-review.md` に保存する（冒頭に実施日時・対象コミット・使ったモデル）。
+   **`YYYYMMDD_HHMMSS` は `date +%Y%m%d_%H%M%S` の出力をそのまま使う。自分で作らない**（作った時刻は別のセッションの記録と同じ名前になり、`git pull` で衝突する）。
 2. **所見を 1 件も自動修正しない**（`code-review` の Step 5 に当たるものは持たない）
 3. 「4. 設計書への起こし候補」を**ユーザーに一覧で見せる**（候補ごとに含む所見・規模の推測・理由）。
    既知（【既知 #n】）は候補に入れず、「既知の項目と一致: n 件」と別に出す
