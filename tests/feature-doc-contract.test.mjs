@@ -178,6 +178,30 @@ test("「規模: L のみ」の印は TEMPLATE の5節の見出し直下にあ�
   );
 });
 
+test("M で該当があるときだけ作る節は、TEMPLATE の印と new-feature の列挙が一致し、必須の節には付かない（H107）", () => {
+  const MARKER = "<!-- 規模: M では該当があるときだけ作る -->";
+  const lines = template.split(NL);
+  const marked = lines.flatMap((l, i) => (l.trim() === MARKER ? [lines[i - 1].replace(/^#{2,3} /, "").trim()] : []));
+  const names = marked.map((h) => h.replace(/^\d+(?:-\d+)?\.\s*/, "").replace(/（.*$/, ""));
+  assert.deepEqual(names, [
+    "対象と操作フロー",
+    "未解決事項",
+    "設計方針への書き戻し",
+    "インターフェース仕様",
+    "データ構造 / 永続化",
+    "内部設計",
+    "Stage 2 レビュー記録",
+  ]);
+
+  const skill = fs.readFileSync(path.join(ROOT, "plugins/harness-core/skills/new-feature/SKILL.md"), "utf-8");
+  const m = skill.match(/同梱版で該当するのは((?:「[^」]+」)+)の(\d+)つ/);
+  assert.ok(m, "new-feature/SKILL.md に「同梱版で該当するのは「…」…の N つ」の列挙が無い");
+  const named = [...m[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]);
+  assert.equal(Number(m[2]), named.length, "new-feature の列挙の数と「N つ」が食い違う");
+  assert.deepEqual(named, names, "new-feature が列挙する節と、TEMPLATE で印の付いた節が食い違う");
+  assert.doesNotMatch(skill, /1行目を `—（M・レビューなし）`/, "M の固定行を置かせる手順が残っている");
+});
+
 /**
  * 0.43.0: Stage 2 を「決めたこと」に絞る契約
  *

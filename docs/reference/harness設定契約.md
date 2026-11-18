@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |------|------|
 | 対応 schemaVersion | `1` |
-| 対応ハーネス版 | harness-core 0.46.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
-| 最終更新 | 2026-10-23 |
+| 対応ハーネス版 | harness-core 0.47.0 / harness-nextjs 0.4.2 / harness-unity 0.3.1 / harness-wpf 0.3.2 / harness-android 0.2.1 |
+| 最終更新 | 2026-11-19 |
 | 正典 | **本書**（2026-08-16 以降）。ProjectTemplete 側の `docs/04_harness設定契約_仕様.md` は、本書が上位互換になったため削除された |
 | 本書の役割 | **harness-core が実際に読むフィールド**と、その挙動を実装側から記述したもの |
 
@@ -104,6 +104,7 @@
 | `projectDocs.requirements` | `new-feature`（Step 2）/ `design-review feature` | Stage 1 の前にドメイン制約・ビジネスルールを読む。**未登録・空なら素通り** |
 | `projectDocs.policy` | `new-feature/TEMPLATE.md`（§4）/ `design-review tech` / `complete-feature`（ゲート3） | Stage 2 が既存の設計方針に反していないかを検査し、新たな設計判断を**完了時に書き戻させる**。**未登録・空なら素通り** |
 | `verification.*` | `done` / `code-review` スキル | 完了報告の「動作確認」行、レビュー後のリマインド文 |
+| `verification.skill` | `whole-review-nudge.js` | `browser-test` なら、全体査読の催促にフルテストの案内を添える |
 
 ## 3. fail-open の挙動（実装が保証すること）
 

@@ -17,6 +17,7 @@
  * - **閾値（`wholeReview.nudge`）が無ければ何も言わない**（既存の適用先で勝手に鳴らない。fail-open）
  * - **記録が無ければ「一度も回していない」として、リポジトリの初コミットから測る**
  * - 「今回は見送る」（`--snooze`）は `snoozedAt` に HEAD を書き、そこから再び閾値ぶん溜まるまで黙る
+ * - **全体査読は画面の見た目を担えない**ので、`verification.skill` が `browser-test` なら、案内にフルテストを 1 文添える（0.47.0・H109）
  * - 鳴りすぎない（R3）: SessionStart（startup / resume）で案内したら `notifiedAt` を書き、
  *   **12 時間は短縮形**にする（`clear` / `compact` の SessionStart と、`pre-push-check` / `complete-feature` からの呼び出し）
  * - **記録は 2 つに分ける（0.46.0・H103）**:
@@ -307,12 +308,17 @@ function nudge(cfg, opts = {}) {
   // 共有側が未コミットなら、もう 1 台には効いていない（2 台運用で `--mark` のコミット忘れを知らせる）
   const uncommitted = measured.base.kind === "last" && sharedUncommitted();
   const tail = uncommitted ? `（記録 \`${lib.toPosix(SHARED_RELATIVE_PATH)}\` が未コミット: もう 1 台に効いていません）` : "";
+  const usesBrowserTest = cfg?.config?.verification?.skill === "browser-test";
+  const screenHint = usesBrowserTest
+    ? `画面の積み重ねは全体査読では見えないので、\`/harness-nextjs:browser-test full\` も検討してください。`
+    : "";
+  const briefScreenHint = usesBrowserTest ? `（画面は \`/harness-nextjs:browser-test full\`）` : "";
   const line =
     opts.brief && recentlyNotified
-      ? `[全体査読] 目安に達しています（${figures}。セッション開始時に案内済み）。\`/harness-core:whole-review\`${tail}`
+      ? `[全体査読] 目安に達しています（${figures}。セッション開始時に案内済み）。\`/harness-core:whole-review\`${briefScreenHint}${tail}`
       : `[全体査読] 目安に達しています（${since}: ${figures}。閾値を超えた軸: ${over}）。` +
         `\`/harness-core:whole-review\` で、変更単位のレビューでは拾えない横断の欠陥を全ソースから探せる。` +
-        `見送るなら \`/harness-core:whole-review --snooze\`。${tail}`;
+        `見送るなら \`/harness-core:whole-review --snooze\`。${screenHint}${tail}`;
   return { line, measured, axes, recentlyNotified: Boolean(recentlyNotified), uncommitted };
 }
 

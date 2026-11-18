@@ -122,6 +122,29 @@ test("閾値のキーが無ければ何も出さない（既存の適用先で�
   assert.equal(JSON.parse(r.run("--json")), null);
 });
 
+test("verification.skill が browser-test のときだけ、催促にフルテストを添える（H109）", () => {
+  const r = makeRepo();
+  r.commit({ "src/a.ts": "a\n" }, "1");
+  r.config({ commits: 1 });
+  assert.doesNotMatch(r.run("--full"), /browser-test full/);
+
+  const file = path.join(r.dir, ".claude", "harness.config.json");
+  const withSkill = (skill) => {
+    const cfg = JSON.parse(fs.readFileSync(file, "utf-8"));
+    fs.writeFileSync(file, JSON.stringify({ ...cfg, verification: { skill, manualGate: false } }));
+  };
+  withSkill("capture-screenshots");
+  assert.doesNotMatch(r.run("--full"), /browser-test full/);
+  withSkill("browser-test");
+  assert.match(r.run("--full"), /\/harness-nextjs:browser-test full/);
+
+  // pre-push-check / complete-feature の呼び方（SessionStart で案内済みなら短縮形）でも消えない
+  fs.writeFileSync(path.join(r.dir, ".claude", ".whole-review.local.json"), JSON.stringify({ notifiedAt: new Date().toISOString() }));
+  const brief = r.run();
+  assert.match(brief, /案内済み/);
+  assert.match(brief, /\/harness-nextjs:browser-test full/);
+});
+
 test("--mark で HEAD を記録すると、その先から測る。src の差分行は paths.source だけを数える", () => {
   const r = makeRepo();
   r.commit({ "src/a.ts": "a\n" }, "1");

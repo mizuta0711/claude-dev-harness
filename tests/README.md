@@ -67,6 +67,7 @@ node --test
 | `wiring.test.mjs` | プラグインの配線 | hooks / skills / agents の参照先が実在すること |
 | `duplicated-assets.test.mjs` | **意図的な複製** | プラグインをまたげないため置いた複製が、**片方だけ直る**こと |
 | `feature-doc-contract.test.mjs` | スキルの手順と機能設計書テンプレート | 両者の「契約」（節・見出し・台帳の行）のずれ |
+| `browser-test-contract.test.mjs` | harness-nextjs の `browser-test` | report.md の書式の 2 箇所の一致、`Grep` の許可、`ux-metrics.js` が渡せる形か、返す項目がチェックリストにあるか（**測定値の正しさは見ない**） |
 | `verification-commands.test.mjs` | `verification.skill` と `permissions` | 動作確認のコマンドが allow に載っていること（H31） |
 | `rules-reality-check.test.mjs` | `.claude/rules/` と実物 | `paths` が1件も一致しない（**静かに失敗する**）等（H27） |
 | `glob-to-regexp.test.mjs` | `post-edit-lint.globToRegExp` | `paths.source` の一致判定（`**` と `*` の違い） |
